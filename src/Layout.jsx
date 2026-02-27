@@ -4,8 +4,8 @@ import { useAuth } from '@/lib/AuthContext';
 import { createPageUrl } from './utils';
 import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, LogIn, LogOut, Trophy } from 'lucide-react';
 
-const LOGO_URL = '/logo/logo.svg';
-const HEADER_WORDMARK_URL = '/logo/header-wordmark.svg';
+const LOGO_URL = '/logo/logo.png';
+const HEADER_WORDMARK_URL = '/logo/header.svg';
 
 // Mobile bottom nav - 5 core items to avoid crowding
 const MOBILE_NAV = [
