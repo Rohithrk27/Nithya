@@ -138,7 +138,7 @@ export default function Landing() {
         <div className="relative z-10 min-h-screen max-w-5xl mx-auto px-6 py-12 flex flex-col justify-center">
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl">
             <p className="text-cyan-300 text-xs tracking-[0.2em] font-black mb-3">SYSTEM BOOTING</p>
-            <h1 className="text-3xl md:text-5xl lg:text-6xl font-black leading-tight whitespace-nowrap">
+            <h1 className="text-3xl md:text-5xl lg:text-6xl font-black leading-tight">
               Awaken Your <span className="text-cyan-300">Limitless Self</span>
             </h1>
             <p className="text-slate-300 mt-5 text-base md:text-lg max-w-2xl">

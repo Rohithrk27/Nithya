@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@700;800&family=Orbitron:wght@700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -103,12 +105,24 @@
 .app-topbar__brand {
   transition: filter 220ms ease, transform 220ms ease, opacity 220ms ease;
   opacity: 0.95;
+  font-family: 'Orbitron', 'Noto Sans Malayalam', sans-serif;
+  letter-spacing: 0.01em;
 }
 
 .app-topbar__brand--active {
   opacity: 1;
   transform: translateY(-0.5px);
   filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.4));
+}
+
+.app-topbar__brand-en {
+  font-family: 'Orbitron', sans-serif;
+  margin-right: -1px;
+}
+
+.app-topbar__brand-ml {
+  font-family: 'Noto Sans Malayalam', sans-serif;
+  margin-left: -1px;
 }
 
 .holo-ribbon {
