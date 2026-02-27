@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nithya-v3';
+const CACHE_NAME = 'nithya-v4';
 const APP_SHELL = ['/', '/index.html', '/manifest.json', '/logo/logo.png', '/logo/logo.svg', '/logo/header-wordmark.svg'];
 
 self.addEventListener('install', (event) => {

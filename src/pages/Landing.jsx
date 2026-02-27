@@ -63,6 +63,15 @@ export default function Landing() {
     void init();
   }, [navigate]);
 
+  const goToAuthFlow = async (mode) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      navigate(createPageUrl('Landing'), { replace: true });
+      return;
+    }
+    navigate(`${createPageUrl('Login')}?mode=${mode}`);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -170,8 +179,8 @@ export default function Landing() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mt-8 flex flex-wrap gap-3">
-            <Button className="h-11 px-6" onClick={() => navigate(`${createPageUrl('Login')}?mode=signup`)}>Create Account</Button>
-            <Button variant="outline" className="h-11 px-6 border-cyan-500/40 text-cyan-300" onClick={() => navigate(`${createPageUrl('Login')}?mode=login`)}>Sign In</Button>
+            <Button className="h-11 px-6" onClick={() => { void goToAuthFlow('signup'); }}>Create Account</Button>
+            <Button variant="outline" className="h-11 px-6 border-cyan-500/40 text-cyan-300" onClick={() => { void goToAuthFlow('login'); }}>Sign In</Button>
           </motion.div>
         </div>
       </div>

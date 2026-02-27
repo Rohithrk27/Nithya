@@ -5,7 +5,9 @@ import { createPageUrl } from './utils';
 import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, LogIn, LogOut, Trophy } from 'lucide-react';
 
 const LOGO_URL = '/logo/logo.png';
-const HEADER_WORDMARK_URL = '/logo/header.svg';
+const LOGO_FALLBACK_URL = '/logo/logo.svg';
+const HEADER_WORDMARK_URL = '/logo/header-wordmark.svg';
+const HEADER_WORDMARK_FALLBACK_URL = '/logo/header.svg';
 
 // Mobile bottom nav - 5 core items to avoid crowding
 const MOBILE_NAV = [
@@ -34,6 +36,8 @@ export default function Layout({ children, currentPageName }) {
   const showNav = !NO_NAV_PAGES.includes(currentPageName);
   const { isAuthenticated, logout } = useAuth();
   const [isScrolled, setIsScrolled] = useState(false);
+  const [logoSrc, setLogoSrc] = useState(LOGO_URL);
+  const [headerSrc, setHeaderSrc] = useState(HEADER_WORDMARK_URL);
   const confirmAndLogout = async () => {
     const ok = window.confirm('Are you sure you want to sign out?');
     if (!ok) return;
@@ -52,10 +56,13 @@ export default function Layout({ children, currentPageName }) {
       <div className={`flex-1 ${showNav ? 'pb-16 md:pb-0 md:pl-16' : ''}`}>
         {/* Header with app title */}
         <header className={`w-full sticky top-0 z-40 app-topbar ${isScrolled ? 'app-topbar--scrolled' : ''}`}>
-          <div className="px-4 md:px-6 md:pl-20 py-3 flex items-center">
+          <div className="pl-4 pr-4 md:pl-16 md:pr-6 py-3 flex items-center">
             <img
-              src={HEADER_WORDMARK_URL}
+              src={headerSrc}
               alt="Niത്യ"
+              onError={() => {
+                if (headerSrc !== HEADER_WORDMARK_FALLBACK_URL) setHeaderSrc(HEADER_WORDMARK_FALLBACK_URL);
+              }}
               className={`h-7 sm:h-8 md:h-9 w-auto object-contain max-w-[68vw] sm:max-w-[360px] app-topbar__brand ${isScrolled ? 'app-topbar__brand--active' : ''}`}
             />
           </div>
@@ -88,7 +95,16 @@ export default function Layout({ children, currentPageName }) {
           {/* Desktop side nav */}
           <nav className="hidden md:flex fixed left-0 top-0 bottom-0 w-16 flex-col items-center py-4 gap-4 z-50"
             style={{ background: 'rgba(15,32,39,0.95)', backdropFilter: 'blur(16px)', borderRight: '1px solid rgba(56,189,248,0.15)' }}>
-            {LOGO_URL && <img src={LOGO_URL} alt="Niത്യ" className="w-8 h-8 object-contain mb-2" />}
+            {LOGO_URL && (
+              <img
+                src={logoSrc}
+                alt="Niത്യ"
+                onError={() => {
+                  if (logoSrc !== LOGO_FALLBACK_URL) setLogoSrc(LOGO_FALLBACK_URL);
+                }}
+                className="w-8 h-8 object-contain mb-2"
+              />
+            )}
             {NAV_ITEMS.map(({ label, page, icon: Icon }) => {
               const active = currentPageName === page;
               return (

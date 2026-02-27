@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '../lib/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -18,8 +19,9 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   
   const navigate = useNavigate();
-  const { login, signup, resetPassword, loginWithGoogle, isAuthenticated, isLoadingAuth } = useAuth();
+  const { login, signup, resetPassword, loginWithGoogle } = useAuth();
   const defaultRedirect = createPageUrl('Dashboard');
+  const landingPath = createPageUrl('Landing');
   
   useEffect(() => {
     const qMode = new URLSearchParams(window.location.search).get('mode');
@@ -43,11 +45,20 @@ export default function Login() {
     return defaultRedirect;
   }, [defaultRedirect]);
 
-  useEffect(() => {
-    if (!isLoadingAuth && isAuthenticated) {
-      navigate(redirectTarget, { replace: true });
+  const resolvePostAuthPath = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return redirectTarget;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+      return profile ? redirectTarget : landingPath;
+    } catch {
+      return landingPath;
     }
-  }, [isAuthenticated, isLoadingAuth, navigate, redirectTarget]);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,26 +71,33 @@ export default function Login() {
         const { error } = await login(email, password);
         
         if (error) {
-          setMessage(error);
+          setMessage(error.message || error);
           setMessageType('error');
         } else {
           setMessage('Login successful! Redirecting...');
           setMessageType('success');
           // Redirect after short delay
-          setTimeout(() => {
-            navigate(redirectTarget, { replace: true });
-          }, 1000);
+          setTimeout(async () => {
+            const nextPath = await resolvePostAuthPath();
+            navigate(nextPath, { replace: true });
+          }, 700);
         }
         
       } else if (mode === 'signup') {
-        const { error } = await signup(email, password);
+        const { data, error } = await signup(email, password);
         
         if (error) {
-          setMessage(error);
+          setMessage(error.message || error);
           setMessageType('error');
         } else {
-          setMessage('Account created! Please check your email to verify your account, or log in if auto-confirmation is enabled.');
-          setMessageType('success');
+          if (data?.session) {
+            setMessage('Account created! Redirecting to profile setup...');
+            setMessageType('success');
+            setTimeout(() => navigate(landingPath, { replace: true }), 500);
+          } else {
+            setMessage('Account created! Please check your email to verify your account, then sign in.');
+            setMessageType('success');
+          }
         }
         
       } else if (mode === 'forgotPassword') {

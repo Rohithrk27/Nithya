@@ -114,7 +114,14 @@ const AuthenticatedApp = () => {
         />
       ))}
       {Pages.Login && (
-        <Route path={loginPath} element={<Navigate to={dashboardPath} replace />} />
+        <Route
+          path={loginPath}
+          element={
+            <LayoutWrapper currentPageName="Login">
+              <Pages.Login />
+            </LayoutWrapper>
+          }
+        />
       )}
       <Route
         path="/reset-password"
