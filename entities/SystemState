@@ -1,0 +1,86 @@
+{
+  "name": "SystemState",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "equipped_title": {
+      "type": "string"
+    },
+    "hidden_rank": {
+      "type": "string"
+    },
+    "rank_revealed_at_level": {
+      "type": "number",
+      "default": 0
+    },
+    "prestige_level": {
+      "type": "number",
+      "default": 0
+    },
+    "daily_assessment_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "daily_assessment_data": {
+      "type": "string"
+    },
+    "boss_event_active": {
+      "type": "boolean",
+      "default": false
+    },
+    "boss_event_level": {
+      "type": "number",
+      "default": 0
+    },
+    "whisper_last_shown": {
+      "type": "string",
+      "format": "date"
+    },
+    "voice_enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "greeted_once": {
+      "type": "boolean",
+      "default": false
+    },
+    "hardcore_mode": {
+      "type": "boolean",
+      "default": false,
+      "description": "Stricter penalties and hold-to-confirm"
+    },
+    "punishment_ignored_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Escalation tracker"
+    },
+    "daily_challenge_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of last daily challenge generated"
+    },
+    "daily_challenge_index": {
+      "type": "number",
+      "default": -1,
+      "description": "Index of today's daily challenge"
+    },
+    "daily_challenge_completed": {
+      "type": "boolean",
+      "default": false
+    },
+    "daily_challenge_history": {
+      "type": "string",
+      "description": "JSON array of last 7 challenge indices"
+    },
+    "lockdown_active": {
+      "type": "boolean",
+      "default": false,
+      "description": "XP gain blocked due to pending punishments"
+    }
+  },
+  "required": [
+    "user_id"
+  ]
+}

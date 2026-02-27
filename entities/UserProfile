@@ -1,0 +1,86 @@
+{
+  "name": "UserProfile",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "age": {
+      "type": "number"
+    },
+    "height_cm": {
+      "type": "number"
+    },
+    "height_ft": {
+      "type": "number"
+    },
+    "weight_kg": {
+      "type": "number"
+    },
+    "bmi": {
+      "type": "number"
+    },
+    "level": {
+      "type": "number",
+      "default": 0
+    },
+    "current_xp": {
+      "type": "number",
+      "default": 0
+    },
+    "total_xp": {
+      "type": "number",
+      "default": 0
+    },
+    "global_streak": {
+      "type": "number",
+      "default": 0
+    },
+    "stat_points": {
+      "type": "number",
+      "default": 0
+    },
+    "stat_strength": {
+      "type": "number",
+      "default": 0
+    },
+    "stat_intelligence": {
+      "type": "number",
+      "default": 0
+    },
+    "stat_discipline": {
+      "type": "number",
+      "default": 0
+    },
+    "stat_health": {
+      "type": "number",
+      "default": 0
+    },
+    "stat_career": {
+      "type": "number",
+      "default": 0
+    },
+    "stat_social": {
+      "type": "number",
+      "default": 0
+    },
+    "stat_consistency": {
+      "type": "number",
+      "default": 0
+    },
+    "quests_completed": {
+      "type": "number",
+      "default": 0
+    },
+    "reminder_time": {
+      "type": "string",
+      "default": "09:00"
+    }
+  },
+  "required": [
+    "name",
+    "age",
+    "height_cm",
+    "weight_kg"
+  ]
+}

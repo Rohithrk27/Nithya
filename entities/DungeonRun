@@ -1,0 +1,63 @@
+{
+  "name": "DungeonRun",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "challenge_title": {
+      "type": "string"
+    },
+    "challenge_description": {
+      "type": "string"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "completed",
+        "failed"
+      ],
+      "default": "active"
+    },
+    "xp_bonus_multiplier": {
+      "type": "number",
+      "default": 1.5
+    },
+    "punishment_mode": {
+      "type": "string",
+      "enum": [
+        "custom",
+        "random"
+      ],
+      "default": "random",
+      "description": "Failure punishment type"
+    },
+    "custom_punishment_text": {
+      "type": "string",
+      "description": "User-defined dungeon failure punishment"
+    },
+    "duration_days": {
+      "type": "number",
+      "default": 7
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "user_id",
+    "challenge_title",
+    "start_date",
+    "end_date"
+  ]
+}

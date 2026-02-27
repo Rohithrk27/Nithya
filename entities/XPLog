@@ -1,0 +1,27 @@
+{
+  "name": "XPLog",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User who earned XP"
+    },
+    "source": {
+      "type": "string",
+      "description": "What action generated this XP"
+    },
+    "xp_change": {
+      "type": "number",
+      "description": "Amount of XP gained or lost"
+    },
+    "habit_id": {
+      "type": "string",
+      "description": "Related habit if applicable"
+    }
+  },
+  "required": [
+    "user_id",
+    "source",
+    "xp_change"
+  ]
+}

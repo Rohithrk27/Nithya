@@ -1,0 +1,42 @@
+{
+  "name": "Achievement",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "key": {
+      "type": "string",
+      "description": "Unique achievement identifier"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "icon": {
+      "type": "string"
+    },
+    "unlocked_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "streak",
+        "quests",
+        "level",
+        "stats",
+        "dungeon"
+      ],
+      "default": "streak"
+    }
+  },
+  "required": [
+    "user_id",
+    "key",
+    "title"
+  ]
+}

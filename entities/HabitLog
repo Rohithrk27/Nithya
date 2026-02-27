@@ -1,0 +1,40 @@
+{
+  "name": "HabitLog",
+  "type": "object",
+  "properties": {
+    "habit_id": {
+      "type": "string",
+      "description": "Reference to the habit"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "User who performed this action"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of completion or miss"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "missed",
+        "punishment_pending",
+        "punishment_done"
+      ],
+      "description": "Status of this habit on this date"
+    },
+    "punishment_completed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether punishment was performed"
+    }
+  },
+  "required": [
+    "habit_id",
+    "user_id",
+    "date",
+    "status"
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "name": "Habit",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Habit name"
+    },
+    "frequency": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "custom"
+      ],
+      "default": "daily",
+      "description": "How often the habit should be completed"
+    },
+    "xp_value": {
+      "type": "number",
+      "description": "XP awarded on completion"
+    },
+    "punishment_text": {
+      "type": "string",
+      "description": "Custom punishment description for missing this habit"
+    },
+    "punishment_difficulty": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "extreme"
+      ],
+      "default": "medium",
+      "description": "Severity level of the punishment"
+    },
+    "punishment_xp_penalty_pct": {
+      "type": "number",
+      "default": 10,
+      "description": "XP penalty % deducted if punishment refused (5\u201325)"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "default": "medium"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Icon name for the habit"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Owner of this habit"
+    }
+  },
+  "required": [
+    "title",
+    "xp_value",
+    "punishment_text",
+    "user_id"
+  ]
+}

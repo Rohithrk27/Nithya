@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="250" viewBox="0 0 800 250" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#4FD1C5"/>
+      <stop offset="35%" stop-color="#4299E1"/>
+      <stop offset="60%" stop-color="#9F7AEA"/>
+      <stop offset="80%" stop-color="#ED64A6"/>
+      <stop offset="100%" stop-color="#F6E05E"/>
+    </linearGradient>
+  </defs>
+
+  <text x="50%" y="60%"
+        text-anchor="middle"
+        font-size="110"
+        font-weight="600"
+        fill="url(#brandGradient)">
+    <tspan font-family="Orbitron, sans-serif" letter-spacing="2">Ni</tspan>
+    <tspan font-family="Noto Sans Malayalam, sans-serif" dx="-22">ത്യ</tspan>
+  </text>
+</svg>

@@ -1,0 +1,76 @@
+{
+  "name": "Quest",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "special",
+        "epic",
+        "penalty"
+      ],
+      "default": "daily"
+    },
+    "xp_reward": {
+      "type": "number",
+      "default": 100
+    },
+    "stat_reward": {
+      "type": "string",
+      "description": "Which stat to boost: strength|intelligence|discipline|health|career|social|consistency"
+    },
+    "stat_reward_amount": {
+      "type": "number",
+      "default": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "completed",
+        "failed",
+        "expired"
+      ],
+      "default": "active"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "expires_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "completed_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "habit_id": {
+      "type": "string",
+      "description": "Linked habit if applicable"
+    },
+    "min_level_required": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "user_id",
+    "title",
+    "type",
+    "xp_reward",
+    "status",
+    "date"
+  ]
+}

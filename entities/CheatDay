@@ -1,0 +1,37 @@
+{
+  "name": "CheatDay",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "User who unlocked this cheat day"
+    },
+    "level_unlocked": {
+      "type": "number",
+      "description": "Level at which this was unlocked"
+    },
+    "reward_text": {
+      "type": "string",
+      "description": "Suggested reward description"
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget in rupees"
+    },
+    "claimed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the cheat day has been claimed"
+    },
+    "claimed_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date when claimed"
+    }
+  },
+  "required": [
+    "user_id",
+    "level_unlocked",
+    "budget"
+  ]
+}
