@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-const SESSION_KEY = 'Niത്യ_greeted';
+const SESSION_KEY = 'Nithya_greeted';
 
 /**
  * Plays a one-time-per-session voice greeting using Web Speech API.
@@ -28,20 +28,22 @@ export default function VoiceGreeting({ name, isFirstTime, voiceEnabled, onGlowP
 
         const firstName = name.split(' ')[0];
         const greeting = isFirstTime
-          ? `Welcome to Niത്യ, ${firstName}.`
-          : `Welcome back, ${firstName}.`;
+          ? `Welcome to Nithya, ${firstName}.`
+          : `Welcome back to Nithya, ${firstName}.`;
 
         const utter = new SpeechSynthesisUtterance(greeting);
-        utter.rate = 0.95;
-        utter.pitch = 1.2;
+        utter.rate = 0.9;
+        utter.pitch = 1.3;
         utter.volume = 1;
 
-        // Prefer a gentle female-sounding English voice
+        // Prefer Indian English first, then female-sounding English voices
         const voices = window.speechSynthesis.getVoices();
-        const preferred = voices.find((v) => {
+        const preferredIndianFemale = voices.find((v) => {
           const voiceName = v.name.toLowerCase();
-          return v.lang.startsWith('en') && (
+          return v.lang.toLowerCase().startsWith('en-in') && (
             voiceName.includes('female') ||
+            voiceName.includes('woman') ||
+            voiceName.includes('girl') ||
             voiceName.includes('samantha') ||
             voiceName.includes('victoria') ||
             voiceName.includes('zira') ||
@@ -53,7 +55,27 @@ export default function VoiceGreeting({ name, isFirstTime, voiceEnabled, onGlowP
             voiceName.includes('jenny') ||
             voiceName.includes('nancy')
           );
-        }) || voices.find((v) => v.lang.startsWith('en')) || null;
+        });
+        const preferredIndian = voices.find((v) => v.lang.toLowerCase().startsWith('en-in'));
+        const preferredEnglishFemale = voices.find((v) => {
+          const voiceName = v.name.toLowerCase();
+          return v.lang.startsWith('en') && (
+            voiceName.includes('female') ||
+            voiceName.includes('woman') ||
+            voiceName.includes('girl') ||
+            voiceName.includes('samantha') ||
+            voiceName.includes('victoria') ||
+            voiceName.includes('zira') ||
+            voiceName.includes('karen') ||
+            voiceName.includes('moira') ||
+            voiceName.includes('susan') ||
+            voiceName.includes('ava') ||
+            voiceName.includes('aria') ||
+            voiceName.includes('jenny') ||
+            voiceName.includes('nancy')
+          );
+        });
+        const preferred = preferredIndianFemale || preferredIndian || preferredEnglishFemale || voices.find((v) => v.lang.startsWith('en')) || null;
         if (preferred) utter.voice = preferred;
 
         utter.onstart = () => {

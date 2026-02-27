@@ -1,5 +1,5 @@
 const CACHE_NAME = 'nithya-v3';
-const APP_SHELL = ['/', '/index.html', '/manifest.json', '/logo/logo.png', '/logo/header.svg'];
+const APP_SHELL = ['/', '/index.html', '/manifest.json', '/logo/logo.png', '/logo/logo.svg', '/logo/header-wordmark.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -21,6 +21,7 @@ self.addEventListener('fetch', (event) => {
   const isNav = event.request.mode === 'navigate';
   const isSameOrigin = requestUrl.origin === self.location.origin;
   const isBuildAsset = requestUrl.pathname.startsWith('/assets/') || requestUrl.pathname.endsWith('.js') || requestUrl.pathname.endsWith('.css');
+  const isBrandAsset = requestUrl.pathname.startsWith('/logo/');
 
   // Always prefer network for navigation so app updates are visible quickly.
   if (isNav) {
@@ -36,10 +37,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For static assets: stale-while-revalidate.
+  // For static assets: stale-while-revalidate, except build/brand assets which are network-first.
   if (isSameOrigin) {
-    if (isBuildAsset) {
-      // Always prefer latest deployment bundle on Vercel.
+    if (isBuildAsset || isBrandAsset) {
       event.respondWith(
         fetch(event.request)
           .then((response) => {

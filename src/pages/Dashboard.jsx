@@ -359,6 +359,7 @@ export default function Dashboard() {
     const init = async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
+        setLoading(false);
         navigate(createPageUrl('Landing'));
         return;
       }
@@ -369,6 +370,7 @@ export default function Dashboard() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!session?.user) {
+        setLoading(false);
         navigate(createPageUrl('Landing'));
         return;
       }
@@ -660,8 +662,9 @@ export default function Dashboard() {
       notify('quest', `${interruptEvent.title} cleared`, `+${interruptEvent.rewardXp} XP · ${interruptEvent.statReward.toUpperCase()} +1`);
     } else {
       await awardXp(-interruptEvent.penaltyXp, 'system_interrupt_ignored');
-      await addShadowDebt(Math.ceil(interruptEvent.penaltyXp * 0.25));
-      notify('penalty', `${interruptEvent.title} ignored`, `-${interruptEvent.penaltyXp} XP applied`);
+      const debtAdded = Math.ceil(interruptEvent.penaltyXp * 0.25);
+      await addShadowDebt(debtAdded);
+      notify('penalty', `${interruptEvent.title} ignored`, `-${interruptEvent.penaltyXp} XP · +${debtAdded} Shadow Debt`);
     }
     localStorage.setItem(key, result);
     setInterruptStatus(result);
@@ -763,6 +766,16 @@ export default function Dashboard() {
       {showWarningPopup && interruptEvent && interruptStatus === 'pending' && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center p-4" style={{ background: 'rgba(10,0,0,0.8)', backdropFilter: 'blur(6px)' }}>
           <div className="w-full max-w-md rounded-2xl p-5 space-y-4 border border-red-500/40 bg-[#12080A] shadow-2xl">
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => resolveInterrupt('ignored')}
+                className="text-slate-400 hover:text-red-300 text-lg leading-none"
+                aria-label="Close warning"
+              >
+                x
+              </button>
+            </div>
             <p className="text-red-400 text-xs tracking-widest font-black">SYSTEM WARNING</p>
             <p className="text-white text-xl font-black">{interruptEvent.title}</p>
             <p className="text-slate-300 text-sm">{interruptEvent.description}</p>
@@ -771,7 +784,7 @@ export default function Dashboard() {
               <span className="px-2 py-1 rounded border border-red-700 text-red-300">-{interruptEvent.penaltyXp} XP</span>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowWarningPopup(false)}>LATER</Button>
+              <Button variant="outline" onClick={() => resolveInterrupt('ignored')}>CLOSE (+DEBT)</Button>
               <Button onClick={() => resolveInterrupt('accepted')}>COMPLETE</Button>
               <Button variant="outline" onClick={() => resolveInterrupt('ignored')}>IGNORE</Button>
             </div>

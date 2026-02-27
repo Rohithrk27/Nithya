@@ -90,7 +90,16 @@ const AuthenticatedApp = () => {
           <MainPage />
         </LayoutWrapper>
       } />
-      <Route path={landingPath} element={<Navigate to={dashboardPath} replace />} />
+      {Pages.Landing && (
+        <Route
+          path={landingPath}
+          element={
+            <LayoutWrapper currentPageName="Landing">
+              <Pages.Landing />
+            </LayoutWrapper>
+          }
+        />
+      )}
       {Object.entries(Pages)
         .filter(([path]) => path !== 'Login' && path !== 'Landing')
         .map(([path, Page]) => (
