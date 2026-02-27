@@ -10,7 +10,7 @@ const getStage = (level) => {
 const stageConfig = {
   1: { label: 'Beginner', sublabel: 'The journey starts', color: '#64748B', accent: '#334155' },
   2: { label: 'Disciplined', sublabel: 'Form taking shape', color: '#3B82F6', accent: '#1D4ED8' },
-  3: { label: 'Athlete', sublabel: 'Muscle & mind aligned', color: '#8B5CF6', accent: '#7C3AED' },
+  3: { label: 'Athlete', sublabel: 'Muscle & mind aligned', color: '#0EA5E9', accent: '#0284C7' },
   4: { label: 'Elite', sublabel: 'Peak human form', color: '#F59E0B', accent: '#D97706' },
 };
 

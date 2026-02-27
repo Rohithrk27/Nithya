@@ -5,10 +5,10 @@ import PentagonGraph from './PentagonGraph';
 const STAT_META = [
   { key: 'strength',     label: 'STR', fullLabel: 'Strength',    color: '#F87171', icon: '💪' },
   { key: 'intelligence', label: 'INT', fullLabel: 'Intelligence', color: '#60A5FA', icon: '🧠' },
-  { key: 'discipline',   label: 'DIS', fullLabel: 'Discipline',   color: '#A78BFA', icon: '⚡' },
+  { key: 'discipline',   label: 'DIS', fullLabel: 'Discipline',   color: '#38BDF8', icon: '⚡' },
   { key: 'health',       label: 'HP',  fullLabel: 'Health',       color: '#34D399', icon: '❤️' },
   { key: 'career',       label: 'CAR', fullLabel: 'Career',       color: '#FBBF24', icon: '🎯' },
-  { key: 'social',       label: 'SOC', fullLabel: 'Social',       color: '#F472B6', icon: '🌐' },
+  { key: 'social',       label: 'SOC', fullLabel: 'Social',       color: '#22D3EE', icon: '🌐' },
   { key: 'consistency',  label: 'CON', fullLabel: 'Consistency',  color: '#38BDF8', icon: '🔥' },
 ];
 
@@ -165,3 +165,4 @@ export default function StatGrid({ profile, level = 0, statPoints = 0, onAllocat
     </div>
   );
 }
+

@@ -87,59 +87,28 @@
   }
 }
 
-.glass-topbar {
-  position: sticky;
-  overflow: hidden;
-  backdrop-filter: blur(22px) saturate(145%);
-  -webkit-backdrop-filter: blur(22px) saturate(145%);
-  background:
-    linear-gradient(120deg, rgba(7, 18, 28, 0.68), rgba(19, 42, 56, 0.54) 55%, rgba(35, 22, 52, 0.42));
-  border-bottom: 1px solid rgba(120, 210, 255, 0.25);
-  box-shadow:
-    0 8px 28px rgba(5, 18, 30, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+.app-topbar {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(15, 32, 39, 0.95);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+  box-shadow: none;
+  transition: border-color 220ms ease;
 }
 
-.glass-topbar::before {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  background: linear-gradient(
-    105deg,
-    transparent 10%,
-    rgba(79, 209, 197, 0.18) 30%,
-    rgba(66, 153, 225, 0.2) 45%,
-    transparent 62%
-  );
-  transform: translateX(-30%);
-  animation: topbarSweep 7.5s linear infinite;
-  pointer-events: none;
+.app-topbar--scrolled {
+  border-bottom-color: rgba(56, 189, 248, 0.28);
 }
 
-.glass-topbar__orbit {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(22px);
-  opacity: 0.45;
-  pointer-events: none;
+.app-topbar__brand {
+  transition: filter 220ms ease, transform 220ms ease, opacity 220ms ease;
+  opacity: 0.95;
 }
 
-.glass-topbar__orbit--one {
-  width: 180px;
-  height: 44px;
-  top: -10px;
-  left: 20%;
-  background: radial-gradient(circle at 30% 50%, rgba(79, 209, 197, 0.35), rgba(79, 209, 197, 0));
-  animation: topbarFloatA 9s ease-in-out infinite;
-}
-
-.glass-topbar__orbit--two {
-  width: 210px;
-  height: 48px;
-  top: -8px;
-  right: 9%;
-  background: radial-gradient(circle at 70% 40%, rgba(159, 122, 234, 0.34), rgba(159, 122, 234, 0));
-  animation: topbarFloatB 10s ease-in-out infinite;
+.app-topbar__brand--active {
+  opacity: 1;
+  transform: translateY(-0.5px);
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.4));
 }
 
 .holo-ribbon {
@@ -163,22 +132,6 @@
   right: -10%;
   background: linear-gradient(140deg, rgba(167, 139, 250, 0.38), rgba(56, 189, 248, 0.1));
   animation: holoDriftB 24s ease-in-out infinite;
-}
-
-@keyframes topbarSweep {
-  0% { transform: translateX(-55%); opacity: 0.2; }
-  45% { opacity: 0.45; }
-  100% { transform: translateX(140%); opacity: 0.2; }
-}
-
-@keyframes topbarFloatA {
-  0%, 100% { transform: translateX(-6px) translateY(0); }
-  50% { transform: translateX(22px) translateY(2px); }
-}
-
-@keyframes topbarFloatB {
-  0%, 100% { transform: translateX(6px) translateY(0); }
-  50% { transform: translateX(-20px) translateY(3px); }
 }
 
 @keyframes holoDriftA {

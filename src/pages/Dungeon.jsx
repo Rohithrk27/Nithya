@@ -233,7 +233,7 @@ export default function Dungeon() {
               </div>
               <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'rgba(248,113,113,0.1)' }}>
                 <div className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #F87171, #A78BFA)' }} />
+                  style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #F87171, #38BDF8)' }} />
               </div>
             </div>
 
@@ -247,8 +247,8 @@ export default function Dungeon() {
                 <p className="text-xs" style={{ color: '#64748B' }}>XP MULTIPLIER</p>
               </div>
               <div className="flex-1 text-center p-3 rounded-xl"
-                style={{ background: `rgba(${activeDungeon.punishment_mode === 'random' ? '167,139,250' : '56,189,248'},0.08)`, border: `1px solid rgba(${activeDungeon.punishment_mode === 'random' ? '167,139,250' : '56,189,248'},0.2)` }}>
-                <p className="text-sm font-black pt-1" style={{ color: activeDungeon.punishment_mode === 'random' ? '#A78BFA' : '#38BDF8' }}>
+                style={{ background: `rgba(${activeDungeon.punishment_mode === 'random' ? '56,189,248' : '56,189,248'},0.08)`, border: `1px solid rgba(${activeDungeon.punishment_mode === 'random' ? '56,189,248' : '56,189,248'},0.2)` }}>
+                <p className="text-sm font-black pt-1" style={{ color: activeDungeon.punishment_mode === 'random' ? '#38BDF8' : '#38BDF8' }}>
                   {activeDungeon.punishment_mode === 'random' ? 'RANDOM' : 'CUSTOM'}
                 </p>
                 <p className="text-xs" style={{ color: '#64748B' }}>PUNISHMENT</p>
@@ -373,9 +373,9 @@ export default function Dungeon() {
                       <button key={pm} onClick={() => setCustomForm(f => ({ ...f, punishment_mode: pm }))}
                         className="flex-1 py-2 rounded-lg text-xs font-black tracking-widest"
                         style={{
-                          background: customForm.punishment_mode === pm ? 'rgba(167,139,250,0.15)' : 'rgba(10,5,5,0.6)',
-                          border: `1px solid ${customForm.punishment_mode === pm ? 'rgba(167,139,250,0.4)' : 'rgba(167,139,250,0.1)'}`,
-                          color: customForm.punishment_mode === pm ? '#A78BFA' : '#475569',
+                          background: customForm.punishment_mode === pm ? 'rgba(56,189,248,0.15)' : 'rgba(10,5,5,0.6)',
+                          border: `1px solid ${customForm.punishment_mode === pm ? 'rgba(56,189,248,0.4)' : 'rgba(56,189,248,0.1)'}`,
+                          color: customForm.punishment_mode === pm ? '#38BDF8' : '#475569',
                         }}>
                         {pm === 'random' ? 'RANDOM HARD' : 'CUSTOM'}
                       </button>
@@ -384,8 +384,8 @@ export default function Dungeon() {
                 </div>
 
                 {customForm.punishment_mode === 'random' && (
-                  <div className="rounded-xl p-3 space-y-1" style={{ background: 'rgba(167,139,250,0.06)', border: '1px solid rgba(167,139,250,0.2)' }}>
-                    <p className="text-xs font-black tracking-widest" style={{ color: '#A78BFA' }}>RANDOM PUNISHMENT POOL</p>
+                  <div className="rounded-xl p-3 space-y-1" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.2)' }}>
+                    <p className="text-xs font-black tracking-widest" style={{ color: '#38BDF8' }}>RANDOM PUNISHMENT POOL</p>
                     {HIGH_DIFFICULTY_PUNISHMENTS.slice(0, 4).map((p, i) => (
                       <p key={i} className="text-xs" style={{ color: '#64748B' }}>· {p.text}</p>
                     ))}
@@ -422,3 +422,5 @@ export default function Dungeon() {
     </div>
   );
 }
+
+

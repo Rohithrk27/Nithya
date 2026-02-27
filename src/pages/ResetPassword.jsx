@@ -84,7 +84,7 @@ export default function ResetPassword() {
       >
         <Card className="border border-[#334155] shadow-2xl bg-[#1E293B]">
           <CardHeader className="text-center pb-4">
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] bg-clip-text text-transparent">
+            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] bg-clip-text text-transparent">
               Set New Password
             </CardTitle>
             <CardDescription className="text-base text-[#94A3B8]">
@@ -118,12 +118,12 @@ export default function ResetPassword() {
                     className="mt-1 h-12 bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
                   />
                 </div>
-                <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] hover:from-[#3B82F6]/90 hover:to-[#8B5CF6]/90 text-white">
+                <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] hover:from-[#3B82F6]/90 hover:to-[#0EA5E9]/90 text-white">
                   {loading ? 'Updating...' : 'Update Password'}
                 </Button>
               </form>
             ) : (
-              <Button onClick={() => navigate(createPageUrl('Login'))} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6]">
+              <Button onClick={() => navigate(createPageUrl('Login'))} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9]">
                 Back to Sign In
               </Button>
             )}
@@ -139,3 +139,4 @@ export default function ResetPassword() {
     </div>
   );
 }
+

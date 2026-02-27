@@ -82,7 +82,7 @@ export default function QuoteEngine() {
 
   return (
     <div className="relative rounded-2xl overflow-hidden border border-[#334155]/60 bg-gradient-to-br from-[#1E293B] to-[#0F172A] p-5 backdrop-blur-sm">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#3B82F6]/5 to-[#8B5CF6]/5 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#3B82F6]/5 to-[#0EA5E9]/5 pointer-events-none" />
 
       <div
         className="relative transition-all duration-500"

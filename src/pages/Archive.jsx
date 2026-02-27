@@ -12,7 +12,7 @@ import HoloPanel from '../components/HoloPanel';
 const CATEGORY_COLORS = {
   streak: '#FB923C',
   quests: '#38BDF8',
-  level:  '#A78BFA',
+  level:  '#38BDF8',
   stats:  '#34D399',
   dungeon:'#F87171',
 };
@@ -155,15 +155,15 @@ export default function Archive() {
           </div>
         </div>
 
-        <HoloPanel glowColor="#A78BFA" active={rankRevealed}>
+        <HoloPanel glowColor="#38BDF8" active={rankRevealed}>
           <div className="flex items-center gap-2 mb-3">
-            <Trophy className="w-4 h-4" style={{ color: '#A78BFA' }} />
-            <h2 className="text-xs font-black tracking-widest" style={{ color: '#A78BFA' }}>HIDDEN RANK</h2>
+            <Trophy className="w-4 h-4" style={{ color: '#38BDF8' }} />
+            <h2 className="text-xs font-black tracking-widest" style={{ color: '#38BDF8' }}>HIDDEN RANK</h2>
           </div>
           {rankRevealed ? (
             <div className="text-center py-4">
-              <p className="text-4xl font-black text-white mb-1" style={{ textShadow: '0 0 30px rgba(167,139,250,0.6)' }}>{rank}</p>
-              <p className="text-xs font-mono" style={{ color: '#A78BFA88' }}>RANK EVALUATION COMPLETE</p>
+              <p className="text-4xl font-black text-white mb-1" style={{ textShadow: '0 0 30px rgba(56,189,248,0.6)' }}>{rank}</p>
+              <p className="text-xs font-mono" style={{ color: '#38BDF888' }}>RANK EVALUATION COMPLETE</p>
             </div>
           ) : (
             <div className="text-center py-4">
@@ -252,3 +252,5 @@ export default function Archive() {
     </SystemBackground>
   );
 }
+
+

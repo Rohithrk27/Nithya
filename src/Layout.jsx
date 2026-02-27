@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { createPageUrl } from './utils';
@@ -33,21 +33,31 @@ const NO_NAV_PAGES = ['Landing'];
 export default function Layout({ children, currentPageName }) {
   const showNav = !NO_NAV_PAGES.includes(currentPageName);
   const { isAuthenticated, logout } = useAuth();
+  const [isScrolled, setIsScrolled] = useState(false);
   const confirmAndLogout = async () => {
     const ok = window.confirm('Are you sure you want to sign out?');
     if (!ok) return;
     await logout();
   };
 
+  useEffect(() => {
+    const onScroll = () => setIsScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'transparent' }}>
       <div className={`flex-1 ${showNav ? 'pb-16 md:pb-0 md:pl-16' : ''}`}>
         {/* Header with app title */}
-        <header className="w-full sticky top-0 z-40 glass-topbar">
-          <div className="glass-topbar__orbit glass-topbar__orbit--one" />
-          <div className="glass-topbar__orbit glass-topbar__orbit--two" />
-          <div className="px-4 md:px-6 md:pl-20 py-3 flex items-center relative z-10">
-            <img src={HEADER_WORDMARK_URL} alt="Niത്യ" className="h-8 md:h-9 w-auto object-contain" />
+        <header className={`w-full sticky top-0 z-40 app-topbar ${isScrolled ? 'app-topbar--scrolled' : ''}`}>
+          <div className="px-4 md:px-6 md:pl-20 py-3 flex items-center">
+            <img
+              src={HEADER_WORDMARK_URL}
+              alt="Niത്യ"
+              className={`h-7 sm:h-8 md:h-9 w-auto object-contain max-w-[68vw] sm:max-w-[360px] app-topbar__brand ${isScrolled ? 'app-topbar__brand--active' : ''}`}
+            />
           </div>
         </header>
 

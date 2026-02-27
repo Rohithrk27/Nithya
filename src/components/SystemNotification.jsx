@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 const TYPE_STYLES = {
   xp:      { border: '#38BDF8', bg: 'rgba(56,189,248,0.08)',  label: 'XP ACQUIRED',     icon: '⚡' },
   levelup: { border: '#FBBF24', bg: 'rgba(251,191,36,0.12)',  label: 'LEVEL UP',         icon: '▲' },
-  stat:    { border: '#A78BFA', bg: 'rgba(167,139,250,0.08)', label: 'STAT INCREASED',   icon: '↑' },
+  stat:    { border: '#38BDF8', bg: 'rgba(56,189,248,0.08)', label: 'STAT INCREASED',   icon: '↑' },
   quest:   { border: '#34D399', bg: 'rgba(52,211,153,0.08)',  label: 'QUEST COMPLETE',   icon: '✓' },
   penalty: { border: '#F87171', bg: 'rgba(248,113,113,0.08)', label: 'PENALTY ISSUED',   icon: '!' },
 };
@@ -79,3 +79,4 @@ export default function SystemNotification({ notifications }) {
     </div>
   );
 }
+

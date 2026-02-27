@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 const PENTAGON_STATS = [
   { key: 'strength', label: 'STR', color: '#F87171' },
   { key: 'intelligence', label: 'INT', color: '#60A5FA' },
-  { key: 'discipline', label: 'DIS', color: '#A78BFA' },
+  { key: 'discipline', label: 'DIS', color: '#38BDF8' },
   { key: 'health', label: 'HP', color: '#34D399' },
   { key: 'career', label: 'CAR', color: '#FBBF24' },
 ];
@@ -144,12 +144,12 @@ export default function PentagonGraph({ stats, size = SIZE }) {
         <defs>
           <linearGradient id="statGradient" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#38BDF8" stopOpacity={0.4} />
-            <stop offset="100%" stopColor="#A78BFA" stopOpacity={0.2} />
+            <stop offset="100%" stopColor="#38BDF8" stopOpacity={0.2} />
           </linearGradient>
           <linearGradient id="statStrokeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#38BDF8" />
-            <stop offset="50%" stopColor="#A78BFA" />
-            <stop offset="100%" stopColor="#F472B6" />
+            <stop offset="50%" stopColor="#38BDF8" />
+            <stop offset="100%" stopColor="#22D3EE" />
           </linearGradient>
         </defs>
       </svg>
@@ -171,3 +171,4 @@ export default function PentagonGraph({ stats, size = SIZE }) {
     </div>
   );
 }
+

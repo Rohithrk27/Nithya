@@ -160,14 +160,14 @@ export function getRankTitle(level) {
 }
 
 export function getTierColors(level) {
-  if (level >= 1000) return ['#FFFFFF', '#E879F9'];
-  if (level >= 900)  return ['#E879F9', '#F472B6'];
+  if (level >= 1000) return ['#FFFFFF', '#67E8F9'];
+  if (level >= 900)  return ['#67E8F9', '#22D3EE'];
   if (level >= 650)  return ['#FBBF24', '#F87171'];
   if (level >= 500)  return ['#34D399', '#60A5FA'];
-  if (level >= 350)  return ['#F472B6', '#A78BFA'];
+  if (level >= 350)  return ['#22D3EE', '#38BDF8'];
   if (level >= 200)  return ['#60A5FA', '#38BDF8'];
-  if (level >= 100)  return ['#A78BFA', '#818CF8'];
-  if (level >= 50)   return ['#818CF8', '#60A5FA'];
+  if (level >= 100)  return ['#38BDF8', '#38BDF8'];
+  if (level >= 50)   return ['#38BDF8', '#60A5FA'];
   if (level >= 10)   return ['#38BDF8', '#60A5FA'];
   return ['#475569', '#64748B'];
 }

@@ -234,9 +234,9 @@ export default function Quests() {
         {tab === 'available' && (
           <div className="space-y-5">
             {[
-              { label: 'WEEKLY QUESTS', icon: Star, color: '#A78BFA', pool: WEEKLY_QUESTS },
+              { label: 'WEEKLY QUESTS', icon: Star, color: '#38BDF8', pool: WEEKLY_QUESTS },
               { label: 'SPECIAL QUESTS', icon: Shield, color: '#FBBF24', pool: SPECIAL_QUESTS },
-              { label: `EPIC QUESTS`, icon: Skull, color: '#F472B6', pool: EPIC_QUESTS },
+              { label: `EPIC QUESTS`, icon: Skull, color: '#22D3EE', pool: EPIC_QUESTS },
             ].map(({ label, icon: Icon, color, pool }) => (
               <div key={label}>
                 <div className="flex items-center gap-2 mb-3">
@@ -304,3 +304,4 @@ export default function Quests() {
     </div>
   );
 }
+

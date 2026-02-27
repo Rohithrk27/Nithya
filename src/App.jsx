@@ -21,6 +21,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 const AuthenticatedApp = () => {
   const { isLoadingAuth, authError, isAuthenticated, navigateToLogin } = useAuth();
   const loginPath = createPageUrl('Login');
+  const landingPath = createPageUrl('Landing');
   const dashboardPath = createPageUrl('Dashboard');
 
   // Show loading spinner while checking auth
@@ -36,6 +37,17 @@ const AuthenticatedApp = () => {
   if (!isAuthenticated) {
     return (
       <Routes>
+        {Pages.Landing && (
+          <Route
+            path={landingPath}
+            element={
+              <LayoutWrapper currentPageName="Landing">
+                <Pages.Landing />
+              </LayoutWrapper>
+            }
+          />
+        )}
+        <Route path="/" element={<Navigate to={landingPath} replace />} />
         {Pages.Login && (
           <Route
             path={loginPath}
@@ -54,7 +66,7 @@ const AuthenticatedApp = () => {
             </LayoutWrapper>
           }
         />
-        <Route path="*" element={<Navigate to={loginPath} replace />} />
+        <Route path="*" element={<Navigate to={landingPath} replace />} />
       </Routes>
     );
   }
@@ -78,7 +90,10 @@ const AuthenticatedApp = () => {
           <MainPage />
         </LayoutWrapper>
       } />
-      {Object.entries(Pages).map(([path, Page]) => (
+      <Route path={landingPath} element={<Navigate to={dashboardPath} replace />} />
+      {Object.entries(Pages)
+        .filter(([path]) => path !== 'Login' && path !== 'Landing')
+        .map(([path, Page]) => (
         <Route
           key={path}
           path={createPageUrl(path)}

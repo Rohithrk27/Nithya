@@ -30,6 +30,13 @@ const DAILY_PRINCIPLES = [
 ];
 
 const PUNISHMENT_TIME_LIMIT_HOURS = 8;
+const SHADOW_DEBT_RECOVERY_RATE = 0.35;
+const STRIKE_MISSED_THRESHOLD = 2;
+const MAX_STRIKES_BEFORE_SANCTION = 3;
+const SANCTION_XP_PENALTY = 180;
+const SANCTION_CONSISTENCY_DROP = 2;
+const RANK_EVAL_LEVELS = [10, 25, 50, 100];
+const OVERDUE_EVAL_BASE_PENALTY = 90;
 
 const buildPendingPunishments = (punishments, habitsData, logsData) => {
   const habitMap = new Map((habitsData || []).map((h) => [h.id, h]));
@@ -106,6 +113,7 @@ export default function Dashboard() {
   const [quests, setQuests] = useState([]);
   const [dailyChallenge, setDailyChallenge] = useState(null);
   const [pendingPunishments, setPendingPunishments] = useState([]);
+  const [rankEvaluation, setRankEvaluation] = useState(null);
   const [interruptStatus, setInterruptStatus] = useState(null);
   const [showWarningPopup, setShowWarningPopup] = useState(false);
   const [levelUpPulse, setLevelUpPulse] = useState(false);
@@ -115,6 +123,7 @@ export default function Dashboard() {
   const { notifications, notify } = useSystemNotifications();
   const prevLevelRef = useRef(0);
   const levelPulseTimeoutRef = useRef(null);
+  const overdueEvalLockRef = useRef(false);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const rowDate = (row) => (row?.date || row?.logged_at || row?.completed_at || row?.created_at || '').toString().slice(0, 10);
@@ -130,6 +139,50 @@ export default function Dashboard() {
     }),
     [user?.id, level, today, systemState?.hardcore_mode]
   );
+
+  const ensureRankEvaluation = useCallback(async (userId, currentLevel) => {
+    const requiredLevel = [...RANK_EVAL_LEVELS].reverse().find((lv) => currentLevel >= lv);
+    if (!requiredLevel) {
+      setRankEvaluation(null);
+      return;
+    }
+
+    const { data: existing, error: evalError } = await supabase
+      .from('rank_evaluations')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('required_level', requiredLevel)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (evalError) {
+      setRankEvaluation(null);
+      return;
+    }
+
+    if (existing) {
+      setRankEvaluation(existing);
+      return;
+    }
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 1);
+    const due = format(dueDate, 'yyyy-MM-dd');
+    const { data: created, error: createError } = await supabase
+      .from('rank_evaluations')
+      .insert({
+        user_id: userId,
+        required_level: requiredLevel,
+        title: `Rank Evaluation Lv.${requiredLevel}`,
+        description: 'Prove consistency before claiming full rewards.',
+        status: 'pending',
+        due_date: due,
+      })
+      .select('*')
+      .single();
+    if (!createError && created) setRankEvaluation(created);
+  }, []);
 
   const loadData = useCallback(async (userId) => {
     setLoadError('');
@@ -170,13 +223,56 @@ export default function Dashboard() {
       }
 
       setProfile(p);
-      setSystemState(statsRes.data?.[0] || { voice_enabled: true });
+      const baseSystemState = statsRes.data?.[0] || { voice_enabled: true };
+      setSystemState({
+        strict_strikes: 0,
+        last_strike_date: null,
+        shadow_debt_xp: 0,
+        ...baseSystemState,
+      });
       const habitsData = habitsRes.data || [];
       const logsData = logsRes.data || [];
       setHabits(habitsData);
       setHistoryLogs(logsData);
       const todayLogs = logsData.filter((l) => rowDate(l) === today);
       setLogs(todayLogs);
+
+      const missedTodayCount = todayLogs.filter((l) => l.status === 'missed').length;
+      if (
+        baseSystemState?.id &&
+        baseSystemState?.hardcore_mode &&
+        missedTodayCount >= STRIKE_MISSED_THRESHOLD &&
+        baseSystemState?.last_strike_date !== today
+      ) {
+        const nextStrikes = (baseSystemState?.strict_strikes || 0) + 1;
+        const strikePayload = { strict_strikes: nextStrikes, last_strike_date: today };
+        await supabase.from('stats').update(strikePayload).eq('id', baseSystemState.id).eq('user_id', userId);
+        setSystemState((prev) => ({ ...prev, ...strikePayload }));
+        notify('penalty', 'Strike recorded', `Missed ${missedTodayCount} habits today`);
+
+        if (nextStrikes >= MAX_STRIKES_BEFORE_SANCTION) {
+          const sanctionPayload = buildXPUpdatePayload(p, -SANCTION_XP_PENALTY);
+          const nextConsistency = Math.max(0, (p.stat_consistency || 0) - SANCTION_CONSISTENCY_DROP);
+          sanctionPayload.stat_consistency = nextConsistency;
+          await supabase.from('profiles').update(sanctionPayload).eq('id', userId);
+          await supabase.from('xp_logs').insert({ user_id: userId, xp_change: -SANCTION_XP_PENALTY, source: 'strike_sanction' });
+          setProfile((prev) => ({ ...prev, ...sanctionPayload }));
+          await supabase
+            .from('stats')
+            .update({
+              strict_strikes: 0,
+              shadow_debt_xp: (baseSystemState?.shadow_debt_xp || 0) + SANCTION_XP_PENALTY,
+            })
+            .eq('id', baseSystemState.id)
+            .eq('user_id', userId);
+          setSystemState((prev) => ({
+            ...prev,
+            strict_strikes: 0,
+            shadow_debt_xp: (prev?.shadow_debt_xp || 0) + SANCTION_XP_PENALTY,
+          }));
+          notify('penalty', 'Sanction enforced', `-${SANCTION_XP_PENALTY} XP and Shadow Debt increased`);
+        }
+      }
 
       let punishmentsData = punishmentsRes.data || [];
 
@@ -251,12 +347,13 @@ export default function Dashboard() {
         }
       }
       setDailyChallenge(challengeToday || null);
+      await ensureRankEvaluation(userId, computeLevel(p.total_xp || 0));
     } catch (err) {
       setLoadError(err?.message || 'Failed to load dashboard data.');
     } finally {
       setLoading(false);
     }
-  }, [navigate, today]);
+  }, [ensureRankEvaluation, navigate, notify, today]);
 
   useEffect(() => {
     const init = async () => {
@@ -317,6 +414,46 @@ export default function Dashboard() {
   }, [interruptEvent, notify, user?.id]);
 
   useEffect(() => {
+    if (!user?.id || !profile || !rankEvaluation || rankEvaluation.status !== 'pending') return;
+    if (!rankEvaluation?.due_date || rankEvaluation.due_date >= today) return;
+    if (rankEvaluation?.last_penalty_date === today) return;
+    if (overdueEvalLockRef.current) return;
+
+    const applyOverdueEvaluationPenalty = async () => {
+      overdueEvalLockRef.current = true;
+      try {
+        const overduePenalty = OVERDUE_EVAL_BASE_PENALTY + Math.floor((rankEvaluation.required_level || 0) * 1.5);
+        await awardXp(-overduePenalty, 'rank_evaluation_overdue');
+        await addShadowDebt(Math.ceil(overduePenalty * 0.5));
+
+        const nextConsistency = Math.max(0, (profile?.stat_consistency || 0) - 1);
+        await supabase.from('profiles').update({ stat_consistency: nextConsistency }).eq('id', user.id);
+        setProfile((prev) => ({ ...prev, stat_consistency: nextConsistency }));
+
+        if (systemState?.id) {
+          const nextStrike = Math.min(MAX_STRIKES_BEFORE_SANCTION, (systemState?.strict_strikes || 0) + 1);
+          const demotionPayload = { strict_strikes: nextStrike, equipped_title: null };
+          await supabase.from('stats').update(demotionPayload).eq('id', systemState.id).eq('user_id', user.id);
+          setSystemState((prev) => ({ ...prev, ...demotionPayload }));
+        }
+
+        await supabase
+          .from('rank_evaluations')
+          .update({ last_penalty_date: today })
+          .eq('id', rankEvaluation.id)
+          .eq('user_id', user.id);
+
+        setRankEvaluation((prev) => (prev ? { ...prev, last_penalty_date: today } : prev));
+        notify('penalty', 'Overdue Evaluation penalty', `-${overduePenalty} XP today. Clear evaluation to stop daily penalties.`);
+      } finally {
+        overdueEvalLockRef.current = false;
+      }
+    };
+
+    void applyOverdueEvaluationPenalty();
+  }, [profile, rankEvaluation, systemState, today, user?.id]);
+
+  useEffect(() => {
     if (!user?.id || !profile || pendingPunishments.length === 0) return;
 
     const processExpiredPunishments = async () => {
@@ -344,6 +481,7 @@ export default function Dashboard() {
 
       if (totalPenalty > 0) {
         await awardXp(-totalPenalty, 'punishment_timeout');
+        await addShadowDebt(Math.ceil(totalPenalty * 0.5));
       }
 
       if (systemState?.hardcore_mode) {
@@ -409,11 +547,44 @@ export default function Dashboard() {
     return () => timers.forEach((t) => clearTimeout(t));
   }, [profile?.reminder_time, habits, historyLogs, logs, today]);
 
+  const addShadowDebt = async (amount) => {
+    if (!user?.id || !systemState?.id || amount <= 0) return;
+    const nextDebt = (systemState?.shadow_debt_xp || 0) + amount;
+    await supabase
+      .from('stats')
+      .update({ shadow_debt_xp: nextDebt })
+      .eq('id', systemState.id)
+      .eq('user_id', user.id);
+    setSystemState((prev) => ({ ...prev, shadow_debt_xp: nextDebt }));
+  };
+
   const awardXp = async (xp, source) => {
     if (!profile || !user) return;
-    const payload = buildXPUpdatePayload(profile, xp);
+
+    let nextXp = xp;
+    const pendingRankEval = rankEvaluation?.status === 'pending';
+    if (nextXp > 0 && pendingRankEval) {
+      nextXp = Math.floor(nextXp * 0.5);
+      notify('penalty', 'Rank Evaluation lock', 'Rewards reduced until evaluation is cleared');
+    }
+
+    let debtRepaid = 0;
+    if (nextXp > 0 && (systemState?.shadow_debt_xp || 0) > 0 && systemState?.id) {
+      debtRepaid = Math.min(systemState.shadow_debt_xp, Math.ceil(nextXp * SHADOW_DEBT_RECOVERY_RATE));
+      nextXp = Math.max(0, nextXp - debtRepaid);
+      const nextDebt = systemState.shadow_debt_xp - debtRepaid;
+      await supabase
+        .from('stats')
+        .update({ shadow_debt_xp: nextDebt })
+        .eq('id', systemState.id)
+        .eq('user_id', user.id);
+      setSystemState((prev) => ({ ...prev, shadow_debt_xp: nextDebt }));
+      notify('xp', 'Shadow Debt repayment', `${debtRepaid} XP redirected to debt`);
+    }
+
+    const payload = buildXPUpdatePayload(profile, nextXp);
     await supabase.from('profiles').update(payload).eq('id', user.id);
-    await supabase.from('xp_logs').insert({ user_id: user.id, xp_change: xp, source });
+    await supabase.from('xp_logs').insert({ user_id: user.id, xp_change: nextXp, source });
     setProfile((prev) => ({ ...prev, ...payload }));
   };
 
@@ -455,6 +626,7 @@ export default function Dashboard() {
     if (!user || !punishment?.id) return;
     const penalty = punishmentRefusalPenalty(profile, habit?.punishment_xp_penalty_pct || 10);
     await awardXp(-penalty, 'punishment_refused');
+    await addShadowDebt(Math.ceil(penalty * 0.5));
 
     if (systemState?.hardcore_mode) {
       const nextConsistency = Math.max(0, (profile?.stat_consistency || 0) - 1);
@@ -488,6 +660,7 @@ export default function Dashboard() {
       notify('quest', `${interruptEvent.title} cleared`, `+${interruptEvent.rewardXp} XP · ${interruptEvent.statReward.toUpperCase()} +1`);
     } else {
       await awardXp(-interruptEvent.penaltyXp, 'system_interrupt_ignored');
+      await addShadowDebt(Math.ceil(interruptEvent.penaltyXp * 0.25));
       notify('penalty', `${interruptEvent.title} ignored`, `-${interruptEvent.penaltyXp} XP applied`);
     }
     localStorage.setItem(key, result);
@@ -497,6 +670,10 @@ export default function Dashboard() {
 
   const handleQuestComplete = async (quest) => {
     if (!user) return;
+    if (rankEvaluation?.status === 'pending') {
+      notify('penalty', 'Rank Evaluation pending', 'Clear your evaluation before completing quests.');
+      return;
+    }
     if (quest?.status === 'completed' && quest?.completed_date === today) {
       notify('xp', 'Quest already claimed today', quest.title);
       return;
@@ -514,9 +691,39 @@ export default function Dashboard() {
 
   const completeDailyChallenge = async () => {
     if (!dailyChallenge || !user) return;
+    if (rankEvaluation?.status === 'pending') {
+      notify('penalty', 'Rank Evaluation pending', 'Daily challenge rewards are locked.');
+      return;
+    }
     await supabase.from('daily_challenges').update({ completed: true }).eq('id', dailyChallenge.id).eq('user_id', user.id);
     await awardXp(dailyChallenge.xp_reward || 0, 'daily_challenge');
     setDailyChallenge(null);
+  };
+
+  const resolveRankEvaluation = async (status) => {
+    if (!user?.id || !rankEvaluation?.id || rankEvaluation.status !== 'pending') return;
+    const todayDate = format(new Date(), 'yyyy-MM-dd');
+    await supabase
+      .from('rank_evaluations')
+      .update({ status, resolved_date: todayDate })
+      .eq('id', rankEvaluation.id)
+      .eq('user_id', user.id);
+
+    if (status === 'cleared') {
+      const bonusXp = 300 + (rankEvaluation.required_level || 0) * 4;
+      await awardXp(bonusXp, 'rank_evaluation_clear');
+      const nextStatPoints = (profile?.stat_points || 0) + 2;
+      await supabase.from('profiles').update({ stat_points: nextStatPoints }).eq('id', user.id);
+      setProfile((prev) => ({ ...prev, stat_points: nextStatPoints }));
+      notify('quest', 'Rank Evaluation cleared', `+${bonusXp} XP and +2 stat points`);
+    } else {
+      const failPenalty = 120;
+      await awardXp(-failPenalty, 'rank_evaluation_fail');
+      await addShadowDebt(failPenalty);
+      notify('penalty', 'Rank Evaluation failed', `-${failPenalty} XP and debt increased`);
+    }
+
+    setRankEvaluation((prev) => (prev ? { ...prev, status, resolved_date: todayDate } : prev));
   };
 
   if (loading) {
@@ -546,6 +753,8 @@ export default function Dashboard() {
   const streakDays = profile?.global_streak || 0;
   const shadowArmyCount = Math.max(0, Math.floor(streakDays / 7));
   const gateRank = getGateRank(level);
+  const shadowDebt = systemState?.shadow_debt_xp || 0;
+  const strikeCount = systemState?.strict_strikes || 0;
   const difficultyColor = (d) => ({ easy: '#34D399', medium: '#FBBF24', hard: '#F87171' }[d] || '#64748B');
 
   return (
@@ -646,8 +855,8 @@ export default function Dashboard() {
 
         <HoloPanel>
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl p-3 border border-[#7c3aed55] bg-[#1a0f2b99]">
-              <p className="text-[10px] tracking-widest font-black text-[#c4b5fd]">SHADOW ARMY</p>
+            <div className="rounded-xl p-3 border border-[#0284c755] bg-[#1a0f2b99]">
+              <p className="text-[10px] tracking-widest font-black text-[#67e8f9]">SHADOW ARMY</p>
               <p className="text-2xl font-black text-white mt-1">{shadowArmyCount}</p>
               <p className="text-xs text-slate-400">Unlocked from streak milestones</p>
             </div>
@@ -657,6 +866,40 @@ export default function Dashboard() {
               <p className="text-xs text-slate-400">Current hunt classification</p>
             </div>
           </div>
+        </HoloPanel>
+
+        <HoloPanel glowColor="#F87171" active={shadowDebt > 0 || rankEvaluation?.status === 'pending'}>
+          <p className="text-red-400 text-xs tracking-widest font-bold mb-2">STRICT SYSTEM</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-xl p-2 border border-red-500/30 bg-red-950/30">
+              <p className="text-[10px] tracking-widest text-red-300 font-black">SHADOW DEBT</p>
+              <p className="text-lg font-black text-white">{shadowDebt}</p>
+            </div>
+            <div className="rounded-xl p-2 border border-amber-500/30 bg-amber-950/25">
+              <p className="text-[10px] tracking-widest text-amber-300 font-black">STRIKES</p>
+              <p className="text-lg font-black text-white">{strikeCount}/{MAX_STRIKES_BEFORE_SANCTION}</p>
+            </div>
+            <div className="rounded-xl p-2 border border-cyan-500/30 bg-cyan-950/25">
+              <p className="text-[10px] tracking-widest text-cyan-300 font-black">EVALUATION</p>
+              <p className="text-sm font-black text-white">{rankEvaluation?.status ? rankEvaluation.status.toUpperCase() : 'NONE'}</p>
+            </div>
+          </div>
+          {rankEvaluation?.status === 'pending' && (
+            <div className="mt-3 rounded-xl p-3 border border-red-500/30 bg-red-950/20">
+              <p className="text-white font-bold">{rankEvaluation.title || `Rank Evaluation Lv.${rankEvaluation.required_level}`}</p>
+              <p className="text-xs text-slate-300">{rankEvaluation.description || 'Clear evaluation to unlock full rewards.'}</p>
+              <p className="text-xs text-red-300 mt-1">Due: {rankEvaluation.due_date || 'N/A'} · Quests are locked until cleared.</p>
+              {rankEvaluation?.due_date && rankEvaluation.due_date < today && (
+                <p className="text-xs text-red-200 mt-1">
+                  OVERDUE: Daily penalty active{rankEvaluation?.last_penalty_date ? ` · Last applied ${rankEvaluation.last_penalty_date}` : ''}.
+                </p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <Button onClick={() => resolveRankEvaluation('cleared')}>CLEAR</Button>
+                <Button variant="outline" onClick={() => resolveRankEvaluation('failed')}>FAIL</Button>
+              </div>
+            </div>
+          )}
         </HoloPanel>
 
         {dailyChallenge && !dailyChallenge.completed && (
@@ -743,4 +986,6 @@ export default function Dashboard() {
     </SystemBackground>
   );
 }
+
+
 

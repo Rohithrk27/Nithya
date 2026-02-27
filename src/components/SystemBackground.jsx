@@ -53,53 +53,11 @@ export default function SystemBackground({ children }) {
           }} />
         ))}
 
-        {/* RK watermark */}
-        <div style={{
-          position: 'absolute',
-          right: '8%',
-          bottom: '12%',
-          fontSize: 120,
-          fontWeight: 900,
-          color: 'rgba(56,189,248,0.04)',
-          letterSpacing: '-4px',
-          userSelect: 'none',
-          fontFamily: 'monospace',
-          lineHeight: 1,
-        }}>RK</div>
       </div>
 
       {/* Content */}
       <div style={{ position: 'relative', zIndex: 1 }}>
         {children}
-      </div>
-
-      {/* Creator signature */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 72,
-          right: 16,
-          zIndex: 50,
-          fontSize: 9,
-          fontWeight: 700,
-          letterSpacing: '0.15em',
-          color: 'rgba(56,189,248,0.35)',
-          textShadow: '0 0 8px rgba(56,189,248,0.3)',
-          fontFamily: 'monospace',
-          transition: 'color 0.3s, text-shadow 0.3s',
-          cursor: 'default',
-          userSelect: 'none',
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.color = 'rgba(56,189,248,0.7)';
-          e.currentTarget.style.textShadow = '0 0 14px rgba(56,189,248,0.6)';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.color = 'rgba(56,189,248,0.35)';
-          e.currentTarget.style.textShadow = '0 0 8px rgba(56,189,248,0.3)';
-        }}
-      >
-        CREATED BY RK
       </div>
 
       <style>{`

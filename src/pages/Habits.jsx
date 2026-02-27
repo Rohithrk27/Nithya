@@ -14,7 +14,7 @@ import { scaledXP } from '../components/gameEngine';
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
 const PUNISHMENT_DIFFS = ['low', 'medium', 'high', 'extreme'];
 const DIFF_COLORS = { easy: '#34D399', medium: '#FBBF24', hard: '#F87171' };
-const PDIFF_COLORS = { low: '#FBBF24', medium: '#FB923C', high: '#F87171', extreme: '#A78BFA' };
+const PDIFF_COLORS = { low: '#FBBF24', medium: '#FB923C', high: '#F87171', extreme: '#38BDF8' };
 
 const DEFAULT_FORM = {
   title: '', frequency: 'daily', xp_value: 50,
@@ -336,3 +336,4 @@ export default function Habits() {
     </SystemBackground>
   );
 }
+

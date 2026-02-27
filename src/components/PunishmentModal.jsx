@@ -6,7 +6,7 @@ const DIFFICULTY_COLORS = {
   low:     { bg: 'rgba(251,191,36,0.12)',  border: 'rgba(251,191,36,0.4)',  text: '#FBBF24', label: 'LOW' },
   medium:  { bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.4)',  text: '#FB923C', label: 'MEDIUM' },
   high:    { bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.4)', text: '#F87171', label: 'HIGH' },
-  extreme: { bg: 'rgba(167,139,250,0.15)', border: 'rgba(167,139,250,0.5)', text: '#A78BFA', label: 'EXTREME' },
+  extreme: { bg: 'rgba(56,189,248,0.15)', border: 'rgba(56,189,248,0.5)', text: '#38BDF8', label: 'EXTREME' },
 };
 
 /**
@@ -155,11 +155,11 @@ export default function PunishmentModal({ pendingPunishments, hardcoreMode, onDo
                   <p className="text-xs" style={{ color: '#64748B' }}>
                     {expired ? 'Window expired. You must accept XP reduction.' : <>Refusing costs <span className="font-black" style={{ color: '#F87171' }}>−{xpPenalty} XP</span></>}
                     {hardcoreMode && (
-                      <span style={{ color: '#A78BFA' }}> + stat reduction</span>
+                      <span style={{ color: '#38BDF8' }}> + stat reduction</span>
                     )}
                   </p>
                   {hardcoreMode && (
-                    <p className="text-xs mt-1 font-bold tracking-widest" style={{ color: '#A78BFA' }}>
+                    <p className="text-xs mt-1 font-bold tracking-widest" style={{ color: '#38BDF8' }}>
                       ◆ HARDCORE MODE ACTIVE
                     </p>
                   )}
@@ -250,3 +250,5 @@ export default function PunishmentModal({ pendingPunishments, hardcoreMode, onDo
     </AnimatePresence>
   );
 }
+
+

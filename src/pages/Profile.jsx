@@ -288,23 +288,23 @@ export default function Profile() {
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-xl"
-              style={{ background: hardcoreMode ? 'rgba(167,139,250,0.06)' : 'rgba(15,32,39,0.6)', border: `1px solid ${hardcoreMode ? 'rgba(167,139,250,0.3)' : 'rgba(56,189,248,0.12)'}` }}>
+              style={{ background: hardcoreMode ? 'rgba(56,189,248,0.06)' : 'rgba(15,32,39,0.6)', border: `1px solid ${hardcoreMode ? 'rgba(56,189,248,0.3)' : 'rgba(56,189,248,0.12)'}` }}>
               <div className="flex items-center gap-2">
                 <div>
-                  <p className="text-xs font-black tracking-widest" style={{ color: hardcoreMode ? '#A78BFA' : '#475569' }}>HARDCORE MODE</p>
+                  <p className="text-xs font-black tracking-widest" style={{ color: hardcoreMode ? '#38BDF8' : '#475569' }}>HARDCORE MODE</p>
                   <p className="text-xs" style={{ color: '#334155' }}>10s hold-to-confirm · stronger penalties · stat decay</p>
                 </div>
               </div>
               <button onClick={() => setHardcoreMode(h => !h)}
                 className="w-11 h-6 rounded-full transition-all relative flex-shrink-0"
-                style={{ background: hardcoreMode ? 'rgba(167,139,250,0.3)' : 'rgba(71,85,105,0.3)', border: `1px solid ${hardcoreMode ? 'rgba(167,139,250,0.5)' : 'rgba(71,85,105,0.4)'}` }}>
+                style={{ background: hardcoreMode ? 'rgba(56,189,248,0.3)' : 'rgba(71,85,105,0.3)', border: `1px solid ${hardcoreMode ? 'rgba(56,189,248,0.5)' : 'rgba(71,85,105,0.4)'}` }}>
                 <span className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
-                  style={{ left: hardcoreMode ? '22px' : '2px', background: hardcoreMode ? '#A78BFA' : '#475569' }} />
+                  style={{ left: hardcoreMode ? '22px' : '2px', background: hardcoreMode ? '#38BDF8' : '#475569' }} />
               </button>
             </div>
 
             <Button onClick={handleSave} disabled={saving} className="w-full font-bold tracking-widest"
-              style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.2), rgba(167,139,250,0.2))', border: '1px solid rgba(56,189,248,0.4)', color: '#38BDF8' }}>
+              style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.2), rgba(56,189,248,0.2))', border: '1px solid rgba(56,189,248,0.4)', color: '#38BDF8' }}>
               <Save className="w-4 h-4 mr-2" />{saving ? 'SAVING...' : 'SAVE CHANGES'}
             </Button>
           </div>
@@ -313,3 +313,5 @@ export default function Profile() {
     </div>
   );
 }
+
+

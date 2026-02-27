@@ -6,14 +6,14 @@ export { getAvatarTier };
 const TIER_CONFIG = {
   0:  { label: 'Awakening',   color: '#64748B', glow: false, particles: false },
   1:  { label: 'Initiate',    color: '#38BDF8', glow: true,  particles: false },
-  2:  { label: 'Challenger',  color: '#818CF8', glow: true,  particles: false },
-  3:  { label: 'Warrior',     color: '#A78BFA', glow: true,  particles: true  },
+  2:  { label: 'Challenger',  color: '#38BDF8', glow: true,  particles: false },
+  3:  { label: 'Warrior',     color: '#38BDF8', glow: true,  particles: true  },
   4:  { label: 'Sentinel',    color: '#60A5FA', glow: true,  particles: true  },
-  5:  { label: 'Ascendant',   color: '#F472B6', glow: true,  particles: true  },
+  5:  { label: 'Ascendant',   color: '#22D3EE', glow: true,  particles: true  },
   6:  { label: 'Paragon',     color: '#34D399', glow: true,  particles: true  },
   7:  { label: 'Phantom',     color: '#FBBF24', glow: true,  particles: true  },
   8:  { label: 'Transcendent',color: '#F87171', glow: true,  particles: true  },
-  9:  { label: 'Awakened One',color: '#E879F9', glow: true,  particles: true  },
+  9:  { label: 'Awakened One',color: '#67E8F9', glow: true,  particles: true  },
   10: { label: 'System Master',color: '#FFFFFF', glow: true,  particles: true  },
 };
 

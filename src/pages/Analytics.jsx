@@ -156,7 +156,7 @@ export default function Analytics() {
                 <defs>
                   <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#3b82f6" />
-                    <stop offset="100%" stopColor="#8b5cf6" />
+                    <stop offset="100%" stopColor="#0ea5e9" />
                   </linearGradient>
                 </defs>
               </BarChart>
@@ -165,7 +165,7 @@ export default function Analytics() {
         </div>
 
         <div className="rounded-2xl p-4" style={{ background: 'rgba(15,32,39,0.7)', border: '1px solid rgba(56,189,248,0.15)' }}>
-          <p className="text-xs font-bold tracking-widest mb-3 flex items-center gap-2" style={{ color: '#A78BFA' }}>
+          <p className="text-xs font-bold tracking-widest mb-3 flex items-center gap-2" style={{ color: '#38BDF8' }}>
             <TrendingUp className="w-4 h-4" /> XP EARNED (LAST 14 DAYS)
           </p>
           <div>
@@ -186,7 +186,7 @@ export default function Analytics() {
                   formatter={(val) => [`${val} XP`, 'Earned']}
                   labelFormatter={(label, payload) => payload?.[0]?.payload?.label || label}
                 />
-                <Line type="monotone" dataKey="xp" stroke="#A78BFA" strokeWidth={2} dot={{ fill: '#A78BFA', r: 3 }} />
+                <Line type="monotone" dataKey="xp" stroke="#38BDF8" strokeWidth={2} dot={{ fill: '#38BDF8', r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -252,3 +252,4 @@ export default function Analytics() {
     </div>
   );
 }
+

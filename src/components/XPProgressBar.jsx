@@ -6,7 +6,7 @@ const XP_PER_LEVEL = 500;
 // Returns a gradient pair based on current level
 function getLevelGradient(level) {
   if (level >= 20) return ['#a855f7', '#ec4899']; // purple → pink (Elite)
-  if (level >= 10) return ['#3b82f6', '#8b5cf6']; // blue → violet (Athlete)
+  if (level >= 10) return ['#3b82f6', '#0ea5e9']; // blue → violet (Athlete)
   if (level >= 5)  return ['#10b981', '#3b82f6'];  // green → blue (Disciplined)
   return ['#6366f1', '#3b82f6'];                   // indigo → blue (Beginner)
 }
@@ -34,7 +34,7 @@ export default function XPProgressBar({ totalXp, levelUp }) {
         particleCount: 120,
         spread: 80,
         origin: { y: 0.5 },
-        colors: ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899'],
+        colors: ['#3b82f6', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899'],
         zIndex: 9999,
       });
     }

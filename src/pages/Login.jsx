@@ -20,6 +20,13 @@ export default function Login() {
   const navigate = useNavigate();
   const { login, signup, resetPassword, loginWithGoogle, isAuthenticated, isLoadingAuth } = useAuth();
   const defaultRedirect = createPageUrl('Dashboard');
+  
+  useEffect(() => {
+    const qMode = new URLSearchParams(window.location.search).get('mode');
+    if (qMode === 'signup' || qMode === 'login' || qMode === 'forgotPassword') {
+      setMode(qMode);
+    }
+  }, []);
 
   const redirectTarget = useMemo(() => {
     const raw = new URLSearchParams(window.location.search).get('redirect');
@@ -129,7 +136,7 @@ export default function Login() {
               className="mt-1 h-12 bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
             />
           </div>
-          <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] hover:from-[#3B82F6]/90 hover:to-[#8B5CF6]/90 text-white">
+          <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] hover:from-[#3B82F6]/90 hover:to-[#0EA5E9]/90 text-white">
             {loading ? 'Sending...' : 'Send Reset Link'}
           </Button>
           <button
@@ -182,10 +189,10 @@ export default function Login() {
           </div>
         )}
 
-        <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] hover:from-[#3B82F6]/90 hover:to-[#8B5CF6]/90 text-white">
+        <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] hover:from-[#3B82F6]/90 hover:to-[#0EA5E9]/90 text-white">
           {loading ? (mode === 'login' ? 'Signing in...' : 'Signing up...') : (mode === 'login' ? 'Sign In' : 'Sign Up')}
         </Button>
-        {mode === 'login' && (
+        {(mode === 'login' || mode === 'signup') && (
           <>
             <div className="relative py-1">
               <div className="absolute inset-0 flex items-center">
@@ -195,14 +202,18 @@ export default function Login() {
                 <span className="bg-[#1E293B] px-2 text-[#64748B]">Or</span>
               </div>
             </div>
-            <Button
+            <button
               type="button"
               onClick={handleGoogleSignIn}
               disabled={googleLoading}
-              className="w-full h-12 bg-white text-slate-900 hover:bg-slate-100"
+              className="w-full h-12 rounded-md border border-slate-200 bg-white text-slate-900 hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed font-semibold inline-flex items-center justify-center gap-2"
+              style={{ color: '#0f172a', fontWeight: 700 }}
             >
-              {googleLoading ? 'Connecting...' : 'Continue with Google'}
-            </Button>
+              <span className="text-base leading-none" style={{ color: '#ea4335' }}>G</span>
+              <span style={{ color: '#0f172a' }}>
+                {googleLoading ? 'Connecting...' : (mode === 'login' ? 'Sign in with Google' : 'Sign up with Google')}
+              </span>
+            </button>
           </>
         )}
 
@@ -228,7 +239,7 @@ export default function Login() {
       >
         <Card className="border border-[#334155] shadow-2xl bg-[#1E293B]">
           <CardHeader className="text-center pb-4">
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-[#3B82F6] to-[#8B5CF6] bg-clip-text text-transparent">
+            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] bg-clip-text text-transparent">
               {mode === 'forgotPassword' ? 'Reset Password' : (mode === 'login' ? 'Welcome Back' : 'Create Account')}
             </CardTitle>
             <CardDescription className="text-base text-[#94A3B8]">
@@ -252,3 +263,4 @@ export default function Login() {
     </div>
   );
 }
+

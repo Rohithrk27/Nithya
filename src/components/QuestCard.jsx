@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button';
 
 const TYPE_CONFIG = {
   daily:   { label: 'DAILY',   color: '#38BDF8', icon: Clock },
-  weekly:  { label: 'WEEKLY',  color: '#A78BFA', icon: Star },
+  weekly:  { label: 'WEEKLY',  color: '#38BDF8', icon: Star },
   special: { label: 'SPECIAL', color: '#FBBF24', icon: Zap },
-  epic:    { label: 'EPIC',    color: '#F472B6', icon: Star },
+  epic:    { label: 'EPIC',    color: '#22D3EE', icon: Star },
   penalty: { label: 'PENALTY', color: '#F87171', icon: Skull },
 };
 

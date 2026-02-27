@@ -356,7 +356,7 @@ export default function Leaderboard() {
 
         {activeTab === 'requests' && (
           <HoloPanel>
-            <p className="text-xs font-bold tracking-widest mb-3 flex items-center gap-2" style={{ color: '#A78BFA' }}>
+            <p className="text-xs font-bold tracking-widest mb-3 flex items-center gap-2" style={{ color: '#38BDF8' }}>
               <UserPlus className="w-3.5 h-3.5" /> FRIEND REQUESTS
             </p>
 
@@ -402,11 +402,11 @@ export default function Leaderboard() {
               ) : sentRequests.map((r) => {
                 const receiver = profileDirectory[r.receiver_id];
                 return (
-                  <div key={r.id} className="rounded-lg p-2 flex items-center justify-between" style={{ background: 'rgba(15,32,39,0.6)', border: '1px solid rgba(167,139,250,0.2)' }}>
+                  <div key={r.id} className="rounded-lg p-2 flex items-center justify-between" style={{ background: 'rgba(15,32,39,0.6)', border: '1px solid rgba(56,189,248,0.2)' }}>
                     <p className="text-sm text-white truncate">
                       {formatHunterName(receiver, r.receiver_id)} <span className="text-xs text-slate-400">{formatHunterCode(receiver)}</span>
                     </p>
-                    <span className="text-xs font-bold" style={{ color: '#A78BFA' }}>PENDING</span>
+                    <span className="text-xs font-bold" style={{ color: '#38BDF8' }}>PENDING</span>
                   </div>
                 );
               })}
@@ -417,3 +417,5 @@ export default function Leaderboard() {
     </SystemBackground>
   );
 }
+
+
