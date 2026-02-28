@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Niത്യ</string>
+    <string name="title_activity_main">Niത്യ</string>
+    <string name="package_name">com.rohith.nitya</string>
+    <string name="custom_url_scheme">com.rohith.nitya</string>
+</resources>
