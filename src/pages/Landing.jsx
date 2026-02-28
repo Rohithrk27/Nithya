@@ -32,8 +32,15 @@ export default function Landing() {
 
   useEffect(() => {
     const init = async () => {
+      // Set a timeout to prevent getting stuck on loading
+      const timeoutId = setTimeout(() => {
+        setStep('intro');
+      }, 5000); // 5 second timeout as fallback
+
       try {
         const { data: { user } } = await supabase.auth.getUser();
+
+        clearTimeout(timeoutId);
 
         if (!user) {
           setStep('intro');
@@ -56,6 +63,7 @@ export default function Landing() {
 
         setStep('onboarding');
       } catch (_) {
+        clearTimeout(timeoutId);
         setStep('intro');
       }
     };
@@ -151,7 +159,7 @@ export default function Landing() {
               Awaken Your <span className="text-cyan-300">Limitless Self</span>
             </h1>
             <p className="text-slate-300 mt-5 text-base md:text-lg max-w-2xl">
-              Niത്യ transforms daily habits into a Solo Leveling style progression: quests, ranks, stats, and strict consequences.
+              Nithya transforms daily habits into a Solo Leveling style progression: quests, ranks, stats, and strict consequences.
             </p>
           </motion.div>
 
@@ -286,5 +294,3 @@ export default function Landing() {
     </div>
   );
 }
-
-

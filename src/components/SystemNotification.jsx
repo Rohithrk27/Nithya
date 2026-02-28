@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 /**
@@ -7,6 +7,108 @@ import { motion, AnimatePresence } from 'framer-motion';
  * 
  * Each notification: { id, type: 'xp'|'levelup'|'stat'|'quest'|'penalty', message, sub }
  */
+
+// Audio context for notification sounds
+let audioContext = null;
+
+const getAudioContext = () => {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return audioContext;
+};
+
+/**
+ * Play a notification sound based on type
+ * Uses Web Audio API to generate synthetic sounds (no external files needed)
+ */
+const playNotificationSound = (type) => {
+  try {
+    const ctx = getAudioContext();
+    
+    // Resume audio context if suspended (required by browsers)
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
+
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    // Different sounds for different notification types
+    switch (type) {
+      case 'xp':
+        // Quick rising tone for XP
+        oscillator.frequency.setValueAtTime(600, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + 0.15);
+        break;
+        
+      case 'levelup':
+        // Celebratory ascending arpeggio
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08);
+          gain.gain.setValueAtTime(0.12, ctx.currentTime + i * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.08 + 0.2);
+          osc.start(ctx.currentTime + i * 0.08);
+          osc.stop(ctx.currentTime + i * 0.08 + 0.2);
+        });
+        return; // Don't play the default sound
+        
+      case 'stat':
+        // Two-tone boost sound
+        oscillator.frequency.setValueAtTime(440, ctx.currentTime);
+        oscillator.frequency.setValueAtTime(550, ctx.currentTime + 0.08);
+        gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + 0.2);
+        break;
+        
+      case 'quest':
+        // Success chime
+        oscillator.frequency.setValueAtTime(784, ctx.currentTime); // G5
+        oscillator.frequency.setValueAtTime(988, ctx.currentTime + 0.1); // B5
+        gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + 0.25);
+        break;
+        
+      case 'penalty':
+        // Warning descending tone
+        oscillator.frequency.setValueAtTime(400, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.3);
+        oscillator.type = 'sawtooth';
+        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + 0.3);
+        return; // Don't play the default sound
+        
+      default:
+        // Default notification ping
+        oscillator.frequency.setValueAtTime(600, ctx.currentTime);
+        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + 0.15);
+    }
+  } catch (e) {
+    // Silently fail if audio not supported
+    console.warn('Notification sound failed:', e);
+  }
+};
 
 const TYPE_STYLES = {
   xp:      { border: '#38BDF8', bg: 'rgba(56,189,248,0.08)',  label: 'XP ACQUIRED',     icon: '⚡' },
@@ -18,10 +120,17 @@ const TYPE_STYLES = {
 
 export function useSystemNotifications() {
   const [notifications, setNotifications] = useState([]);
+  const soundEnabledRef = useRef(true);
 
   const notify = useCallback((type, message, sub = '') => {
     const id = Date.now() + Math.random();
     setNotifications(prev => [...prev.slice(-4), { id, type, message, sub }]);
+    
+    // Play notification sound
+    if (soundEnabledRef.current) {
+      playNotificationSound(type);
+    }
+    
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
     }, 3000);

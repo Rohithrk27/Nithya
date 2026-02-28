@@ -14,14 +14,10 @@ const today = format(new Date(), 'yyyy-MM-dd');
 const resolveDailyQuestStatus = (userQuest) => {
   if (!userQuest) return { status: 'active', completed_date: null };
   if (userQuest.status === 'completed') {
-    return userQuest.completed_date === today
-      ? { status: 'completed', completed_date: userQuest.completed_date }
-      : { status: 'active', completed_date: null };
+    return { status: 'completed', completed_date: userQuest.completed_date };
   }
   if (userQuest.status === 'failed') {
-    return userQuest.completed_date === today
-      ? { status: 'failed', completed_date: userQuest.completed_date }
-      : { status: 'active', completed_date: null };
+    return { status: 'failed', completed_date: userQuest.completed_date };
   }
   return { status: userQuest.status || 'active', completed_date: userQuest.completed_date || null };
 };
@@ -148,10 +144,28 @@ export default function Quests() {
   const addQuestFromPool = async (template) => {
     const already = quests.find(q => q.title === template.title && q.status === 'active');
     if (already) return;
+    
+    // Calculate expires_date based on quest type
+    const getExpiresDate = (type) => {
+      if (type === 'weekly') {
+        const nextWeek = new Date();
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        return nextWeek.toISOString().split('T')[0];
+      }
+      if (type === 'epic') {
+        const nextMonth = new Date();
+        nextMonth.setDate(nextMonth.getDate() + 30);
+        return nextMonth.toISOString().split('T')[0];
+      }
+      return today;
+    };
+
     const { data: insertedQuest } = await supabase.from('quests').insert({
       ...template,
       stat_reward_amount: template.stat_reward_amount || 1,
       min_level_required: template.min_level_required || 0,
+      date: today,
+      expires_date: getExpiresDate(template.type),
     }).select().single();
 
     if (!insertedQuest) return;
@@ -304,4 +318,3 @@ export default function Quests() {
     </div>
   );
 }
-

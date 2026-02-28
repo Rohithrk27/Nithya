@@ -18,7 +18,7 @@ import PunishmentModal from '../components/PunishmentModal';
 import SystemNotification, { useSystemNotifications } from '../components/SystemNotification';
 import { getDailySystemInterrupt, getInterruptStorageKey } from '../components/systemInterrupts';
 import { ensureDailyQuests } from '@/lib/questSystem';
-import { pickDailyChallenge } from '@/components/systemFeatures';
+import { pickDailyChallenge } from '../components/systemFeatures';
 
 const DAILY_PRINCIPLES = [
   'It does not matter how slowly you go as long as you do not stop.',
@@ -59,17 +59,15 @@ const buildPendingPunishments = (punishments, habitsData, logsData) => {
 };
 
 const rowDateSafe = (row) => (row?.date || row?.logged_at || row?.completed_at || row?.created_at || '').toString().slice(0, 10);
-const resolveDailyQuestStatus = (userQuest, today) => {
+
+// FIXED: Keep completed/failed status regardless of date for history to work properly
+const resolveDailyQuestStatus = (userQuest) => {
   if (!userQuest) return { status: 'active', completed_date: null };
   if (userQuest.status === 'completed') {
-    return userQuest.completed_date === today
-      ? { status: 'completed', completed_date: userQuest.completed_date }
-      : { status: 'active', completed_date: null };
+    return { status: 'completed', completed_date: userQuest.completed_date };
   }
   if (userQuest.status === 'failed') {
-    return userQuest.completed_date === today
-      ? { status: 'failed', completed_date: userQuest.completed_date }
-      : { status: 'active', completed_date: null };
+    return { status: 'failed', completed_date: userQuest.completed_date };
   }
   return { status: userQuest.status || 'active', completed_date: userQuest.completed_date || null };
 };
@@ -210,6 +208,7 @@ export default function Dashboard() {
 
       const p = profileRes.data?.[0];
       if (!p) {
+        setLoading(false);
         navigate(createPageUrl('Landing'), { replace: true });
         return;
       }
@@ -276,7 +275,6 @@ export default function Dashboard() {
 
       let punishmentsData = punishmentsRes.data || [];
 
-      // Reconcile missed logs: each missed habit should accumulate a pending punishment entry.
       const punishmentLogIds = new Set(punishmentsData.map((p) => p.habit_log_id).filter(Boolean));
       const missingPunishments = logsData
         .filter((l) => l.status === 'missed')
@@ -309,7 +307,7 @@ export default function Dashboard() {
       const userQuestMap = new Map((userQuestsRes.data || []).map((q) => [q.quest_id, q]));
       const merged = (questsRes.data || []).map((q) => ({
         ...q,
-        ...resolveDailyQuestStatus(userQuestMap.get(q.id), today),
+        ...resolveDailyQuestStatus(userQuestMap.get(q.id)),
       }));
       setQuests(merged);
       let challengeToday = (dailyRes.data || []).find((d) => rowDate(d) === today) || null;
@@ -406,14 +404,21 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!interruptEvent || !user?.id) return;
+    
     const key = getInterruptStorageKey(user.id, interruptEvent.id);
     const saved = localStorage.getItem(key);
+    const todayKey = `nithya_interrupt_shown_${user.id}_${today}`;
+    const shownToday = localStorage.getItem(todayKey);
+    
     setInterruptStatus(saved || 'pending');
-    if (!saved) {
+    
+    // Only show popup if not already resolved AND not shown today
+    if (!saved && !shownToday) {
       notify('xp', 'System Warning triggered', interruptEvent.title);
       setShowWarningPopup(true);
+      localStorage.setItem(todayKey, 'true');
     }
-  }, [interruptEvent, notify, user?.id]);
+  }, [interruptEvent, notify, user?.id, today]);
 
   useEffect(() => {
     if (!user?.id || !profile || !rankEvaluation || rankEvaluation.status !== 'pending') return;
@@ -511,6 +516,7 @@ export default function Dashboard() {
     return () => clearInterval(intervalId);
   }, [pendingPunishments, profile, systemState, user?.id]);
 
+  // FIXED: Use ASCII-safe storage key for habit reminders
   useEffect(() => {
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
@@ -522,13 +528,13 @@ export default function Dashboard() {
 
     const timers = [];
     const sendReminder = (tag) => {
-      const storageKey = `Niത്യ_habit_reminder_${today}_${tag}`;
+      // FIXED: Use ASCII-safe key instead of special Unicode characters
+      const storageKey = `nithya_habit_reminder_${today}_${tag}`;
       if (localStorage.getItem(storageKey)) return;
       const habitPreview = incompleteHabits.slice(0, 3).map((h) => h.title).join(', ');
-      new Notification('Niത്യ Habit Reminder', {
+      new Notification('Nithya Habit Reminder', {
         body: `${incompleteHabits.length} habits pending before day ends: ${habitPreview}${incompleteHabits.length > 3 ? ', ...' : ''}`,
         tag: `habit-reminder-${tag}`,
-        renotify: false,
       });
       localStorage.setItem(storageKey, '1');
     };
@@ -729,6 +735,12 @@ export default function Dashboard() {
     setRankEvaluation((prev) => (prev ? { ...prev, status, resolved_date: todayDate } : prev));
   };
 
+  const handleGlowPulse = (isGlowing) => {
+    if (isGlowing) {
+      setLevelUpPulse(true);
+    }
+  };
+
   if (loading) {
     return <SystemBackground><div className="min-h-screen flex items-center justify-center text-cyan-400">SYSTEM LOADING...</div></SystemBackground>;
   }
@@ -804,6 +816,7 @@ export default function Dashboard() {
           name={profile.name || ''}
           isFirstTime={(profile.total_xp || 0) === 0}
           voiceEnabled={systemState?.voice_enabled !== false}
+          onGlowPulse={handleGlowPulse}
         />
       )}
       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
@@ -999,6 +1012,3 @@ export default function Dashboard() {
     </SystemBackground>
   );
 }
-
-
-
