@@ -4,10 +4,10 @@ import { useAuth } from '@/lib/AuthContext';
 import { createPageUrl } from './utils';
 import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, LogIn, LogOut, Trophy } from 'lucide-react';
 
-const LOGO_URL = '/logo/logo.png';
-const LOGO_FALLBACK_URL = '/logo/logo.svg';
-const HEADER_WORDMARK_URL = '/logo/header-wordmark.svg';
-const HEADER_WORDMARK_FALLBACK_URL = '/logo/header.svg';
+const LOGO_URL = '/logo/logo.svg';
+const LOGO_FALLBACK_URL = '/logo/logo.png';
+const HEADER_WORDMARK_URL = '/logo/header.svg';
+const HEADER_WORDMARK_FALLBACK_URL = '/logo/header-wordmark.svg';
 
 // Mobile bottom nav - 5 core items to avoid crowding
 const MOBILE_NAV = [
@@ -38,6 +38,8 @@ export default function Layout({ children, currentPageName }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [logoSrc, setLogoSrc] = useState(LOGO_URL);
   const [headerSrc, setHeaderSrc] = useState(HEADER_WORDMARK_URL);
+  const [logoBroken, setLogoBroken] = useState(false);
+  const [headerBroken, setHeaderBroken] = useState(false);
   const confirmAndLogout = async () => {
     const ok = window.confirm('Are you sure you want to sign out?');
     if (!ok) return;
@@ -61,10 +63,41 @@ export default function Layout({ children, currentPageName }) {
               src={headerSrc}
               alt="Niത്യ"
               onError={() => {
-                if (headerSrc !== HEADER_WORDMARK_FALLBACK_URL) setHeaderSrc(HEADER_WORDMARK_FALLBACK_URL);
+                if (headerSrc !== HEADER_WORDMARK_FALLBACK_URL) {
+                  setHeaderSrc(HEADER_WORDMARK_FALLBACK_URL);
+                } else {
+                  setHeaderBroken(true);
+                }
               }}
-              className={`h-7 sm:h-8 md:h-9 w-auto object-contain max-w-[68vw] sm:max-w-[360px] app-topbar__brand ${isScrolled ? 'app-topbar__brand--active' : ''}`}
+              style={{ display: headerBroken ? 'none' : 'block' }}
+              className={`h-8 sm:h-10 md:h-11 w-auto object-contain max-w-[72vw] sm:max-w-[420px] app-topbar__brand ${isScrolled ? 'app-topbar__brand--active' : ''}`}
             />
+            {headerBroken && (
+              <div className={`app-topbar__brand ${isScrolled ? 'app-topbar__brand--active' : ''}`}>
+                <span
+                  style={{
+                    fontFamily: 'Orbitron, sans-serif',
+                    fontWeight: 800,
+                    fontSize: '1.45rem',
+                    letterSpacing: '0.02em',
+                    color: '#4FD1C5',
+                  }}
+                >
+                  Ni
+                </span>
+                <span
+                  style={{
+                    fontFamily: "'Noto Sans Malayalam', 'Nirmala UI', sans-serif",
+                    fontWeight: 800,
+                    fontSize: '1.35rem',
+                    marginLeft: '-3px',
+                    color: '#22D3EE',
+                  }}
+                >
+                  ത്യ
+                </span>
+              </div>
+            )}
           </div>
         </header>
 
@@ -100,10 +133,29 @@ export default function Layout({ children, currentPageName }) {
                 src={logoSrc}
                 alt="Niത്യ"
                 onError={() => {
-                  if (logoSrc !== LOGO_FALLBACK_URL) setLogoSrc(LOGO_FALLBACK_URL);
+                  if (logoSrc !== LOGO_FALLBACK_URL) {
+                    setLogoSrc(LOGO_FALLBACK_URL);
+                  } else {
+                    setLogoBroken(true);
+                  }
                 }}
+                style={{ display: logoBroken ? 'none' : 'block' }}
                 className="w-8 h-8 object-contain mb-2"
               />
+            )}
+            {logoBroken && (
+              <div
+                className="w-8 h-8 mb-2 flex items-center justify-center"
+                aria-label="Niത്യ"
+                style={{
+                  fontFamily: 'Orbitron, sans-serif',
+                  fontWeight: 900,
+                  fontSize: 18,
+                  lineHeight: 1,
+                }}
+              >
+                <span style={{ color: '#4FD1C5' }}>N</span>
+              </div>
             )}
             {NAV_ITEMS.map(({ label, page, icon: Icon }) => {
               const active = currentPageName === page;
