@@ -3,11 +3,12 @@ import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, Zap, Star, Shield, Skull } from 'lucide-react';
+import { ArrowLeft, Plus, Zap, Star, Shield, Skull, History, Trophy } from 'lucide-react';
 import { format } from 'date-fns';
 import QuestCard from '../components/QuestCard';
 import { computeLevel, buildXPUpdatePayload } from '../components/gameEngine';
 import { ensureDailyQuests } from '@/lib/questSystem';
+import HoloPanel from '../components/HoloPanel';
 
 const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -45,8 +46,9 @@ export default function Quests() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [quests, setQuests] = useState([]);
+  const [xpHistory, setXpHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState('active');
+  const [tab, setTab] = useState('progress');
 
   useEffect(() => {
     const init = async () => {
@@ -74,10 +76,11 @@ export default function Quests() {
   const loadData = async (userId) => {
     if (!userId) return;
     
-    let [profileRes, questsRes, userQuestsRes] = await Promise.all([
+    let [profileRes, questsRes, userQuestsRes, xpLogsRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).limit(1),
       supabase.from('quests').select('*'),
       supabase.from('user_quests').select('*').eq('user_id', userId),
+      supabase.from('xp_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50),
     ]);
 
     const questSeeded = await ensureDailyQuests(userId, today, questsRes.data || [], userQuestsRes.data || []);
@@ -91,8 +94,12 @@ export default function Quests() {
     const profiles = profileRes.data || [];
     const allQuests = questsRes.data || [];
     const userQuests = userQuestsRes.data || [];
+    const xpLogs = xpLogsRes.data || [];
+    
     if (!profiles || profiles.length === 0) { navigate(createPageUrl('Landing')); return; }
     setProfile(profiles[0]);
+    setXpHistory(xpLogs || []);
+    
     const merged = allQuests.map((q) => {
       const uq = userQuests.find((x) => x.quest_id === q.id);
       return {
@@ -115,7 +122,9 @@ export default function Quests() {
       payload[sk] = (currentProfile[sk] || 0) + (quest.stat_reward_amount || 1);
     }
     await supabase.from('profiles').update(payload).eq('id', currentProfile.id);
+    await supabase.from('xp_logs').insert({ user_id: currentProfile.id, xp_change: xpGain, source: 'quest_complete', date: today });
     setProfile({ ...currentProfile, ...payload });
+    loadData(currentProfile.id);
     return { ...currentProfile, ...payload };
   };
 
@@ -145,7 +154,6 @@ export default function Quests() {
     const already = quests.find(q => q.title === template.title && q.status === 'active');
     if (already) return;
     
-    // Calculate expires_date based on quest type
     const getExpiresDate = (type) => {
       if (type === 'weekly') {
         const nextWeek = new Date();
@@ -183,11 +191,35 @@ export default function Quests() {
   const completed = quests.filter(q => q.status === 'completed');
   const failed = quests.filter(q => q.status === 'failed');
 
+  // Group active quests by type
+  const dailyActive = active.filter(q => q.type === 'daily');
+  const weeklyActive = active.filter(q => q.type === 'weekly');
+  const specialActive = active.filter(q => q.type === 'special');
+  const epicActive = active.filter(q => q.type === 'epic');
+
   const TABS = [
-    { id: 'active', label: 'ACTIVE', count: active.length },
-    { id: 'available', label: 'AVAILABLE', count: null },
-    { id: 'history', label: 'HISTORY', count: completed.length },
+    { id: 'progress', label: 'PROGRESS', icon: Trophy },
+    { id: 'available', label: 'AVAILABLE', icon: Plus },
+    { id: 'history', label: 'HISTORY', icon: History },
   ];
+
+  const getSourceLabel = (source) => {
+    const labels = {
+      'habit_complete': 'Habit',
+      'quest_complete': 'Quest',
+      'daily_challenge': 'Daily',
+      'dungeon_clear': 'Dungeon',
+      'system_interrupt_clear': 'Interrupt',
+      'rank_evaluation_clear': 'Rank Eval',
+      'punishment_timeout': 'Penalty',
+      'punishment_refused': 'Penalty',
+      'dungeon_fail': 'Dungeon Fail',
+      'rank_evaluation_fail': 'Rank Fail',
+      'strike_sanction': 'Strike',
+      'rank_evaluation_overdue': 'Overdue',
+    };
+    return labels[source] || source || 'Unknown';
+  };
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
@@ -218,29 +250,78 @@ export default function Quests() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className="flex-1 py-2 rounded-lg text-xs font-bold tracking-widest transition-all"
+              className="flex-1 py-2 rounded-lg text-xs font-bold tracking-widest transition-all flex items-center justify-center gap-1"
               style={{
                 background: tab === t.id ? 'rgba(56,189,248,0.15)' : 'transparent',
                 color: tab === t.id ? '#38BDF8' : '#64748B',
                 border: tab === t.id ? '1px solid rgba(56,189,248,0.3)' : '1px solid transparent',
               }}
             >
-              {t.label}{t.count !== null ? ` (${t.count})` : ''}
+              <t.icon className="w-3 h-3" />
+              {t.label}
             </button>
           ))}
         </div>
 
-        {/* Active Tab */}
-        {tab === 'active' && (
-          <div className="space-y-3">
+        {/* Current Progress Tab */}
+        {tab === 'progress' && (
+          <div className="space-y-4">
             {active.length === 0 ? (
               <div className="text-center py-12 rounded-2xl" style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid #1e3a4a' }}>
                 <Zap className="w-8 h-8 mx-auto mb-3" style={{ color: '#1e3a4a' }} />
                 <p style={{ color: '#64748B' }}>No active quests. Pick from the Available tab!</p>
               </div>
-            ) : active.map((q, i) => (
-              <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} />
-            ))}
+            ) : (
+              <>
+                {/* Daily Quests */}
+                {dailyActive.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: '#34D399' }}>DAILY QUESTS</p>
+                    <div className="space-y-2">
+                      {dailyActive.map((q, i) => (
+                        <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Weekly Quests */}
+                {weeklyActive.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: '#38BDF8' }}>WEEKLY QUESTS</p>
+                    <div className="space-y-2">
+                      {weeklyActive.map((q, i) => (
+                        <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Special Quests */}
+                {specialActive.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: '#FBBF24' }}>SPECIAL QUESTS</p>
+                    <div className="space-y-2">
+                      {specialActive.map((q, i) => (
+                        <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Epic Quests */}
+                {epicActive.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: '#22D3EE' }}>EPIC QUESTS</p>
+                    <div className="space-y-2">
+                      {epicActive.map((q, i) => (
+                        <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -304,14 +385,47 @@ export default function Quests() {
 
         {/* History Tab */}
         {tab === 'history' && (
-          <div className="space-y-3">
-            {[...completed, ...failed].length === 0 ? (
-              <div className="text-center py-12 rounded-2xl" style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid #1e3a4a' }}>
-                <p style={{ color: '#64748B' }}>No quest history yet.</p>
-              </div>
-            ) : [...completed, ...failed].map((q, i) => (
-              <QuestCard key={q.id} quest={q} index={i} />
-            ))}
+          <div className="space-y-4">
+            {/* XP History Section */}
+            <HoloPanel>
+              <p className="text-xs font-bold tracking-widest mb-3" style={{ color: '#38BDF8' }}>XP HISTORY</p>
+              {xpHistory.length === 0 ? (
+                <p className="text-sm" style={{ color: '#64748B' }}>No XP history yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {xpHistory.map((log, i) => (
+                    <div key={log.id || i} className="flex items-center justify-between p-2 rounded-lg" 
+                      style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid rgba(56,189,248,0.1)' }}>
+                      <div>
+                        <p className="text-xs font-bold text-white">{getSourceLabel(log.source)}</p>
+                        <p className="text-[10px]" style={{ color: '#64748B' }}>
+                          {log.date || (log.created_at ? new Date(log.created_at).toLocaleDateString() : '')}
+                        </p>
+                      </div>
+                      <span className={`text-sm font-bold ${log.xp_change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {log.xp_change >= 0 ? '+' : ''}{log.xp_change} XP
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </HoloPanel>
+
+            {/* Quest History */}
+            <div>
+              <p className="text-xs font-bold tracking-widest mb-3" style={{ color: '#FBBF24' }}>QUEST HISTORY</p>
+              {([...completed, ...failed]).length === 0 ? (
+                <div className="text-center py-6 rounded-2xl" style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid #1e3a4a' }}>
+                  <p style={{ color: '#64748B' }}>No quest history yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {([...completed, ...failed]).map((q, i) => (
+                    <QuestCard key={q.id} quest={q} index={i} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

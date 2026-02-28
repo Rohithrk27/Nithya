@@ -37,6 +37,7 @@ const SANCTION_XP_PENALTY = 180;
 const SANCTION_CONSISTENCY_DROP = 2;
 const RANK_EVAL_LEVELS = [10, 25, 50, 100];
 const OVERDUE_EVAL_BASE_PENALTY = 90;
+const INTERRUPT_TIMEOUT_HOURS = 6;
 
 const buildPendingPunishments = (punishments, habitsData, logsData) => {
   const habitMap = new Map((habitsData || []).map((h) => [h.id, h]));
@@ -402,6 +403,9 @@ export default function Dashboard() {
 
   useEffect(() => () => clearTimeout(levelPulseTimeoutRef.current), []);
 
+  // Track when interrupt was shown for timeout tracking
+  const interruptShownTimeRef = useRef(null);
+
   useEffect(() => {
     if (!interruptEvent || !user?.id) return;
     
@@ -409,8 +413,18 @@ export default function Dashboard() {
     const saved = localStorage.getItem(key);
     const todayKey = `nithya_interrupt_shown_${user.id}_${today}`;
     const shownToday = localStorage.getItem(todayKey);
+    const shownTimeKey = `nithya_interrupt_shown_time_${user.id}_${interruptEvent.id}`;
+    const shownTime = localStorage.getItem(shownTimeKey);
     
     setInterruptStatus(saved || 'pending');
+    
+    // Track when interrupt was first shown
+    if (!saved && !shownTime) {
+      localStorage.setItem(shownTimeKey, Date.now().toString());
+      interruptShownTimeRef.current = Date.now();
+    } else if (shownTime) {
+      interruptShownTimeRef.current = parseInt(shownTime, 10);
+    }
     
     // Only show popup if not already resolved AND not shown today
     if (!saved && !shownToday) {
@@ -419,6 +433,30 @@ export default function Dashboard() {
       localStorage.setItem(todayKey, 'true');
     }
   }, [interruptEvent, notify, user?.id, today]);
+
+  // 6-hour timeout for system interrupts - auto apply penalty if not completed
+  useEffect(() => {
+    if (!interruptEvent || !user?.id || interruptStatus !== 'pending') return;
+    if (!interruptShownTimeRef.current) return;
+
+    const checkInterruptTimeout = () => {
+      const now = Date.now();
+      const elapsed = now - interruptShownTimeRef.current;
+      const timeoutMs = INTERRUPT_TIMEOUT_HOURS * 60 * 60 * 1000; // 6 hours in milliseconds
+      
+      if (elapsed >= timeoutMs) {
+        // Auto-resolve as ignored with penalty
+        resolveInterrupt('ignored');
+        notify('penalty', 'System Warning expired', `-${interruptEvent.penaltyXp} XP penalty applied`);
+      }
+    };
+
+    // Check immediately and then every 30 seconds
+    checkInterruptTimeout();
+    const intervalId = setInterval(checkInterruptTimeout, 30000);
+    
+    return () => clearInterval(intervalId);
+  }, [interruptEvent, interruptStatus, user?.id, notify]);
 
   useEffect(() => {
     if (!user?.id || !profile || !rankEvaluation || rankEvaluation.status !== 'pending') return;

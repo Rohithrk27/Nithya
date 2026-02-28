@@ -40,17 +40,17 @@ const playNotificationSound = (type) => {
     // Different sounds for different notification types
     switch (type) {
       case 'xp':
-        // Quick rising tone for XP
+        // Quick rising tone for XP - LOUDER
         oscillator.frequency.setValueAtTime(600, ctx.currentTime);
         oscillator.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.1);
-        gainNode.gain.setValueAtTime(0.15, ctx.currentTime);
+        gainNode.gain.setValueAtTime(0.4, ctx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
         oscillator.start(ctx.currentTime);
         oscillator.stop(ctx.currentTime + 0.15);
         break;
         
       case 'levelup':
-        // Celebratory ascending arpeggio
+        // Celebratory ascending arpeggio - LOUDER
         const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
         notes.forEach((freq, i) => {
           const osc = ctx.createOscillator();
@@ -58,7 +58,7 @@ const playNotificationSound = (type) => {
           osc.connect(gain);
           gain.connect(ctx.destination);
           osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08);
-          gain.gain.setValueAtTime(0.12, ctx.currentTime + i * 0.08);
+          gain.gain.setValueAtTime(0.35, ctx.currentTime + i * 0.08);
           gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.08 + 0.2);
           osc.start(ctx.currentTime + i * 0.08);
           osc.stop(ctx.currentTime + i * 0.08 + 0.2);
@@ -66,40 +66,40 @@ const playNotificationSound = (type) => {
         return; // Don't play the default sound
         
       case 'stat':
-        // Two-tone boost sound
+        // Two-tone boost sound - LOUDER
         oscillator.frequency.setValueAtTime(440, ctx.currentTime);
         oscillator.frequency.setValueAtTime(550, ctx.currentTime + 0.08);
-        gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
+        gainNode.gain.setValueAtTime(0.35, ctx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
         oscillator.start(ctx.currentTime);
         oscillator.stop(ctx.currentTime + 0.2);
         break;
         
       case 'quest':
-        // Success chime
+        // Success chime - LOUDER
         oscillator.frequency.setValueAtTime(784, ctx.currentTime); // G5
         oscillator.frequency.setValueAtTime(988, ctx.currentTime + 0.1); // B5
-        gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
+        gainNode.gain.setValueAtTime(0.35, ctx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
         oscillator.start(ctx.currentTime);
         oscillator.stop(ctx.currentTime + 0.25);
         break;
         
       case 'penalty':
-        // Warning descending tone
+        // Warning descending tone - LOUDER
         oscillator.frequency.setValueAtTime(400, ctx.currentTime);
         oscillator.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.3);
         oscillator.type = 'sawtooth';
-        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+        gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
         oscillator.start(ctx.currentTime);
         oscillator.stop(ctx.currentTime + 0.3);
         return; // Don't play the default sound
         
       default:
-        // Default notification ping
+        // Default notification ping - LOUDER
         oscillator.frequency.setValueAtTime(600, ctx.currentTime);
-        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+        gainNode.gain.setValueAtTime(0.35, ctx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
         oscillator.start(ctx.currentTime);
         oscillator.stop(ctx.currentTime + 0.15);

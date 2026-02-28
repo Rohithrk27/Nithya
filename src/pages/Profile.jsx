@@ -5,7 +5,7 @@ import { createPageUrl } from '../utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Save, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Save, Volume2, VolumeX, LogOut } from 'lucide-react';
 import BMIMeter from '../components/BMIMeter';
 import HabitReminderSetup from '../components/HabitReminderSetup';
 import RPGHumanoidAvatar, { getAvatarTier } from '../components/RPGHumanoidAvatar';
@@ -306,6 +306,18 @@ export default function Profile() {
             <Button onClick={handleSave} disabled={saving} className="w-full font-bold tracking-widest"
               style={{ background: 'linear-gradient(90deg, rgba(56,189,248,0.2), rgba(56,189,248,0.2))', border: '1px solid rgba(56,189,248,0.4)', color: '#38BDF8' }}>
               <Save className="w-4 h-4 mr-2" />{saving ? 'SAVING...' : 'SAVE CHANGES'}
+            </Button>
+
+            <Button 
+              onClick={async () => {
+                await supabase.auth.signOut();
+                navigate(createPageUrl('Landing'));
+              }} 
+              variant="outline" 
+              className="w-full font-bold tracking-widest"
+              style={{ border: '1px solid rgba(248,113,113,0.4)', color: '#F87171' }}
+            >
+              <LogOut className="w-4 h-4 mr-2" />SIGN OUT
             </Button>
           </div>
         ))}
