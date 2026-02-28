@@ -92,8 +92,8 @@ export default function Habits() {
     setSaving(true);
     const payload = {
       ...form,
-      xp_value: parseInt(form.xp_value) || 50,
-      punishment_xp_penalty_pct: parseInt(form.punishment_xp_penalty_pct) || 10,
+      xp_value: Number(form.xp_value) || 50,
+      punishment_xp_penalty_pct: Number(form.punishment_xp_penalty_pct) || 10,
       user_id: user.id,
     };
     if (editingId) {

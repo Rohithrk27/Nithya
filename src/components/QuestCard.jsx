@@ -11,11 +11,14 @@ const TYPE_CONFIG = {
   penalty: { label: 'PENALTY', color: '#F87171', icon: Skull },
 };
 
-export default function QuestCard({ quest, onComplete, onFail, index = 0 }) {
+export default function QuestCard({ quest, onComplete = async (_quest) => {}, onFail = null, index = 0, disabled = false }) {
   const [completing, setCompleting] = useState(false);
   const cfg = TYPE_CONFIG[quest.type] || TYPE_CONFIG.daily;
   const Icon = cfg.icon;
   const isPenalty = quest.type === 'penalty';
+  const progressCurrent = Math.max(0, Number(quest.progress_current || 0));
+  const progressTarget = Math.max(1, Number(quest.progress_target || 100));
+  const progressPct = Math.min(100, Math.round((progressCurrent / progressTarget) * 100));
 
   const handleComplete = async () => {
     setCompleting(true);
@@ -64,6 +67,18 @@ export default function QuestCard({ quest, onComplete, onFail, index = 0 }) {
                 <span className="text-xs" style={{ color: '#64748B' }}>Expires {quest.expires_date}</span>
               )}
             </div>
+            <div className="mt-2.5 space-y-1">
+              <div className="flex items-center justify-between text-[10px] tracking-wide" style={{ color: '#94A3B8' }}>
+                <span>Progress</span>
+                <span>{progressCurrent}/{progressTarget} ({progressPct}%)</span>
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(100,116,139,0.25)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${cfg.color}, rgba(255,255,255,0.5))` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -72,7 +87,7 @@ export default function QuestCard({ quest, onComplete, onFail, index = 0 }) {
             <Button
               size="sm"
               onClick={handleComplete}
-              disabled={completing}
+              disabled={completing || disabled}
               className="flex-1 h-8 text-xs font-bold tracking-wide"
               style={{
                 background: `linear-gradient(90deg, ${cfg.color}33, ${cfg.color}55)`,
@@ -88,6 +103,7 @@ export default function QuestCard({ quest, onComplete, onFail, index = 0 }) {
                 size="sm"
                 onClick={() => onFail(quest)}
                 variant="ghost"
+                disabled={disabled}
                 className="h-8 text-xs px-3"
                 style={{ color: '#64748B', border: '1px solid #1e3a4a' }}
               >

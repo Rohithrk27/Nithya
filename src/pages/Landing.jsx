@@ -30,6 +30,15 @@ export default function Landing() {
     reminder_time: '09:00'
   });
 
+  const normalizeErrorMessage = (errorLike) => {
+    const raw = typeof errorLike === 'string' ? errorLike : (errorLike?.message || 'Unexpected error occurred.');
+    const lower = raw.toLowerCase();
+    if (lower.includes('failed to fetch') || lower.includes('network error') || lower.includes('network timeout') || lower.includes('unable to reach supabase')) {
+      return 'Network error: unable to reach server. Check internet/VPN/firewall and try again.';
+    }
+    return raw;
+  };
+
   useEffect(() => {
     const init = async () => {
       // Set a timeout to prevent getting stuck on loading
@@ -71,13 +80,23 @@ export default function Landing() {
     void init();
   }, [navigate]);
 
-  const goToAuthFlow = async (mode) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      navigate(createPageUrl('Landing'), { replace: true });
-      return;
-    }
-    navigate(`${createPageUrl('Login')}?mode=${mode}`);
+  const goToAuthFlow = (mode) => {
+    const loginTarget = `${createPageUrl('Login')}?mode=${mode}`;
+    // Navigate immediately so button clicks always feel responsive.
+    navigate(loginTarget);
+
+    // If an active session exists, prefer onboarding/dashboard flow.
+    void supabase.auth.getUser()
+      .then(async ({ data: { user } }) => {
+        if (!user) return;
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+        navigate(existingProfile ? createPageUrl('Dashboard') : createPageUrl('Landing'), { replace: true });
+      })
+      .catch(() => {});
   };
 
   const handleSubmit = async (e) => {
@@ -127,7 +146,7 @@ export default function Landing() {
 
       navigate(createPageUrl('Dashboard'), { replace: true });
     } catch (err) {
-      alert(`Error: ${err.message}. Please try again.`);
+      alert(`Error: ${normalizeErrorMessage(err)} Please try again.`);
     } finally {
       setLoading(false);
     }
@@ -187,8 +206,8 @@ export default function Landing() {
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mt-8 flex flex-wrap gap-3">
-            <Button className="h-11 px-6" onClick={() => { void goToAuthFlow('signup'); }}>Create Account</Button>
-            <Button variant="outline" className="h-11 px-6 border-cyan-500/40 text-cyan-300" onClick={() => { void goToAuthFlow('login'); }}>Sign In</Button>
+            <Button type="button" className="h-11 px-6" onClick={() => goToAuthFlow('signup')}>Create Account</Button>
+            <Button type="button" variant="outline" className="h-11 px-6 border-cyan-500/40 text-cyan-300" onClick={() => goToAuthFlow('login')}>Sign In</Button>
           </motion.div>
         </div>
       </div>

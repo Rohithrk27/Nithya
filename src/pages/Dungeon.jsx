@@ -2,14 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '../utils';
-import { format, addDays, differenceInDays, parseISO } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { ArrowLeft, Flame, Trophy, Skull, X, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DUNGEON_CHALLENGES, HIGH_DIFFICULTY_PUNISHMENTS, getRandomHardPunishment } from '../components/systemFeatures';
-import { buildXPUpdatePayload, computeLevel, bonusXP } from '../components/gameEngine';
+import { computeLevel, bonusXP } from '../components/gameEngine';
+import { applyProgressionSnapshot, awardXpRpc, penaltyXpRpc } from '@/lib/progression';
+import { fetchActiveDungeonRun, getDungeonProgress } from '@/lib/gameState';
+import XPDeltaPulse from '@/components/XPDeltaPulse';
 
 const today = format(new Date(), 'yyyy-MM-dd');
 
@@ -23,10 +26,12 @@ export default function Dungeon() {
   const [activeDungeon, setActiveDungeon] = useState(null);
   const [dungeonHistory, setDungeonHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [starting, setStarting] = useState(false);
   const [cleared, setCleared] = useState(false);
   const [mode, setMode] = useState('select');
   const [showHistory, setShowHistory] = useState(false);
+  const [xpDelta, setXpDelta] = useState(0);
   const [customForm, setCustomForm] = useState({
     title: '', description: '', duration: 7,
     xp_multiplier: 1.5, punishment_mode: 'random', custom_punishment: '',
@@ -55,47 +60,84 @@ export default function Dungeon() {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!xpDelta) return undefined;
+    const timeoutId = setTimeout(() => setXpDelta(0), 1200);
+    return () => clearTimeout(timeoutId);
+  }, [xpDelta]);
+
   const loadData = async (userId) => {
     if (!userId) return;
-    
-    const [profileRes, statsRes, historyRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', userId).limit(1),
-      supabase.from('stats').select('*').eq('user_id', userId).limit(1),
-      supabase.from('dungeon_runs').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
-    ]);
-    const profiles = profileRes.data || [];
-    const statsRows = statsRes.data || [];
-    const historyData = historyRes.data || [];
-    if (!profiles || profiles.length === 0) { navigate(createPageUrl('Landing')); return; }
-    setProfile(profiles[0]);
-    setActiveDungeon(statsRows[0]?.active_dungeon || null);
-    setDungeonHistory(historyData || []);
-    setLoading(false);
+    setLoading(true);
+    setLoadError('');
+    try {
+      const [profileRes, historyRes, activeRun] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).limit(1),
+        supabase.from('dungeon_runs').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20),
+        fetchActiveDungeonRun(userId),
+      ]);
+      if (profileRes.error) throw profileRes.error;
+      if (historyRes.error) throw historyRes.error;
+
+      const profiles = profileRes.data || [];
+      const historyData = historyRes.data || [];
+      if (!profiles || profiles.length === 0) {
+        navigate(createPageUrl('Landing'));
+        return;
+      }
+      setProfile(profiles[0]);
+      setActiveDungeon(activeRun || null);
+      setDungeonHistory(historyData || []);
+    } catch (err) {
+      setLoadError(err?.message || 'Failed to load dungeon data.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const startDungeon = async (challenge, options = {}) => {
+    if (!user?.id) return;
     setStarting(true);
-    const duration = options.duration || 7;
-    const endDate = format(addDays(new Date(), duration), 'yyyy-MM-dd');
-    
-    const payload = {
-      id: crypto.randomUUID(),
-      user_id: user.id,
-      challenge_title: options.title || challenge.title,
-      challenge_description: options.description || challenge.description,
-      start_date: today,
-      end_date: endDate,
-      status: 'active',
-      xp_bonus_multiplier: options.xp_multiplier || 1.5,
-      punishment_mode: options.punishment_mode || 'random',
-      custom_punishment_text: options.custom_punishment || '',
-      duration_days: duration,
-    };
+    try {
+      const existingRun = await fetchActiveDungeonRun(user.id);
+      if (existingRun?.id) {
+        setActiveDungeon(existingRun);
+        alert('A dungeon is already active. Finish it before entering another one.');
+        return;
+      }
 
-    await supabase.from('stats').upsert({ user_id: user.id, active_dungeon: payload });
-    setActiveDungeon(payload);
-    setStarting(false);
-    setShowHistory(false);
+      const duration = options.duration || 7;
+      const endDate = format(addDays(new Date(), duration), 'yyyy-MM-dd');
+      const payload = {
+        user_id: user.id,
+        challenge_title: options.title || challenge.title,
+        challenge_description: options.description || challenge.description,
+        start_date: today,
+        end_date: endDate,
+        status: 'active',
+        xp_bonus_multiplier: options.xp_multiplier || 1.5,
+        punishment_mode: options.punishment_mode || 'random',
+        custom_punishment_text: options.custom_punishment || '',
+        duration_days: duration,
+        completed_days: 0,
+        stability: 100,
+        interruptions_count: 0,
+      };
+
+      const { data: createdRun, error: createError } = await supabase
+        .from('dungeon_runs')
+        .insert(payload)
+        .select('*')
+        .single();
+      if (createError) throw createError;
+      setActiveDungeon(createdRun || payload);
+      setShowHistory(false);
+      setCleared(false);
+    } catch (err) {
+      alert(err?.message || 'Failed to start dungeon.');
+    } finally {
+      setStarting(false);
+    }
   };
 
   const startCustomDungeon = async () => {
@@ -112,120 +154,131 @@ export default function Dungeon() {
   };
 
   const completeDungeon = async () => {
-    if (!activeDungeon || !profile) return;
-    
-    const lvl = computeLevel(profile.total_xp || 0);
-    const xp = bonusXP('dungeon_clear', lvl);
-    const payload = buildXPUpdatePayload(profile, xp);
+    if (!activeDungeon || !profile || !user?.id) return;
 
-    await supabase.from('profiles').update(payload).eq('id', profile.id);
-    await supabase.from('xp_logs').insert({ user_id: user.id, xp_change: xp, source: 'dungeon_clear', date: today });
-    
-    // Save to dungeon history
-    await supabase.from('dungeon_runs').insert({
-      user_id: user.id,
-      challenge_title: activeDungeon.challenge_title,
-      challenge_description: activeDungeon.challenge_description,
-      start_date: activeDungeon.start_date,
-      end_date: today,
-      status: 'completed',
-      xp_bonus_multiplier: activeDungeon.xp_bonus_multiplier,
-      xp_reward: xp,
-      xp_penalty: 0,
-      duration_days: activeDungeon.duration_days,
-      completed_days: activeDungeon.duration_days,
-      punishment_mode: activeDungeon.punishment_mode,
-      custom_punishment_text: activeDungeon.custom_punishment_text,
-    });
+    try {
+      const lvl = computeLevel(profile.total_xp || 0);
+      const baseXp = bonusXP('dungeon_clear', lvl);
+      const xpMultiplier = Number(activeDungeon.xp_bonus_multiplier || 1.5);
+      const xp = Math.max(0, Math.floor(baseXp * xpMultiplier));
+      const snapshot = await awardXpRpc({
+        userId: user.id,
+        xpAmount: xp,
+        source: 'dungeon_clear',
+        eventId: `dungeon:${activeDungeon.id}:clear`,
+        metadata: { dungeon_run_id: activeDungeon.id, xp_multiplier: xpMultiplier },
+      });
+      const { nextProfile } = applyProgressionSnapshot(profile, null, snapshot);
+      const progress = getDungeonProgress(activeDungeon);
 
-    await supabase.from('stats').update({ active_dungeon: null }).eq('user_id', user.id);
-    setProfile({ ...profile, ...payload });
-    setActiveDungeon(null);
-    setCleared(true);
-    loadData(user.id);
+      const { error: runError } = await supabase
+        .from('dungeon_runs')
+        .update({
+          status: 'completed',
+          end_date: today,
+          xp_reward: xp,
+          xp_penalty: 0,
+          completed_days: progress.elapsedDays,
+          stability: Math.max(0, Number(activeDungeon.stability ?? 100)),
+        })
+        .eq('id', activeDungeon.id)
+        .eq('user_id', user.id);
+      if (runError) throw runError;
+
+      setProfile(nextProfile);
+      setXpDelta((nextProfile?.total_xp || 0) - (profile?.total_xp || 0));
+      setActiveDungeon(null);
+      setCleared(true);
+      await loadData(user.id);
+    } catch (err) {
+      alert(err?.message || 'Failed to complete dungeon.');
+    }
   };
 
   const failDungeon = async () => {
-    if (!activeDungeon || !profile) return;
+    if (!activeDungeon || !profile || !user?.id) return;
 
-    const lvl = computeLevel(profile.total_xp || 0);
-    const xpPenalty = Math.floor((profile.total_xp || 0) * 0.12);
-    const newXP = Math.max(0, (profile.total_xp || 0) - xpPenalty);
-    const newLvl = computeLevel(newXP);
+    try {
+      const lvl = computeLevel(profile.total_xp || 0);
+      const xpPenalty = Math.max(0, Math.floor((profile.total_xp || 0) * 0.12));
+      const snapshot = await penaltyXpRpc({
+        userId: user.id,
+        xpAmount: xpPenalty,
+        source: 'dungeon_fail',
+        shadowDebtAmount: Math.ceil(xpPenalty * 0.5),
+        eventId: `dungeon:${activeDungeon.id}:fail`,
+        metadata: { dungeon_run_id: activeDungeon.id, manual: true },
+      });
+      const { nextProfile } = applyProgressionSnapshot(profile, null, snapshot);
+      const statPenalty = {
+        stat_discipline: Math.max(0, (nextProfile?.stat_discipline || profile.stat_discipline || 0) - 2),
+        stat_consistency: Math.max(0, (nextProfile?.stat_consistency || profile.stat_consistency || 0) - 2),
+      };
+      const { error: statPenaltyError } = await supabase
+        .from('profiles')
+        .update(statPenalty)
+        .eq('id', user.id);
+      if (statPenaltyError) throw statPenaltyError;
 
-    const statPenalty = {};
-    ['stat_discipline', 'stat_consistency'].forEach(k => {
-      statPenalty[k] = Math.max(0, (profile[k] || 0) - 2);
-    });
+      const progress = getDungeonProgress(activeDungeon);
+      const { error: runError } = await supabase
+        .from('dungeon_runs')
+        .update({
+          status: 'failed',
+          end_date: today,
+          xp_reward: 0,
+          xp_penalty: xpPenalty,
+          completed_days: progress.elapsedDays,
+          stability: 0,
+        })
+        .eq('id', activeDungeon.id)
+        .eq('user_id', user.id);
+      if (runError) throw runError;
 
-    const payload = {
-      total_xp: newXP, current_xp: newXP, level: newLvl,
-      ...statPenalty,
-    };
-    
-    await supabase.from('profiles').update(payload).eq('id', profile.id);
-    await supabase.from('xp_logs').insert({ user_id: user.id, xp_change: -xpPenalty, source: 'dungeon_fail', date: today });
-    
-    // Save to dungeon history
-    await supabase.from('dungeon_runs').insert({
-      user_id: user.id,
-      challenge_title: activeDungeon.challenge_title,
-      challenge_description: activeDungeon.challenge_description,
-      start_date: activeDungeon.start_date,
-      end_date: today,
-      status: 'failed',
-      xp_bonus_multiplier: activeDungeon.xp_bonus_multiplier,
-      xp_reward: 0,
-      xp_penalty: xpPenalty,
-      duration_days: activeDungeon.duration_days,
-      completed_days: totalDays - daysLeft,
-      punishment_mode: activeDungeon.punishment_mode,
-      custom_punishment_text: activeDungeon.custom_punishment_text,
-    });
+      setProfile({ ...nextProfile, ...statPenalty });
+      setXpDelta((nextProfile?.total_xp || 0) - (profile?.total_xp || 0));
+      setActiveDungeon(null);
 
-    await supabase.from('stats').update({ active_dungeon: null }).eq('user_id', user.id);
-    setProfile({ ...profile, ...payload });
-    setActiveDungeon(null);
-
-    if (activeDungeon.punishment_mode === 'random') {
-      const punishment = getRandomHardPunishment(lvl, profile.stat_discipline || 0);
-      alert(`DUNGEON FAILED\n\n−${xpPenalty} XP\n\nFailure Punishment:\n${punishment.text}`);
+      if (activeDungeon.punishment_mode === 'random') {
+        const punishment = getRandomHardPunishment(lvl, profile.stat_discipline || 0);
+        alert(`DUNGEON FAILED\n\n−${xpPenalty} XP\n\nFailure Punishment:\n${punishment.text}`);
+      }
+      await loadData(user.id);
+    } catch (err) {
+      alert(err?.message || 'Failed to fail dungeon.');
     }
-    loadData(user.id);
   };
 
   const quitDungeon = async () => {
-    if (!activeDungeon || !profile) return;
+    if (!activeDungeon || !profile || !user?.id) return;
     if (!confirm('Are you sure you want to quit this dungeon? No XP will be awarded.')) return;
 
-    // Save to dungeon history as quit
-    await supabase.from('dungeon_runs').insert({
-      user_id: user.id,
-      challenge_title: activeDungeon.challenge_title,
-      challenge_description: activeDungeon.challenge_description,
-      start_date: activeDungeon.start_date,
-      end_date: today,
-      status: 'quit',
-      xp_bonus_multiplier: activeDungeon.xp_bonus_multiplier,
-      xp_reward: 0,
-      xp_penalty: 0,
-      duration_days: activeDungeon.duration_days,
-      completed_days: totalDays - daysLeft,
-      punishment_mode: activeDungeon.punishment_mode,
-      custom_punishment_text: activeDungeon.custom_punishment_text,
-    });
-
-    await supabase.from('stats').update({ active_dungeon: null }).eq('user_id', user.id);
-    setActiveDungeon(null);
-    alert('Dungeon quit. You can start a new dungeon anytime.');
-    loadData(user.id);
+    try {
+      const progress = getDungeonProgress(activeDungeon);
+      const { error } = await supabase
+        .from('dungeon_runs')
+        .update({
+          status: 'quit',
+          end_date: today,
+          completed_days: progress.elapsedDays,
+        })
+        .eq('id', activeDungeon.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      setActiveDungeon(null);
+      alert('Dungeon quit. You can start a new dungeon anytime.');
+      await loadData(user.id);
+    } catch (err) {
+      alert(err?.message || 'Failed to quit dungeon.');
+    }
   };
 
-  const daysLeft = activeDungeon
-    ? Math.max(0, differenceInDays(parseISO(activeDungeon.end_date), new Date()) + 1)
-    : 0;
-  const totalDays = activeDungeon?.duration_days || 7;
-  const progressPct = activeDungeon ? Math.min(100, ((totalDays - daysLeft) / totalDays) * 100) : 0;
+  const dungeonProgress = getDungeonProgress(activeDungeon);
+  const daysLeft = dungeonProgress.daysLeft;
+  const totalDays = dungeonProgress.totalDays || 7;
+  const progressPct = dungeonProgress.pct || 0;
+  const stability = Math.max(0, Number(activeDungeon?.stability ?? 100));
+  const stabilityPct = Math.min(100, stability);
   const isDungeonMode = !!activeDungeon;
   const xpMult = activeDungeon?.xp_bonus_multiplier || 1.5;
 
@@ -234,6 +287,21 @@ export default function Dungeon() {
       <div className="w-8 h-8 rounded-full border-2 border-red-400 border-t-transparent animate-spin" />
     </div>
   );
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#0f2027' }}>
+        <div className="w-full max-w-md rounded-2xl p-5 space-y-3" style={{ background: 'rgba(10,5,5,0.8)', border: '1px solid rgba(248,113,113,0.35)' }}>
+          <p className="text-xs font-black tracking-widest" style={{ color: '#F87171' }}>DUNGEON LOAD FAILED</p>
+          <p className="text-sm" style={{ color: '#94A3B8' }}>{loadError}</p>
+          <div className="flex gap-2">
+            <Button onClick={() => user?.id && loadData(user.id)} className="flex-1">Retry</Button>
+            <Button variant="outline" onClick={() => navigate(createPageUrl('Dashboard'))}>Back</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen" style={{
@@ -274,6 +342,10 @@ export default function Dungeon() {
               <History className="w-4 h-4 text-white" />
             </button>
           )}
+        </div>
+
+        <div className="min-h-5 flex justify-center">
+          <XPDeltaPulse value={xpDelta} visible={xpDelta !== 0} />
         </div>
 
         {/* Dungeon History Panel */}
@@ -343,12 +415,33 @@ export default function Dungeon() {
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs font-bold" style={{ color: '#64748B' }}>
                 <span>DUNGEON PROGRESS</span>
-                <span style={{ color: '#F87171' }}>{daysLeft} DAYS LEFT</span>
+                <span style={{ color: '#F87171' }}>{Math.round(progressPct)}% · {daysLeft} DAYS LEFT</span>
               </div>
               <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'rgba(248,113,113,0.1)' }}>
                 <div className="h-full rounded-full transition-all duration-700"
                   style={{ width: `${progressPct}%`, background: 'linear-gradient(90deg, #F87171, #38BDF8)' }} />
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs font-bold" style={{ color: '#64748B' }}>
+                <span>STABILITY METER</span>
+                <span style={{ color: stability > 40 ? '#34D399' : '#F87171' }}>{stabilityPct}%</span>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'rgba(15,23,42,0.6)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${stabilityPct}%`,
+                    background: stability > 40
+                      ? 'linear-gradient(90deg, #34D399, #10B981)'
+                      : 'linear-gradient(90deg, #F87171, #DC2626)',
+                  }}
+                />
+              </div>
+              <p className="text-[10px]" style={{ color: '#94A3B8' }}>
+                Interruptions reduce stability. The dungeon fails at 0%.
+              </p>
             </div>
 
             <div className="flex gap-3">
@@ -366,6 +459,11 @@ export default function Dungeon() {
                   {activeDungeon.punishment_mode === 'random' ? 'RANDOM' : 'CUSTOM'}
                 </p>
                 <p className="text-xs" style={{ color: '#64748B' }}>PUNISHMENT</p>
+              </div>
+              <div className="flex-1 text-center p-3 rounded-xl"
+                style={{ background: `rgba(52,211,153,0.08)`, border: `1px solid rgba(52,211,153,0.2)` }}>
+                <p className="text-2xl font-black" style={{ color: stability > 40 ? '#34D399' : '#F87171' }}>{stabilityPct}%</p>
+                <p className="text-xs" style={{ color: '#64748B' }}>STABILITY</p>
               </div>
             </div>
 

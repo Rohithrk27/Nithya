@@ -13,6 +13,13 @@ import StatGrid from '../components/StatGrid';
 import { computeLevel, getRankTitle, computeAllStats } from '../components/gameEngine';
 
 const LOGO_URL = "";
+const EMPTY_FORM = {
+  name: '',
+  age: '',
+  height_cm: '',
+  weight_kg: '',
+  reminder_time: '09:00',
+};
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -22,7 +29,7 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [habits, setHabits] = useState([]);
   const [heightUnit, setHeightUnit] = useState('cm');
-  const [form, setForm] = useState({});
+  const [form, setForm] = useState(EMPTY_FORM);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [hardcoreMode, setHardcoreMode] = useState(false);
 
@@ -75,9 +82,9 @@ export default function Profile() {
     setHabits(habitData || []);
     setForm({
       name: p.name || '',
-      age: p.age || '',
-      height_cm: p.height_cm || '',
-      weight_kg: p.weight_kg || '',
+      age: p.age !== null && p.age !== undefined ? String(p.age) : '',
+      height_cm: p.height_cm !== null && p.height_cm !== undefined ? String(p.height_cm) : '',
+      weight_kg: p.weight_kg !== null && p.weight_kg !== undefined ? String(p.weight_kg) : '',
       reminder_time: p.reminder_time || '09:00',
     });
     setLoading(false);
@@ -87,8 +94,8 @@ export default function Profile() {
     setSaving(true);
     
     // Safely parse height and weight, handling empty/invalid inputs
-    const heightCm = form.height_cm ? parseFloat(form.height_cm) : null;
-    const weightKg = form.weight_kg ? parseFloat(form.weight_kg) : null;
+    const heightCm = form.height_cm ? Number(form.height_cm) : null;
+    const weightKg = form.weight_kg ? Number(form.weight_kg) : null;
     
     // Calculate height in feet and BMI only if we have valid values
     let height_ft = null;
@@ -112,7 +119,8 @@ export default function Profile() {
     };
 
     try {
-      const withAge = { ...payload, age: form.age ? parseInt(form.age) : null };
+      const parsedAge = form.age ? Number(form.age) : null;
+      const withAge = { ...payload, age: Number.isFinite(parsedAge) ? parsedAge : null };
       await supabase.from('profiles').update(withAge).eq('id', profile.id);
       if (withAge.bmi !== null) {
         await supabase.from('bmi_records').insert({
@@ -159,7 +167,7 @@ export default function Profile() {
   const rankTitle = useMemo(() => getRankTitle(level), [level]);
   const finalStats = useMemo(() => profile ? computeAllStats(profile, level) : {}, [profile, level]);
   const liveBMI = form.weight_kg && form.height_cm
-    ? parseFloat(form.weight_kg) / Math.pow(parseFloat(form.height_cm) / 100, 2)
+    ? Number(form.weight_kg) / Math.pow(Number(form.height_cm) / 100, 2)
     : 0;
 
   if (loading) return (
@@ -253,8 +261,8 @@ export default function Profile() {
                     style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a', color: '#F1F5F9' }} />
                 ) : (
                   <Input type="number" placeholder="ft"
-                    value={form.height_cm ? (parseFloat(form.height_cm) / 30.48).toFixed(1) : ''}
-                    onChange={e => setForm({ ...form, height_cm: e.target.value ? Math.round(parseFloat(e.target.value) * 30.48) : '' })}
+                    value={form.height_cm ? (Number(form.height_cm) / 30.48).toFixed(1) : ''}
+                    onChange={e => setForm({ ...form, height_cm: e.target.value ? String(Math.round(Number(e.target.value) * 30.48)) : '' })}
                     style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a', color: '#F1F5F9' }} />
                 )}
               </div>

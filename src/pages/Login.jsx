@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { createPageUrl } from '../utils';
 import { Button } from '@/components/ui/button';
@@ -19,16 +19,27 @@ export default function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   
   const navigate = useNavigate();
-  const { login, signup, resetPassword, loginWithGoogle } = useAuth();
+  const location = useLocation();
+  const { login, signup, resetPassword, loginWithGoogle, isAuthenticated, isLoadingAuth } = useAuth();
   const defaultRedirect = createPageUrl('Dashboard');
   const landingPath = createPageUrl('Landing');
+  const [pendingPostAuthRedirect, setPendingPostAuthRedirect] = useState(false);
+
+  const normalizeErrorMessage = (errorLike) => {
+    const raw = typeof errorLike === 'string' ? errorLike : (errorLike?.message || 'Unexpected error occurred.');
+    const lower = raw.toLowerCase();
+    if (lower.includes('failed to fetch') || lower.includes('network error') || lower.includes('network timeout') || lower.includes('unable to reach supabase')) {
+      return 'Network error: unable to reach server. Check internet/VPN/firewall and try again.';
+    }
+    return raw;
+  };
   
   useEffect(() => {
-    const qMode = new URLSearchParams(window.location.search).get('mode');
+    const qMode = new URLSearchParams(location.search).get('mode');
     if (qMode === 'signup' || qMode === 'login' || qMode === 'forgotPassword') {
       setMode(qMode);
     }
-  }, []);
+  }, [location.search]);
 
   const redirectTarget = useMemo(() => {
     const raw = new URLSearchParams(window.location.search).get('redirect');
@@ -45,20 +56,38 @@ export default function Login() {
     return defaultRedirect;
   }, [defaultRedirect]);
 
-  const resolvePostAuthPath = async () => {
+  const resolvePostAuthPath = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return redirectTarget;
-      const { data: profile } = await supabase
+      if (!user) return createPageUrl('Login');
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', user.id)
         .maybeSingle();
+      if (profileError) return redirectTarget;
       return profile ? redirectTarget : landingPath;
     } catch {
-      return landingPath;
+      return redirectTarget;
     }
-  };
+  }, [landingPath, redirectTarget]);
+
+  useEffect(() => {
+    if (!pendingPostAuthRedirect) return;
+    if (isLoadingAuth || !isAuthenticated) return;
+    let cancelled = false;
+    const finishRedirect = async () => {
+      const nextPath = await resolvePostAuthPath();
+      if (!cancelled) {
+        navigate(nextPath, { replace: true });
+        setPendingPostAuthRedirect(false);
+      }
+    };
+    void finishRedirect();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isLoadingAuth, navigate, pendingPostAuthRedirect, resolvePostAuthPath]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -71,23 +100,19 @@ export default function Login() {
         const { error } = await login(email, password);
         
         if (error) {
-          setMessage(error.message || error);
+          setMessage(normalizeErrorMessage(error));
           setMessageType('error');
         } else {
           setMessage('Login successful! Redirecting...');
           setMessageType('success');
-          // Redirect after short delay
-          setTimeout(async () => {
-            const nextPath = await resolvePostAuthPath();
-            navigate(nextPath, { replace: true });
-          }, 700);
+          setPendingPostAuthRedirect(true);
         }
         
       } else if (mode === 'signup') {
         const { data, error } = await signup(email, password);
         
         if (error) {
-          setMessage(error.message || error);
+          setMessage(normalizeErrorMessage(error));
           setMessageType('error');
         } else {
           if (data?.session) {
@@ -104,7 +129,7 @@ export default function Login() {
         const { error } = await resetPassword(email);
         
         if (error) {
-          setMessage(error);
+          setMessage(normalizeErrorMessage(error));
           setMessageType('error');
         } else {
           setMessage('Password reset link sent! Check your email.');
@@ -112,7 +137,7 @@ export default function Login() {
         }
       }
     } catch (err) {
-      setMessage(err.message);
+      setMessage(normalizeErrorMessage(err));
       setMessageType('error');
     } finally {
       setLoading(false);
@@ -127,11 +152,11 @@ export default function Login() {
       const oauthRedirect = `${window.location.origin}${redirectTarget}`;
       const { error } = await loginWithGoogle(oauthRedirect);
       if (error) {
-        setMessage(error.message || error);
+        setMessage(normalizeErrorMessage(error));
         setMessageType('error');
       }
     } catch (err) {
-      setMessage(err.message || 'Google sign-in failed.');
+      setMessage(normalizeErrorMessage(err) || 'Google sign-in failed.');
       setMessageType('error');
     } finally {
       setGoogleLoading(false);

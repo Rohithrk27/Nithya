@@ -13,7 +13,12 @@ let audioContext = null;
 
 const getAudioContext = () => {
   if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const win = /** @type {any} */ (window);
+    const AudioCtor = window.AudioContext || win.webkitAudioContext;
+    if (!AudioCtor) {
+      throw new Error('AudioContext not supported');
+    }
+    audioContext = new AudioCtor();
   }
   return audioContext;
 };

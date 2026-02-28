@@ -38,7 +38,8 @@ function seededIndex(seed, max) {
 
 export function getDailySystemInterrupt({ userId, level = 0, dateKey, hardcoreMode = false }) {
   if (!userId || !dateKey) return null;
-  const idx = seededIndex(`${userId}-${dateKey}-${level}`, INTERRUPTS.length);
+  // Keep interrupt identity stable for the full day.
+  const idx = seededIndex(`${userId}-${dateKey}`, INTERRUPTS.length);
   const base = INTERRUPTS[idx];
   const rewardXp = Math.max(40, Math.floor((80 + level * 4) * base.rewardMult));
   const penaltyXp = Math.max(30, Math.floor((50 + level * 3) * (hardcoreMode ? 1.25 : 1) * base.penaltyMult));

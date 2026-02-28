@@ -14,11 +14,12 @@ function scheduleReminder(time, habits) {
   if (target <= now) target.setDate(target.getDate() + 1); // next day if past
 
   const msUntil = target.getTime() - now.getTime();
+  const win = /** @type {any} */ (window);
 
   // Clear any existing timer
-  if (window._habitReminderTimer) clearTimeout(window._habitReminderTimer);
+  if (win._habitReminderTimer) clearTimeout(win._habitReminderTimer);
 
-  window._habitReminderTimer = setTimeout(() => {
+  win._habitReminderTimer = setTimeout(() => {
     const incompleteHabits = habits.map(h => h.title).join(', ');
       new Notification('⚡ Habit Reminder', {
       body: `Time to check in! Today's habits: ${incompleteHabits}`,
