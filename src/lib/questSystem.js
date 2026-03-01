@@ -1,6 +1,74 @@
 import { supabase } from '@/lib/supabase';
 import { DAILY_QUEST_POOL } from '@/components/systemFeatures';
 
+const QUEST_OPTIONAL_COLUMNS = [
+  'date',
+  'expires_date',
+  'progress_current',
+  'progress_target',
+  'stat_reward_amount',
+  'min_level_required',
+  'status',
+];
+
+const isMissingQuestsColumnError = (error) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    (msg.includes("column of 'quests'") && msg.includes('could not find'))
+    || (msg.includes('relation "quests"') && msg.includes('does not exist'))
+  );
+};
+
+const getMissingQuestsColumn = (error) => {
+  const raw = String(error?.message || '');
+  let match = raw.match(/Could not find the '([^']+)' column of 'quests'/i);
+  if (match?.[1]) return match[1];
+  match = raw.match(/column "([^"]+)" of relation "quests" does not exist/i);
+  return match?.[1] || null;
+};
+
+export async function insertQuestCompat(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { data: null, error: new Error('Invalid quest payload') };
+  }
+
+  const rpcRes = await supabase.rpc('ensure_quest_template', {
+    p_payload: payload,
+  });
+  if (!rpcRes.error) return rpcRes;
+  if (!String(rpcRes.error?.message || '').toLowerCase().includes('ensure_quest_template')) {
+    return rpcRes;
+  }
+
+  let workingPayload = { ...payload };
+  let fallbackUsed = false;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await supabase.from('quests').insert(workingPayload).select().single();
+    if (!result.error) return result;
+    if (!isMissingQuestsColumnError(result.error)) return result;
+
+    const missingColumn = getMissingQuestsColumn(result.error);
+    if (missingColumn && Object.prototype.hasOwnProperty.call(workingPayload, missingColumn)) {
+      delete workingPayload[missingColumn];
+      fallbackUsed = true;
+      continue;
+    }
+
+    if (!fallbackUsed) {
+      fallbackUsed = true;
+      for (const col of QUEST_OPTIONAL_COLUMNS) {
+        delete workingPayload[col];
+      }
+      continue;
+    }
+
+    return result;
+  }
+
+  return { data: null, error: new Error('Failed to insert quest with compatibility fallback') };
+}
+
 function seededIndex(seed, mod) {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) {
@@ -23,7 +91,7 @@ export function pickDailyQuestTemplates(userId, dateKey, count = 3) {
   return picked;
 }
 
-export async function ensureDailyQuests(userId, dateKey, quests = [], userQuests = []) {
+export async function ensureDailyQuests(userId, dateKey, quests = []) {
   if (!userId || !dateKey) return false;
   const templates = pickDailyQuestTemplates(userId, dateKey, 3);
   if (!templates.length) return false;
@@ -36,43 +104,23 @@ export async function ensureDailyQuests(userId, dateKey, quests = [], userQuests
   for (const t of templates) {
     const key = `daily:${t.title}`;
     if (!byTitle.has(key)) {
-      const { data: inserted, error } = await supabase
-        .from('quests')
-        .insert({
-          title: t.title,
-          description: t.description,
-          type: 'daily',
-          xp_reward: t.xp_reward,
-          stat_reward: t.stat_reward,
-          stat_reward_amount: 1,
-          min_level_required: 0,
-          status: 'active',
-          date: dateKey,
-          expires_date: dateKey,
-        })
-        .select()
-        .single();
+      const { data: inserted, error } = await insertQuestCompat({
+        title: t.title,
+        description: t.description,
+        type: 'daily',
+        xp_reward: t.xp_reward,
+        stat_reward: t.stat_reward,
+        stat_reward_amount: 1,
+        min_level_required: 0,
+        status: 'active',
+        date: dateKey,
+        expires_date: dateKey,
+      });
       if (!error && inserted) {
         questRows.push(inserted);
         byTitle.set(key, inserted);
         changed = true;
       }
-    }
-  }
-
-  // Ensure user has rows in user_quests so daily quests show in Active list.
-  const userQuestByQuestId = new Map((userQuests || []).map((uq) => [uq.quest_id, uq]));
-  for (const t of templates) {
-    const questRow = byTitle.get(`daily:${t.title}`);
-    if (!questRow) continue;
-    if (!userQuestByQuestId.has(questRow.id)) {
-      const { error } = await supabase.from('user_quests').upsert({
-        user_id: userId,
-        quest_id: questRow.id,
-        status: 'active',
-        date: dateKey,
-      });
-      if (!error) changed = true;
     }
   }
 

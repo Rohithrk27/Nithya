@@ -1,78 +1,410 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '@/lib/supabase';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { format, startOfWeek } from 'date-fns';
+import { ArrowLeft, CalendarDays, Clock3, Crown, History, Plus, Sparkles, Trophy } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import { createPageUrl } from '../utils';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, Zap, Star, Shield, Skull, History, Trophy } from 'lucide-react';
-import { format } from 'date-fns';
 import QuestCard from '../components/QuestCard';
-import { computeLevel } from '../components/gameEngine';
-import { ensureDailyQuests } from '@/lib/questSystem';
 import HoloPanel from '../components/HoloPanel';
 import XPDeltaPulse from '@/components/XPDeltaPulse';
+import { computeLevel } from '../components/gameEngine';
+import { activateUserQuest, resolveExpiredQuests } from '@/lib/gameState';
+import { insertQuestCompat } from '@/lib/questSystem';
 import { applyProgressionSnapshot, awardXpRpc } from '@/lib/progression';
-import { fetchActiveWeeklyQuest } from '@/lib/gameState';
 
-const today = format(new Date(), 'yyyy-MM-dd');
+const ACTIVE_QUEST_STATUSES = new Set([
+  'active',
+  'in_progress',
+  'accepted',
+  'inprogress',
+  'in progress',
+  'in-progress',
+  'ongoing',
+  'started',
+  'start',
+]);
 
-const resolveQuestStatus = (userQuest) => {
-  // No user_quest row means the quest is not accepted by this user yet.
-  if (!userQuest) return { status: 'inactive', completed_date: null };
-  if (userQuest.status === 'completed') {
-    return { status: 'completed', completed_date: userQuest.completed_date };
-  }
-  if (userQuest.status === 'failed') {
-    return { status: 'failed', completed_date: userQuest.completed_date };
-  }
-  return { status: userQuest.status || 'active', completed_date: userQuest.completed_date || null };
+const KNOWN_QUEST_TYPES = new Set(['daily', 'weekly', 'special', 'epic', 'penalty']);
+const QUEST_SECTION_ORDER = ['daily', 'weekly', 'special', 'epic'];
+const MIN_QUESTS_PER_SECTION = 3;
+
+const FALLBACK_QUEST_TEMPLATES = [
+  { type: 'daily', title: 'Hydration Protocol', description: 'Drink 8 glasses of water today.', xp_reward: 70, stat_reward: 'health', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Deep Study Session', description: 'Focus on study or reading for 30 minutes.', xp_reward: 85, stat_reward: 'intelligence', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Movement Discipline', description: 'Complete at least one workout today.', xp_reward: 90, stat_reward: 'strength', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Career Sprint', description: 'Do one career-focused action today.', xp_reward: 80, stat_reward: 'career', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Social Pulse', description: 'Initiate one meaningful conversation.', xp_reward: 75, stat_reward: 'social', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Focus Sprint', description: 'Complete one uninterrupted 45-minute focus block.', xp_reward: 88, stat_reward: 'consistency', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Reflection Journal', description: 'Write a 10-minute reflection before sleep.', xp_reward: 72, stat_reward: 'discipline', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Inbox Zero Burst', description: 'Clear pending tasks/messages for 20 minutes.', xp_reward: 78, stat_reward: 'career', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Mindful Walk', description: 'Take a 20-minute mindful walk without distractions.', xp_reward: 74, stat_reward: 'health', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Skill Repetition', description: 'Practice one core skill for 30 focused minutes.', xp_reward: 86, stat_reward: 'intelligence', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Early Start Protocol', description: 'Start your first key task within 30 minutes of wake-up.', xp_reward: 82, stat_reward: 'discipline', min_level_required: 0, progress_target: 1 },
+  { type: 'daily', title: 'Zero Sugar Day', description: 'Avoid sugar-heavy foods for the full day.', xp_reward: 84, stat_reward: 'health', min_level_required: 0, progress_target: 1 },
+  { type: 'weekly', title: 'Iron Will Week', description: 'Complete all habits for 5 days this week.', xp_reward: 420, stat_reward: 'discipline', min_level_required: 0, progress_target: 5 },
+  { type: 'weekly', title: 'Scholar Momentum', description: 'Log 5 study blocks this week.', xp_reward: 390, stat_reward: 'intelligence', min_level_required: 0, progress_target: 5 },
+  { type: 'weekly', title: 'Strength Rhythm', description: 'Finish 4 workouts this week.', xp_reward: 410, stat_reward: 'strength', min_level_required: 0, progress_target: 4 },
+  { type: 'weekly', title: 'Social Circuit', description: 'Reach out to 5 people this week.', xp_reward: 360, stat_reward: 'social', min_level_required: 0, progress_target: 5 },
+  { type: 'weekly', title: 'Career Pipeline', description: 'Complete 5 career-growth actions this week.', xp_reward: 430, stat_reward: 'career', min_level_required: 0, progress_target: 5 },
+  { type: 'weekly', title: 'Consistency Grid', description: 'Close 6 days with zero missed priority habits.', xp_reward: 450, stat_reward: 'consistency', min_level_required: 0, progress_target: 6 },
+  { type: 'weekly', title: 'Recovery Standard', description: 'Track sleep/recovery for 7 days this week.', xp_reward: 380, stat_reward: 'health', min_level_required: 0, progress_target: 7 },
+  { type: 'weekly', title: 'Focus Marathon', description: 'Complete 6 deep work sessions this week.', xp_reward: 440, stat_reward: 'intelligence', min_level_required: 0, progress_target: 6 },
+  { type: 'special', title: 'Special Quest Lv20', description: 'Maintain a 7-day consistency streak.', xp_reward: 650, stat_reward: 'consistency', min_level_required: 20, progress_target: 7 },
+  { type: 'special', title: 'Special Quest Lv40', description: 'Complete 14 focused sessions in one cycle.', xp_reward: 820, stat_reward: 'discipline', min_level_required: 40, progress_target: 14 },
+  { type: 'special', title: 'Special Quest Lv60', description: 'Complete 20 deep work blocks.', xp_reward: 980, stat_reward: 'career', min_level_required: 60, progress_target: 20 },
+  { type: 'special', title: 'Special Quest Lv80', description: 'Track health goals for 21 days.', xp_reward: 1140, stat_reward: 'health', min_level_required: 80, progress_target: 21 },
+  { type: 'special', title: 'Special Quest Lv100', description: 'Finish 30 study sessions at high focus.', xp_reward: 1300, stat_reward: 'intelligence', min_level_required: 100, progress_target: 30 },
+  { type: 'special', title: 'Special Quest Lv120', description: 'Sustain 30 days of on-time task starts.', xp_reward: 1450, stat_reward: 'discipline', min_level_required: 120, progress_target: 30 },
+  { type: 'special', title: 'Special Quest Lv140', description: 'Complete 35 strength/health checkpoints.', xp_reward: 1600, stat_reward: 'strength', min_level_required: 140, progress_target: 35 },
+  { type: 'special', title: 'Special Quest Lv160', description: 'Close 40 days with full consistency score.', xp_reward: 1780, stat_reward: 'consistency', min_level_required: 160, progress_target: 40 },
+  { type: 'special', title: 'Special Quest Lv180', description: 'Deliver 45 career-intelligence milestones.', xp_reward: 1960, stat_reward: 'career', min_level_required: 180, progress_target: 45 },
+  { type: 'epic', title: 'Epic Quest Lv100', description: 'Sustain elite discipline for 30 days.', xp_reward: 5200, stat_reward: 'discipline', min_level_required: 100, progress_target: 30 },
+  { type: 'epic', title: 'Epic Quest Lv200', description: 'Hit advanced multi-stat growth checkpoints.', xp_reward: 7900, stat_reward: 'consistency', min_level_required: 200, progress_target: 40 },
+  { type: 'epic', title: 'Epic Quest Lv300', description: 'Complete a full-system mastery cycle.', xp_reward: 10800, stat_reward: 'career', min_level_required: 300, progress_target: 50 },
+  { type: 'epic', title: 'Epic Quest Lv400', description: 'Maintain mastery discipline across 60 days.', xp_reward: 13200, stat_reward: 'discipline', min_level_required: 400, progress_target: 60 },
+  { type: 'epic', title: 'Epic Quest Lv500', description: 'Clear a top-tier progression gauntlet.', xp_reward: 15800, stat_reward: 'consistency', min_level_required: 500, progress_target: 70 },
+];
+
+const TYPE_STYLE = {
+  daily: { label: 'DAILY', color: '#34D399', icon: Clock3 },
+  weekly: { label: 'WEEKLY', color: '#38BDF8', icon: CalendarDays },
+  special: { label: 'SPECIAL', color: '#FBBF24', icon: Sparkles },
+  epic: { label: 'EPIC', color: '#22D3EE', icon: Crown },
+  penalty: { label: 'PENALTY', color: '#F87171', icon: Trophy },
 };
 
-const WEEKLY_QUESTS = [
-  { title: 'Iron Will', description: 'Complete all habits for 7 consecutive days', xp_reward: 500, stat_reward: 'discipline', type: 'weekly', progress_target: 7 },
-  { title: 'Strength Week', description: 'Complete workout habits 5 times this week', xp_reward: 400, stat_reward: 'strength', type: 'weekly', progress_target: 5 },
-  { title: 'Scholar Path', description: 'Log 5 study sessions this week', xp_reward: 350, stat_reward: 'intelligence', type: 'weekly', progress_target: 5 },
+const TABS = [
+  { id: 'progress', label: 'PROGRESS', icon: Trophy },
+  { id: 'available', label: 'AVAILABLE', icon: Plus },
+  { id: 'history', label: 'HISTORY', icon: History },
 ];
 
-const SPECIAL_QUESTS = [
-  { title: 'Social Expansion', description: 'Connect with 3 new people this month', xp_reward: 600, stat_reward: 'social', type: 'special', min_level_required: 5 },
-  { title: 'Career Leap', description: 'Apply to a job or complete a certification', xp_reward: 800, stat_reward: 'career', type: 'special', min_level_required: 10 },
-  { title: 'Mind & Body', description: 'Hit BMI within healthy range (18.5–24.9)', xp_reward: 1000, stat_reward: 'health', type: 'special', min_level_required: 20 },
-];
+const normalizeQuestType = (value) => String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+const normalizeQuestStatus = (value) => String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+const normalizeTemplateKey = (value) => String(value || '').trim().toLowerCase();
 
-const EPIC_QUESTS = [
-  { title: 'Hundred Day Trial', description: 'Maintain a 100-day streak on any habit', xp_reward: 5000, stat_reward: 'consistency', type: 'epic', min_level_required: 50 },
-  { title: 'Ascension Protocol', description: 'Reach Tier 5 avatar evolution', xp_reward: 10000, stat_reward: 'discipline', type: 'epic', min_level_required: 100 },
-  { title: 'System Override', description: 'Allocate 100 total stat points', xp_reward: 20000, stat_reward: 'strength', type: 'epic', min_level_required: 200 },
-];
+const isQuestInProgressStatus = (status) => ACTIVE_QUEST_STATUSES.has(normalizeQuestStatus(status));
+
+const canonicalQuestStatus = (status) => {
+  const normalized = normalizeQuestStatus(status);
+  if (isQuestInProgressStatus(normalized)) return 'active';
+  if (normalized === 'complete' || normalized === 'completed') return 'completed';
+  if (normalized === 'fail' || normalized === 'failed') return 'failed';
+  return normalized || 'inactive';
+};
+
+const toEpoch = (value) => {
+  const parsed = value ? new Date(value) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.getTime() : 0;
+};
+
+const questStatusPriority = (status) => {
+  const key = canonicalQuestStatus(status);
+  if (key === 'active') return 4;
+  if (key === 'completed') return 3;
+  if (key === 'failed') return 2;
+  if (key) return 1;
+  return 0;
+};
+
+const pickBestUserQuestRow = (current, next) => {
+  if (!current) return next;
+  const currentPriority = questStatusPriority(current.status);
+  const nextPriority = questStatusPriority(next.status);
+  if (nextPriority !== currentPriority) {
+    return nextPriority > currentPriority ? next : current;
+  }
+
+  const currentTs = Math.max(toEpoch(current.updated_at), toEpoch(current.started_at), toEpoch(current.created_at), toEpoch(current.completed_at));
+  const nextTs = Math.max(toEpoch(next.updated_at), toEpoch(next.started_at), toEpoch(next.created_at), toEpoch(next.completed_at));
+  return nextTs >= currentTs ? next : current;
+};
+
+const buildUserQuestMap = (rows) => {
+  const result = new Map();
+  for (const row of rows || []) {
+    if (!row?.quest_id) continue;
+    const existing = result.get(row.quest_id) || null;
+    result.set(row.quest_id, pickBestUserQuestRow(existing, row));
+  }
+  return result;
+};
+
+const mapToUserQuestRows = (rows) => Array.from(buildUserQuestMap(rows).values());
+
+const resolveQuestType = (questRow, userQuestRow) => {
+  const explicitType = normalizeQuestType(questRow?.type || userQuestRow?.quest_type || '');
+  if (KNOWN_QUEST_TYPES.has(explicitType)) return explicitType;
+  return 'daily';
+};
+
+const resolveQuestStatus = (userQuestRow) => {
+  if (!userQuestRow) return { status: 'inactive', completed_date: null };
+  const status = canonicalQuestStatus(userQuestRow.status);
+  return { status, completed_date: userQuestRow.completed_date || null };
+};
+
+const stableHash = (seed) => {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return Math.abs(hash >>> 0);
+};
+
+const pickDeterministicQuestBatch = (rows, seed, count = MIN_QUESTS_PER_SECTION) => {
+  const pool = [...(rows || [])].filter(Boolean);
+  if (!pool.length) return [];
+  const picked = [];
+  let salt = 0;
+  while (pool.length > 0 && picked.length < count) {
+    const index = stableHash(`${seed}:${salt}`) % pool.length;
+    picked.push(pool[index]);
+    pool.splice(index, 1);
+    salt += 1;
+  }
+  return picked;
+};
+
+const normalizeRequiredLevel = (type, rawLevel) => {
+  const normalizedType = normalizeQuestType(type);
+  const safe = Math.max(0, Number(rawLevel || 0));
+  if (normalizedType === 'special') {
+    if (safe <= 0) return 20;
+    return Math.ceil(safe / 20) * 20;
+  }
+  if (normalizedType === 'epic') {
+    if (safe <= 0) return 100;
+    return Math.ceil(safe / 100) * 100;
+  }
+  return safe;
+};
+
+const pickVisibleQuestSet = (templates, currentLevel, count = MIN_QUESTS_PER_SECTION) => {
+  const list = [...(templates || [])];
+  if (!list.length) return [];
+  const unlocked = [];
+  const locked = [];
+  for (const template of list) {
+    const type = normalizeQuestType(template?.type || 'daily');
+    const requiredLevel = normalizeRequiredLevel(type, template?.min_level_required);
+    const enriched = {
+      ...template,
+      type,
+      min_level_required: requiredLevel,
+    };
+    if (currentLevel >= requiredLevel) {
+      unlocked.push(enriched);
+    } else {
+      locked.push(enriched);
+    }
+  }
+  return [...unlocked.slice(0, count), ...locked.slice(0, Math.max(0, count - unlocked.length))];
+};
+
+const getWeekKey = (date) => format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+
+const toDateOnly = (value) => {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return format(parsed, 'yyyy-MM-dd');
+};
+
+const isDateInCurrentWeek = (dateText, nowDate) => {
+  const normalized = toDateOnly(dateText);
+  if (!normalized) return false;
+  const parsed = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const weekStart = startOfWeek(nowDate, { weekStartsOn: 1 });
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  return parsed >= weekStart && parsed < weekEnd;
+};
+
+const sortTemplates = (rows) => [...(rows || [])].sort((a, b) => String(a?.title || '').localeCompare(String(b?.title || '')));
+const getQuestDisplayType = (type) => TYPE_STYLE[normalizeQuestType(type)] || TYPE_STYLE.daily;
+
+const fetchXpLogsCompat = async (userId) => {
+  const withDate = await supabase
+    .from('xp_logs')
+    .select('id, created_at, date, xp_change, change_amount, source, reason, event_id, related_id, metadata')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(80);
+  if (!withDate.error) return withDate;
+
+  const msg = String(withDate.error?.message || '').toLowerCase();
+  if (!msg.includes('xp_logs.date') && !msg.includes('column "date"')) {
+    return withDate;
+  }
+
+  const fallback = await supabase
+    .from('xp_logs')
+    .select('id, created_at, xp_change, change_amount, source, reason, event_id, related_id, metadata')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(80);
+
+  if (fallback.error) return fallback;
+  return {
+    ...fallback,
+    data: (fallback.data || []).map((row) => ({
+      ...row,
+      date: row?.created_at ? String(row.created_at).slice(0, 10) : null,
+    })),
+  };
+};
+
+const getReasonLabel = (source) => {
+  const labels = {
+    habit_complete: 'Habit',
+    quest_complete: 'Quest',
+    daily_challenge: 'Daily',
+    dungeon_clear: 'Dungeon',
+    dungeon_party_complete: 'Dungeon Party',
+    quest_timeout: 'Quest Timeout',
+    punishment_timeout: 'Punishment',
+    strike_sanction: 'Strike',
+    rank_evaluation_clear: 'Rank Eval',
+    rank_evaluation_fail: 'Rank Eval',
+    rank_evaluation_overdue: 'Rank Eval',
+  };
+  return labels[source] || source || 'Unknown';
+};
+
+const getTemplateKey = (template) => `${normalizeQuestType(template?.type || 'daily')}:${String(template?.id || normalizeTemplateKey(template?.title || ''))}`;
+
+const toQuestTemplatePayload = (template) => ({
+  title: template.title,
+  description: template.description,
+  type: normalizeQuestType(template.type || 'daily'),
+  xp_reward: Number(template.xp_reward || 0),
+  stat_reward: template.stat_reward || null,
+  stat_reward_amount: Number(template.stat_reward_amount || 1),
+  min_level_required: Number(template.min_level_required || 0),
+  progress_target: Number(template.progress_target || 100),
+  progress_current: 0,
+  status: 'active',
+});
 
 export default function Quests() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [quests, setQuests] = useState([]);
+  const [questTemplates, setQuestTemplates] = useState([]);
+  const [userQuestRows, setUserQuestRows] = useState([]);
   const [xpHistory, setXpHistory] = useState([]);
+  const [tab, setTab] = useState('available');
+  const [xpHistoryFilter, setXpHistoryFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [tab, setTab] = useState('progress');
   const [actionLoading, setActionLoading] = useState(false);
+  const [acceptingQuestKey, setAcceptingQuestKey] = useState('');
   const [xpDelta, setXpDelta] = useState(0);
-  const [xpHistoryFilter, setXpHistoryFilter] = useState('all');
+  const [nowMs, setNowMs] = useState(Date.now());
+  const seenXpLogRef = useRef(new Set());
+  const profileRef = useRef(null);
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  useEffect(() => {
+    const timerId = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timerId);
+  }, []);
+
+  useEffect(() => {
+    if (!xpDelta) return undefined;
+    const timeoutId = setTimeout(() => setXpDelta(0), 1200);
+    return () => clearTimeout(timeoutId);
+  }, [xpDelta]);
+
+  const todayKey = useMemo(() => format(new Date(nowMs), 'yyyy-MM-dd'), [nowMs]);
+  const weekKey = useMemo(() => getWeekKey(new Date(nowMs)), [nowMs]);
+  const level = useMemo(() => computeLevel(profile?.total_xp || 0), [profile?.total_xp]);
+
+  const ensureQuestPoolRows = useCallback(async (existingQuestRows) => {
+    const existingKeys = new Set(
+      (existingQuestRows || []).map((row) => `${normalizeQuestType(row?.type)}::${normalizeTemplateKey(row?.title)}`)
+    );
+
+    const missingTemplates = FALLBACK_QUEST_TEMPLATES.filter((template) => {
+      const key = `${normalizeQuestType(template.type)}::${normalizeTemplateKey(template.title)}`;
+      return !existingKeys.has(key);
+    });
+
+    if (!missingTemplates.length) return false;
+
+    const inserts = await Promise.all(
+      missingTemplates.map((template) => insertQuestCompat(toQuestTemplatePayload(template)))
+    );
+    return inserts.some((result) => !result?.error && result?.data);
+  }, []);
+
+  const loadData = useCallback(async (userId) => {
+    if (!userId) return;
+    setLoading(true);
+    setLoadError('');
+
+    try {
+      try {
+        await resolveExpiredQuests({ userId, source: 'quest_timeout', decayFactor: 0.5 });
+      } catch (_) {
+        // Keep backwards compatibility when RPC is unavailable.
+      }
+
+      let [profileRes, questsRes, userQuestsRes, xpLogsRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).limit(1),
+        supabase.from('quests').select('*'),
+        supabase.from('user_quests').select('*').eq('user_id', userId),
+        fetchXpLogsCompat(userId),
+      ]);
+
+      if (profileRes.error) throw profileRes.error;
+      if (questsRes.error) throw questsRes.error;
+      if (userQuestsRes.error) throw userQuestsRes.error;
+      if (xpLogsRes.error) throw xpLogsRes.error;
+
+      const seeded = await ensureQuestPoolRows(questsRes.data || []);
+      if (seeded) {
+        questsRes = await supabase.from('quests').select('*');
+        if (questsRes.error) throw questsRes.error;
+      }
+
+      const profileRow = profileRes.data?.[0] || null;
+      if (!profileRow) {
+        navigate(createPageUrl('Landing'), { replace: true });
+        return;
+      }
+
+      setProfile(profileRow);
+      setQuestTemplates((questsRes.data || []).filter((row) => canonicalQuestStatus(row?.status || 'active') !== 'archived'));
+      setUserQuestRows(mapToUserQuestRows(userQuestsRes.data || []));
+      setXpHistory(xpLogsRes.data || []);
+    } catch (err) {
+      setLoadError(err?.message || 'Failed to load quest board.');
+    } finally {
+      setLoading(false);
+    }
+  }, [ensureQuestPoolRows, navigate]);
 
   useEffect(() => {
     const init = async () => {
-      try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser) {
-          setLoading(false);
-          navigate(createPageUrl('Landing'));
-          return;
-        }
-        setUser({ id: authUser.id, email: authUser.email });
-        await loadData(authUser.id);
-      } catch (err) {
-        setLoadError(err?.message || 'Failed to initialize quests.');
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
         setLoading(false);
+        navigate(createPageUrl('Landing'));
+        return;
       }
+      setUser(authUser);
+      await loadData(authUser.id);
     };
     init();
 
@@ -82,106 +414,189 @@ export default function Quests() {
         navigate(createPageUrl('Landing'));
         return;
       }
-      setUser({ id: session.user.id, email: session.user.email });
+      setUser(session.user);
       await loadData(session.user.id);
     });
+
     return () => subscription.unsubscribe();
-  }, []);
+  }, [loadData, navigate]);
 
   useEffect(() => {
-    if (!xpDelta) return undefined;
-    const timeoutId = setTimeout(() => setXpDelta(0), 1200);
-    return () => clearTimeout(timeoutId);
-  }, [xpDelta]);
+    if (!user?.id) return undefined;
+    const channel = supabase
+      .channel(`quests-xp-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'xp_logs', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const row = payload?.new || {};
+          if (!row?.id || seenXpLogRef.current.has(row.id)) return;
+          seenXpLogRef.current.add(row.id);
+          if (seenXpLogRef.current.size > 200) {
+            seenXpLogRef.current = new Set(Array.from(seenXpLogRef.current).slice(-120));
+          }
+          setXpHistory((prev) => [row, ...prev].slice(0, 80));
+          const delta = Number(row.change_amount ?? row.xp_change ?? 0);
+          if (Number.isFinite(delta) && delta !== 0) setXpDelta(delta);
+        }
+      )
+      .subscribe();
 
-  const loadData = async (userId) => {
-    if (!userId) {
-      setLoadError('Missing user id.');
-      setLoading(false);
-      return;
-    }
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
-    setLoading(true);
-    setLoadError('');
-    
-    try {
-      let [profileRes, questsRes, userQuestsRes, xpLogsRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', userId).limit(1),
-        supabase.from('quests').select('*'),
-        supabase.from('user_quests').select('*').eq('user_id', userId),
-        supabase
-          .from('xp_logs')
-          .select('id, created_at, date, xp_change, change_amount, source, reason, event_id, related_id')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(20),
-      ]);
+  const userQuestMap = useMemo(() => buildUserQuestMap(userQuestRows), [userQuestRows]);
 
-      if (profileRes.error) throw profileRes.error;
-      if (questsRes.error) throw questsRes.error;
-      if (userQuestsRes.error) throw userQuestsRes.error;
-      if (xpLogsRes.error) throw xpLogsRes.error;
+  const mergedQuests = useMemo(() => (
+    (questTemplates || []).map((questRow) => {
+      const uq = userQuestMap.get(questRow.id) || null;
+      const resolved = resolveQuestStatus(uq);
+      const type = resolveQuestType(questRow, uq);
+      return {
+        ...questRow,
+        type,
+        status: resolved.status,
+        completed_date: resolved.completed_date,
+        user_quest_id: uq?.id || null,
+        quest_type: uq?.quest_type || type,
+        started_at: uq?.started_at || null,
+        expires_at: uq?.expires_at || null,
+        failed: Boolean(uq?.failed),
+        penalty_applied: Boolean(uq?.penalty_applied),
+        xp_reward: Number(uq?.xp_reward ?? questRow?.xp_reward ?? 0),
+        progress_current: Number(uq?.progress_current ?? questRow?.progress_current ?? 0),
+        progress_target: Number(uq?.progress_target ?? questRow?.progress_target ?? 100),
+      };
+    })
+  ), [questTemplates, userQuestMap]);
 
-      const questSeeded = await ensureDailyQuests(userId, today, questsRes.data || [], userQuestsRes.data || []);
-      if (questSeeded) {
-        [questsRes, userQuestsRes] = await Promise.all([
-          supabase.from('quests').select('*'),
-          supabase.from('user_quests').select('*').eq('user_id', userId),
-        ]);
-        if (questsRes.error) throw questsRes.error;
-        if (userQuestsRes.error) throw userQuestsRes.error;
-      }
+  const activeQuests = useMemo(() => (
+    mergedQuests
+      .filter((quest) => isQuestInProgressStatus(quest.status))
+      .sort((a, b) => toEpoch(b.started_at || b.created_at) - toEpoch(a.started_at || a.created_at))
+  ), [mergedQuests]);
 
-      const profiles = profileRes.data || [];
-      const allQuests = questsRes.data || [];
-      const userQuests = userQuestsRes.data || [];
-      const xpLogs = xpLogsRes.data || [];
-      
-      if (!profiles || profiles.length === 0) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
+  const completedQuests = useMemo(() => mergedQuests.filter((quest) => quest.status === 'completed'), [mergedQuests]);
+  const failedQuests = useMemo(() => mergedQuests.filter((quest) => quest.status === 'failed'), [mergedQuests]);
 
-      setProfile(profiles[0]);
-      setXpHistory(xpLogs || []);
-      
-      const merged = allQuests.map((q) => {
-        const uq = userQuests.find((x) => x.quest_id === q.id);
-        return {
-          ...q,
-          user_quest_id: uq?.id,
-          ...resolveQuestStatus(uq),
-        };
+  const questHistory = useMemo(() => (
+    [...completedQuests, ...failedQuests].sort((a, b) => {
+      const aTs = Math.max(toEpoch(a.completed_date), toEpoch(a.updated_at), toEpoch(a.created_at));
+      const bTs = Math.max(toEpoch(b.completed_date), toEpoch(b.updated_at), toEpoch(b.created_at));
+      return bTs - aTs;
+    })
+  ), [completedQuests, failedQuests]);
+
+  const questTemplatesByType = useMemo(() => {
+    const grouped = {
+      daily: [],
+      weekly: [],
+      special: [],
+      epic: [],
+    };
+    for (const row of questTemplates || []) {
+      const type = resolveQuestType(row, null);
+      if (!grouped[type]) continue;
+      grouped[type].push({
+        ...row,
+        type,
+        min_level_required: normalizeRequiredLevel(type, row?.min_level_required),
       });
-      setQuests(merged);
-    } catch (err) {
-      setLoadError(err?.message || 'Failed to load quests.');
-    } finally {
-      setLoading(false);
     }
-  };
+    return {
+      daily: sortTemplates(grouped.daily),
+      weekly: sortTemplates(grouped.weekly),
+      special: sortTemplates(grouped.special),
+      epic: sortTemplates(grouped.epic),
+    };
+  }, [questTemplates]);
 
-  const level = useMemo(() => computeLevel(profile?.total_xp || 0), [profile?.total_xp]);
+  const selectedDailyQuests = useMemo(
+    () => pickDeterministicQuestBatch(questTemplatesByType.daily, `${user?.id || 'anon'}:${todayKey}:daily`, MIN_QUESTS_PER_SECTION),
+    [questTemplatesByType.daily, user?.id, todayKey]
+  );
+  const selectedWeeklyQuests = useMemo(
+    () => pickDeterministicQuestBatch(questTemplatesByType.weekly, `${user?.id || 'anon'}:${weekKey}:weekly`, MIN_QUESTS_PER_SECTION),
+    [questTemplatesByType.weekly, user?.id, weekKey]
+  );
 
-  const awardXP = async (currentProfile, xpGain, quest, eventId) => {
+  const visibleSpecialQuests = useMemo(
+    () => pickVisibleQuestSet(questTemplatesByType.special, level, MIN_QUESTS_PER_SECTION),
+    [level, questTemplatesByType.special]
+  );
+  const visibleEpicQuests = useMemo(
+    () => pickVisibleQuestSet(questTemplatesByType.epic, level, MIN_QUESTS_PER_SECTION),
+    [level, questTemplatesByType.epic]
+  );
+
+  const availableSections = useMemo(() => ([
+    {
+      id: 'daily',
+      label: 'DAILY QUEST',
+      quests: selectedDailyQuests,
+      lockedQuest: null,
+      emptyText: 'No daily quest template available.',
+    },
+    {
+      id: 'weekly',
+      label: 'WEEKLY QUEST',
+      quests: selectedWeeklyQuests,
+      lockedQuest: null,
+      emptyText: 'No weekly quest template available.',
+    },
+    {
+      id: 'special',
+      label: 'SPECIAL QUESTS',
+      quests: visibleSpecialQuests,
+      lockedQuest: null,
+      emptyText: 'Reach the next level gate to unlock a special quest.',
+    },
+    {
+      id: 'epic',
+      label: 'EPIC QUESTS',
+      quests: visibleEpicQuests,
+      lockedQuest: null,
+      emptyText: 'Reach the next epic gate to unlock an epic quest.',
+    },
+  ]), [selectedDailyQuests, selectedWeeklyQuests, visibleEpicQuests, visibleSpecialQuests]);
+
+  const notifyQuestChange = useCallback((userId) => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('nithya:quests-updated', {
+      detail: { userId, at: new Date().toISOString() },
+    }));
+  }, []);
+
+  const mergeOptimisticUserQuestRow = useCallback((newRow) => {
+    setUserQuestRows((prev) => mapToUserQuestRows([...(prev || []), newRow]));
+  }, []);
+
+  const applyQuestRewards = useCallback(async (quest) => {
+    const currentProfile = profileRef.current;
+    if (!currentProfile?.id) return;
+    const xpGain = Number(quest?.xp_reward || 0);
+    if (!Number.isFinite(xpGain) || xpGain <= 0) return;
+
     const snapshot = await awardXpRpc({
       userId: currentProfile.id,
       xpAmount: xpGain,
       source: 'quest_complete',
-      eventId,
+      eventId: `quest:${quest.id}:${todayKey}`,
       metadata: {
-        quest_id: quest?.id || null,
-        quest_type: quest?.type || null,
+        quest_id: quest.id,
+        quest_type: normalizeQuestType(quest.type || 'daily'),
       },
     });
+
     const { nextProfile } = applyProgressionSnapshot(currentProfile, null, snapshot);
-    const profileUpdates = /** @type {Record<string, any>} */ ({
-      quests_completed: (currentProfile.quests_completed || 0) + 1,
-    });
+    const profileUpdates = { quests_completed: (currentProfile.quests_completed || 0) + 1 };
     if (quest?.stat_reward) {
-      const sk = `stat_${quest.stat_reward}`;
-      profileUpdates[sk] = (currentProfile[sk] || 0) + (quest.stat_reward_amount || 1);
+      const statKey = `stat_${quest.stat_reward}`;
+      profileUpdates[statKey] = (currentProfile[statKey] || 0) + Number(quest?.stat_reward_amount || 1);
     }
+
     const { error: profileUpdateError } = await supabase
       .from('profiles')
       .update(profileUpdates)
@@ -189,165 +604,217 @@ export default function Quests() {
     if (profileUpdateError) throw profileUpdateError;
 
     const mergedProfile = { ...nextProfile, ...profileUpdates };
+    profileRef.current = mergedProfile;
     setProfile(mergedProfile);
     setXpDelta((mergedProfile.total_xp || 0) - (currentProfile.total_xp || 0));
-    return mergedProfile;
-  };
+  }, [todayKey]);
+  const updateUserQuestOutcome = useCallback(async ({ questId, status, completedDate }) => {
+    if (!user?.id || !questId) return null;
+    const updatePayload = {
+      status,
+      completed_date: completedDate,
+      failed: status === 'failed',
+      penalty_applied: false,
+      failure_reason: status === 'failed' ? 'manual' : null,
+    };
 
-  const handleComplete = async (quest) => {
-    if (!user?.id || !profile || actionLoading) return;
+    const { data: updatedRows, error: updateError } = await supabase
+      .from('user_quests')
+      .update(updatePayload)
+      .eq('user_id', user.id)
+      .eq('quest_id', questId)
+      .select('*');
+    if (updateError) throw updateError;
+    if (updatedRows?.length) return updatedRows[0];
+
+    const { data: insertedRow, error: insertError } = await supabase
+      .from('user_quests')
+      .insert({
+        user_id: user.id,
+        quest_id: questId,
+        ...updatePayload,
+      })
+      .select('*')
+      .single();
+    if (insertError) throw insertError;
+    return insertedRow || null;
+  }, [user?.id]);
+
+  const handleAcceptQuest = useCallback(async (template) => {
+    if (!user?.id || !template || actionLoading || acceptingQuestKey) return;
+    const templateKey = getTemplateKey(template);
+    const questType = normalizeQuestType(template?.type || 'daily');
+    const startedAt = new Date().toISOString();
+
+    setAcceptingQuestKey(templateKey);
     setActionLoading(true);
+
     try {
-      const { data: pendingEvaluation, error: pendingEvalError } = await supabase
-        .from('rank_evaluations')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'pending')
-        .limit(1)
-        .maybeSingle();
-      if (pendingEvalError) throw pendingEvalError;
-      if (pendingEvaluation?.id) {
-        alert('Rank Evaluation pending. Clear your evaluation before completing quests.');
-        return;
+      let questId = template.id;
+      if (!questId) {
+        const { data: ensuredQuest, error: ensureError } = await insertQuestCompat(toQuestTemplatePayload(template));
+        if (ensureError) throw ensureError;
+        questId = ensuredQuest?.id || null;
+      }
+      if (!questId) throw new Error('Quest template missing id');
+
+      mergeOptimisticUserQuestRow({
+        id: `optimistic-${questId}-${Date.now()}`,
+        user_id: user.id,
+        quest_id: questId,
+        status: 'active',
+        quest_type: questType,
+        started_at: startedAt,
+        expires_at: null,
+        xp_reward: Number(template?.xp_reward || 0),
+        failed: false,
+        penalty_applied: false,
+        created_at: startedAt,
+        updated_at: startedAt,
+      });
+      setTab('progress');
+
+      const activatedRow = await activateUserQuest({
+        userId: user.id,
+        questId,
+        startedAt,
+      });
+      if (activatedRow?.quest_id) {
+        mergeOptimisticUserQuestRow(activatedRow);
       }
 
-      if (quest?.status === 'completed' && quest?.completed_date === today) return;
-      const { error: questError } = await supabase.from('user_quests').upsert({
+      await loadData(user.id);
+      notifyQuestChange(user.id);
+    } catch (err) {
+      await loadData(user.id);
+      alert(err?.message || 'Failed to accept quest.');
+    } finally {
+      setAcceptingQuestKey('');
+      setActionLoading(false);
+    }
+  }, [acceptingQuestKey, actionLoading, loadData, mergeOptimisticUserQuestRow, notifyQuestChange, user?.id]);
+
+  const handleCompleteQuest = useCallback(async (quest) => {
+    if (!user?.id || !quest?.id || actionLoading) return;
+    if (quest.status === 'completed' && quest.completed_date === todayKey) return;
+    setActionLoading(true);
+
+    try {
+      mergeOptimisticUserQuestRow({
+        id: `optimistic-complete-${quest.id}-${Date.now()}`,
         user_id: user.id,
         quest_id: quest.id,
         status: 'completed',
-        completed_date: today,
+        completed_date: todayKey,
+        failed: false,
+        penalty_applied: false,
+        quest_type: normalizeQuestType(quest.type || 'daily'),
+        xp_reward: Number(quest.xp_reward || 0),
       });
-      if (questError) throw questError;
 
-      setQuests((q) => q.map((x) => (
-        x.id === quest.id
-          ? {
-            ...x,
-            status: 'completed',
-            completed_date: today,
-            progress_current: x.progress_target || 100,
-          }
-          : x
-      )));
+      const persisted = await updateUserQuestOutcome({
+        questId: quest.id,
+        status: 'completed',
+        completedDate: todayKey,
+      });
+      if (persisted?.quest_id) {
+        mergeOptimisticUserQuestRow(persisted);
+      }
 
-      await awardXP(profile, quest.xp_reward, quest, `quest:${quest.id}:${today}`);
+      await applyQuestRewards(quest);
       await loadData(user.id);
+      notifyQuestChange(user.id);
     } catch (err) {
+      await loadData(user.id);
       alert(err?.message || 'Failed to complete quest.');
     } finally {
       setActionLoading(false);
     }
-  };
+  }, [actionLoading, applyQuestRewards, loadData, mergeOptimisticUserQuestRow, notifyQuestChange, todayKey, updateUserQuestOutcome, user?.id]);
 
-  const handleFail = async (quest) => {
-    if (!user?.id || actionLoading) return;
+  const handleFailQuest = useCallback(async (quest) => {
+    if (!user?.id || !quest?.id || actionLoading) return;
     setActionLoading(true);
+
     try {
-      const { error } = await supabase.from('user_quests').upsert({
+      mergeOptimisticUserQuestRow({
+        id: `optimistic-fail-${quest.id}-${Date.now()}`,
         user_id: user.id,
         quest_id: quest.id,
         status: 'failed',
-        completed_date: today,
+        completed_date: todayKey,
+        failed: true,
+        penalty_applied: false,
+        quest_type: normalizeQuestType(quest.type || 'daily'),
+        xp_reward: Number(quest.xp_reward || 0),
       });
-      if (error) throw error;
-      setQuests((q) => q.map((x) => (x.id === quest.id ? { ...x, status: 'failed', completed_date: today } : x)));
+
+      const persisted = await updateUserQuestOutcome({
+        questId: quest.id,
+        status: 'failed',
+        completedDate: todayKey,
+      });
+      if (persisted?.quest_id) {
+        mergeOptimisticUserQuestRow(persisted);
+      }
+
+      await loadData(user.id);
+      notifyQuestChange(user.id);
     } catch (err) {
+      await loadData(user.id);
       alert(err?.message || 'Failed to fail quest.');
     } finally {
       setActionLoading(false);
     }
-  };
+  }, [actionLoading, loadData, mergeOptimisticUserQuestRow, notifyQuestChange, todayKey, updateUserQuestOutcome, user?.id]);
 
-  const addQuestFromPool = async (template) => {
-    if (!user?.id || actionLoading) return;
-    const already = quests.find((q) => q.title === template.title && q.status === 'active');
-    if (already) return;
+  const getAvailabilityState = useCallback((template) => {
+    const type = normalizeQuestType(template?.type || 'daily');
+    const userQuest = userQuestMap.get(template?.id) || null;
+    const status = canonicalQuestStatus(userQuest?.status || 'inactive');
+    const completedDate = toDateOnly(userQuest?.completed_date);
+    const inProgress = isQuestInProgressStatus(status);
 
-    setActionLoading(true);
-    
-    const getExpiresDate = (type) => {
-      if (type === 'weekly') {
-        const nextWeek = new Date();
-        nextWeek.setDate(nextWeek.getDate() + 7);
-        return nextWeek.toISOString().split('T')[0];
+    let completedForCycle = false;
+    if (status === 'completed') {
+      if (type === 'daily') {
+        completedForCycle = completedDate === todayKey;
+      } else if (type === 'weekly') {
+        completedForCycle = isDateInCurrentWeek(completedDate, new Date(nowMs));
+      } else {
+        completedForCycle = true;
       }
-      if (type === 'epic') {
-        const nextMonth = new Date();
-        nextMonth.setDate(nextMonth.getDate() + 30);
-        return nextMonth.toISOString().split('T')[0];
-      }
-      return today;
-    };
-
-    try {
-      if (template.type === 'weekly') {
-        const existingWeekly = await fetchActiveWeeklyQuest(user.id);
-        if (existingWeekly?.id) {
-          alert('You already have an active weekly quest. Complete or fail it first.');
-          return;
-        }
-      }
-
-      const { data: insertedQuest, error: insertQuestError } = await supabase.from('quests').insert({
-        ...template,
-        progress_current: 0,
-        progress_target: template.progress_target || 100,
-        stat_reward_amount: template.stat_reward_amount || 1,
-        min_level_required: template.min_level_required || 0,
-        date: today,
-        expires_date: getExpiresDate(template.type),
-      }).select().single();
-      if (insertQuestError) throw insertQuestError;
-      if (!insertedQuest) return;
-
-      const { error: linkError } = await supabase.from('user_quests').upsert({
-        user_id: user.id,
-        quest_id: insertedQuest.id,
-        status: 'active',
-        date: today,
-      });
-      if (linkError) throw linkError;
-
-      const created = { ...insertedQuest, status: 'active', date: today };
-      setQuests((q) => [created, ...q]);
-    } catch (err) {
-      alert(err?.message || 'Failed to add quest.');
-    } finally {
-      setActionLoading(false);
     }
-  };
 
-  const active = useMemo(() => quests.filter((q) => q.status === 'active'), [quests]);
-  const completed = useMemo(() => quests.filter((q) => q.status === 'completed'), [quests]);
-  const failed = useMemo(() => quests.filter((q) => q.status === 'failed'), [quests]);
+    const requiredLevel = normalizeRequiredLevel(type, template?.min_level_required);
+    const locked = level < requiredLevel;
 
-  // Group active quests by type
-  const dailyActive = useMemo(() => active.filter((q) => q.type === 'daily'), [active]);
-  const weeklyActive = useMemo(() => active.filter((q) => q.type === 'weekly'), [active]);
-  const specialActive = useMemo(() => active.filter((q) => q.type === 'special'), [active]);
-  const epicActive = useMemo(() => active.filter((q) => q.type === 'epic'), [active]);
-
-  const TABS = [
-    { id: 'progress', label: 'PROGRESS', icon: Trophy },
-    { id: 'available', label: 'AVAILABLE', icon: Plus },
-    { id: 'history', label: 'HISTORY', icon: History },
-  ];
+    return {
+      status,
+      inProgress,
+      completedForCycle,
+      locked,
+      requiredLevel,
+    };
+  }, [level, nowMs, todayKey, userQuestMap]);
 
   const normalizedXpHistory = useMemo(() => (
     (xpHistory || [])
       .map((log) => {
         const delta = Number(log?.change_amount ?? log?.xp_change ?? 0);
-        const safeDelta = Number.isFinite(delta) ? Math.trunc(delta) : 0;
-        const reasonKey = (log?.reason || log?.source || 'manual').toString();
+        const parsed = log?.created_at ? new Date(log.created_at) : (log?.date ? new Date(`${log.date}T00:00:00`) : null);
+        const timestamp = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+        const reasonKey = String(log?.reason || log?.source || 'manual');
         return {
           ...log,
-          delta: safeDelta,
+          delta: Number.isFinite(delta) ? Math.trunc(delta) : 0,
+          timestamp,
+          dayKey: timestamp ? format(timestamp, 'yyyy-MM-dd') : (log?.date || 'unknown'),
           reasonKey,
-          timestamp: log?.created_at || log?.date || null,
+          metadata: (log?.metadata && typeof log.metadata === 'object') ? log.metadata : {},
         };
       })
-      .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime())
+      .sort((a, b) => (b.timestamp?.getTime() || 0) - (a.timestamp?.getTime() || 0))
   ), [xpHistory]);
 
   const filteredXpHistory = useMemo(() => {
@@ -356,37 +823,33 @@ export default function Quests() {
     return normalizedXpHistory;
   }, [normalizedXpHistory, xpHistoryFilter]);
 
-  const getReasonLabel = (source) => {
-    const labels = {
-      'habit_complete': 'Habit',
-      'quest_complete': 'Quest',
-      'daily_challenge': 'Daily',
-      'dungeon_clear': 'Dungeon',
-      'system_interrupt_clear': 'Interrupt Cleared',
-      'system_interrupt_mild': 'Interrupt Mild Penalty',
-      'system_interrupt_full': 'Interrupt Full Penalty',
-      'rank_evaluation_clear': 'Rank Eval',
-      'punishment_timeout': 'Penalty',
-      'punishment_refused': 'Penalty',
-      'dungeon_fail': 'Dungeon Fail',
-      'rank_evaluation_fail': 'Rank Fail',
-      'strike_sanction': 'Strike',
-      'rank_evaluation_overdue': 'Overdue',
-    };
-    return labels[source] || source || 'Unknown';
-  };
+  const groupedXpHistory = useMemo(() => {
+    const bucket = new Map();
+    for (const row of filteredXpHistory) {
+      const key = row.dayKey || 'unknown';
+      if (!bucket.has(key)) {
+        bucket.set(key, { dayKey: key, logs: [], netXp: 0 });
+      }
+      const target = bucket.get(key);
+      target.logs.push(row);
+      target.netXp += row.delta;
+    }
+    return Array.from(bucket.values()).sort((a, b) => new Date(b.dayKey).getTime() - new Date(a.dayKey).getTime());
+  }, [filteredXpHistory]);
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
-      <div className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
+        <div className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
 
   if (loadError) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
         <div className="w-full max-w-md rounded-2xl p-5 space-y-3" style={{ background: 'rgba(15,32,39,0.7)', border: '1px solid #1e3a4a' }}>
-          <p className="text-sm font-bold text-red-400 tracking-wide">QUESTS LOAD FAILED</p>
+          <p className="text-sm font-bold text-red-400 tracking-wide">QUEST BOARD LOAD FAILED</p>
           <p className="text-sm" style={{ color: '#94A3B8' }}>{loadError}</p>
           <div className="flex gap-2">
             <Button onClick={() => user?.id && loadData(user.id)} className="flex-1">Retry</Button>
@@ -400,35 +863,38 @@ export default function Quests() {
   return (
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-5">
-
-        {/* Header */}
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(createPageUrl('Dashboard'))}
+          <button
+            type="button"
+            onClick={() => navigate(createPageUrl('Dashboard'))}
             className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:scale-110"
-            style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a' }}>
+            style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a' }}
+          >
             <ArrowLeft className="w-4 h-4 text-white" />
           </button>
           <div>
             <h1 className="text-lg font-black tracking-widest text-white">QUEST BOARD</h1>
-            <p className="text-xs" style={{ color: '#64748B' }}>Lv. {level} · {profile?.name}</p>
+            <p className="text-xs" style={{ color: '#64748B' }}>
+              Lv. {level} · {profile?.name || 'Player'}
+            </p>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(15,32,39,0.7)', border: '1px solid #1e3a4a' }}>
-          {TABS.map(t => (
+          {TABS.map((entry) => (
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
+              key={entry.id}
+              type="button"
+              onClick={() => setTab(entry.id)}
               className="flex-1 py-2 rounded-lg text-xs font-bold tracking-widest transition-all flex items-center justify-center gap-1"
               style={{
-                background: tab === t.id ? 'rgba(56,189,248,0.15)' : 'transparent',
-                color: tab === t.id ? '#38BDF8' : '#64748B',
-                border: tab === t.id ? '1px solid rgba(56,189,248,0.3)' : '1px solid transparent',
+                background: tab === entry.id ? 'rgba(56,189,248,0.15)' : 'transparent',
+                color: tab === entry.id ? '#38BDF8' : '#64748B',
+                border: tab === entry.id ? '1px solid rgba(56,189,248,0.3)' : '1px solid transparent',
               }}
             >
-              <t.icon className="w-3 h-3" />
-              {t.label}
+              <entry.icon className="w-3 h-3" />
+              {entry.label}
             </button>
           ))}
         </div>
@@ -437,131 +903,163 @@ export default function Quests() {
           <XPDeltaPulse value={xpDelta} visible={xpDelta !== 0} />
         </div>
 
-        {/* Current Progress Tab */}
         {tab === 'progress' && (
           <div className="space-y-4">
-            {active.length === 0 ? (
+            {activeQuests.length === 0 ? (
               <div className="text-center py-12 rounded-2xl" style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid #1e3a4a' }}>
-                <Zap className="w-8 h-8 mx-auto mb-3" style={{ color: '#1e3a4a' }} />
-                <p style={{ color: '#64748B' }}>No active quests. Pick from the Available tab!</p>
+                <Trophy className="w-8 h-8 mx-auto mb-3" style={{ color: '#1e3a4a' }} />
+                <p style={{ color: '#64748B' }}>No active quests. Accept from the Available tab.</p>
               </div>
             ) : (
-              <>
-                {/* Daily Quests */}
-                {dailyActive.length > 0 && (
-                  <div>
-                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: '#34D399' }}>DAILY QUESTS</p>
+              QUEST_SECTION_ORDER.map((type) => {
+                const display = getQuestDisplayType(type);
+                const quests = activeQuests.filter((quest) => normalizeQuestType(quest.type) === type);
+                if (!quests.length) return null;
+                return (
+                  <div key={type}>
+                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: display.color }}>
+                      {display.label} QUESTS
+                    </p>
                     <div className="space-y-2">
-                      {dailyActive.map((q, i) => (
-                        <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} disabled={actionLoading} />
+                      {quests.map((quest, index) => (
+                        <QuestCard
+                          key={quest.id}
+                          quest={quest}
+                          index={index}
+                          onComplete={handleCompleteQuest}
+                          onFail={handleFailQuest}
+                          disabled={actionLoading}
+                          nowMs={nowMs}
+                        />
                       ))}
                     </div>
                   </div>
-                )}
-
-                {/* Weekly Quests */}
-                {weeklyActive.length > 0 && (
-                  <div>
-                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: '#38BDF8' }}>WEEKLY QUESTS</p>
-                    <div className="space-y-2">
-                      {weeklyActive.map((q, i) => (
-                        <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} disabled={actionLoading} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Special Quests */}
-                {specialActive.length > 0 && (
-                  <div>
-                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: '#FBBF24' }}>SPECIAL QUESTS</p>
-                    <div className="space-y-2">
-                      {specialActive.map((q, i) => (
-                        <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} disabled={actionLoading} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Epic Quests */}
-                {epicActive.length > 0 && (
-                  <div>
-                    <p className="text-xs font-bold tracking-widest mb-2" style={{ color: '#22D3EE' }}>EPIC QUESTS</p>
-                    <div className="space-y-2">
-                      {epicActive.map((q, i) => (
-                        <QuestCard key={q.id} quest={q} index={i} onComplete={handleComplete} onFail={handleFail} disabled={actionLoading} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
+                );
+              })
             )}
           </div>
         )}
 
-        {/* Available Tab */}
         {tab === 'available' && (
           <div className="space-y-5">
-            {[
-              { label: 'WEEKLY QUESTS', icon: Star, color: '#38BDF8', pool: WEEKLY_QUESTS },
-              { label: 'SPECIAL QUESTS', icon: Shield, color: '#FBBF24', pool: SPECIAL_QUESTS },
-              { label: `EPIC QUESTS`, icon: Skull, color: '#22D3EE', pool: EPIC_QUESTS },
-            ].map(({ label, icon: Icon, color, pool }) => (
-              <div key={label}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Icon className="w-4 h-4" style={{ color }} />
-                  <span className="text-xs font-bold tracking-widest" style={{ color }}>{label}</span>
-                </div>
-                <div className="space-y-3">
-                  {pool.map((template, i) => {
-                    const locked = level < (template.min_level_required || 0);
-                    const alreadyActive = quests.some(q => q.title === template.title && q.status === 'active');
-                    const alreadyDone = quests.some(q => q.title === template.title && q.status === 'completed' && q.completed_date === today);
-                    return (
+            {availableSections.map((section) => {
+              const display = getQuestDisplayType(section.id);
+              const Icon = display.icon;
+              return (
+                <div key={section.id}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Icon className="w-4 h-4" style={{ color: display.color }} />
+                    <span className="text-xs font-bold tracking-widest" style={{ color: display.color }}>
+                      {section.label}
+                    </span>
+                  </div>
+
+                  {section.quests.length === 0 ? (
+                    section.lockedQuest ? (
                       <div
-                        key={i}
-                        className="rounded-xl p-4 flex items-center gap-4"
-                        style={{
-                          background: 'rgba(15,32,39,0.7)',
-                          border: `1px solid ${color}22`,
-                          opacity: locked ? 0.5 : 1,
-                        }}
+                        className="rounded-xl p-4 flex items-center justify-between gap-4"
+                        style={{ background: 'rgba(15,32,39,0.7)', border: `1px solid ${display.color}22`, opacity: 0.75 }}
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-white">{template.title}</p>
-                          <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{template.description}</p>
-                          <div className="flex items-center gap-3 mt-1.5">
-                            <span className="text-xs font-bold" style={{ color: '#FBBF24' }}>+{template.xp_reward} XP</span>
-                            {template.stat_reward && <span className="text-xs" style={{ color }}>{template.stat_reward.toUpperCase()} +1</span>}
-                            {locked && <span className="text-xs" style={{ color: '#F87171' }}>Lv. {template.min_level_required} required</span>}
-                          </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-white">{section.lockedQuest.title}</p>
+                          <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{section.lockedQuest.description}</p>
+                          <p className="text-xs mt-2" style={{ color: '#F87171' }}>
+                            Unlocks at Lv. {Number(section.lockedQuest.min_level_required || 0)}
+                          </p>
                         </div>
-                        {!locked && !alreadyActive && !alreadyDone && (
-                          <Button
-                            size="sm"
-                            onClick={() => addQuestFromPool(template)}
-                            disabled={actionLoading}
-                            className="text-xs h-8 px-3 font-bold tracking-wide"
-                            style={{ background: `${color}22`, border: `1px solid ${color}44`, color }}
-                          >
-                            <Plus className="w-3 h-3 mr-1" /> {actionLoading ? '...' : 'Accept'}
-                          </Button>
-                        )}
-                        {alreadyActive && <span className="text-xs font-bold" style={{ color: '#38BDF8' }}>ACTIVE</span>}
-                        {alreadyDone && <span className="text-xs font-bold" style={{ color: '#34D399' }}>✓ DONE</span>}
+                        <span className="text-xs font-bold px-2 py-1 rounded" style={{ border: '1px solid #F8717144', color: '#F87171', background: '#7F1D1D33' }}>
+                          LOCKED
+                        </span>
                       </div>
-                    );
-                  })}
+                    ) : (
+                      <div className="rounded-xl p-4 text-sm" style={{ background: 'rgba(15,32,39,0.45)', border: '1px solid #1e3a4a', color: '#64748B' }}>
+                        {section.emptyText}
+                      </div>
+                    )
+                  ) : (
+                    <div className="space-y-3">
+                      {section.quests.map((template) => {
+                        const availability = getAvailabilityState(template);
+                        const templateKey = getTemplateKey(template);
+                        const isAccepting = acceptingQuestKey === templateKey;
+                        const acceptBlockedByOtherMutation = Boolean(acceptingQuestKey) && !isAccepting;
+
+                        return (
+                          <div
+                            key={template.id || templateKey}
+                            className="rounded-xl p-4 flex items-center gap-4"
+                            style={{
+                              background: 'rgba(15,32,39,0.7)',
+                              border: `1px solid ${display.color}22`,
+                              opacity: availability.locked ? 0.5 : 1,
+                            }}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-white">{template.title}</p>
+                              <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{template.description}</p>
+                              <div className="flex items-center gap-3 mt-1.5">
+                                <span className="text-xs font-bold" style={{ color: '#FBBF24' }}>+{Number(template.xp_reward || 0)} XP</span>
+                                {template.stat_reward && (
+                                  <span className="text-xs" style={{ color: display.color }}>
+                                    {String(template.stat_reward).toUpperCase()} +{Number(template.stat_reward_amount || 1)}
+                                  </span>
+                                )}
+                                {availability.locked && (
+                                  <span className="text-xs" style={{ color: '#F87171' }}>
+                                    Lv. {availability.requiredLevel} required
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {!availability.locked && !availability.inProgress && !availability.completedForCycle && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void handleAcceptQuest(template);
+                                }}
+                                disabled={actionLoading || acceptBlockedByOtherMutation}
+                                className="text-xs h-8 px-3 font-bold tracking-wide"
+                                style={{ background: `${display.color}22`, border: `1px solid ${display.color}44`, color: display.color }}
+                              >
+                                <Plus className="w-3 h-3 mr-1" />
+                                {isAccepting ? '...' : 'Accept'}
+                              </Button>
+                            )}
+
+                            {!availability.locked && availability.inProgress && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => setTab('progress')}
+                                className="text-xs h-8 px-3 font-bold tracking-wide"
+                                style={{ background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.35)', color: '#38BDF8' }}
+                              >
+                                In Progress
+                              </Button>
+                            )}
+
+                            {!availability.locked && !availability.inProgress && availability.completedForCycle && (
+                              <span className="text-xs font-bold px-2 py-1 rounded" style={{ color: '#34D399', border: '1px solid #34D39944', background: '#14532D33' }}>
+                                DONE
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        {/* History Tab */}
         {tab === 'history' && (
           <div className="space-y-4">
-            {/* XP History Section */}
             <HoloPanel>
               <div className="flex items-center justify-between gap-2 mb-3">
                 <p className="text-xs font-bold tracking-widest" style={{ color: '#38BDF8' }}>XP HISTORY</p>
@@ -570,56 +1068,74 @@ export default function Quests() {
                     { id: 'all', label: 'All' },
                     { id: 'rewards', label: 'Rewards' },
                     { id: 'penalties', label: 'Penalties' },
-                  ].map((f) => (
+                  ].map((entry) => (
                     <button
-                      key={f.id}
+                      key={entry.id}
                       type="button"
-                      onClick={() => setXpHistoryFilter(f.id)}
+                      onClick={() => setXpHistoryFilter(entry.id)}
                       className="px-2 py-1 rounded text-[10px] font-bold tracking-widest"
                       style={{
                         border: '1px solid rgba(56,189,248,0.25)',
-                        background: xpHistoryFilter === f.id ? 'rgba(56,189,248,0.2)' : 'rgba(15,32,39,0.35)',
-                        color: xpHistoryFilter === f.id ? '#7DD3FC' : '#64748B',
+                        background: xpHistoryFilter === entry.id ? 'rgba(56,189,248,0.2)' : 'rgba(15,32,39,0.35)',
+                        color: xpHistoryFilter === entry.id ? '#7DD3FC' : '#64748B',
                       }}
                     >
-                      {f.label.toUpperCase()}
+                      {entry.label.toUpperCase()}
                     </button>
                   ))}
                 </div>
               </div>
-              {filteredXpHistory.length === 0 ? (
+
+              {groupedXpHistory.length === 0 ? (
                 <p className="text-sm" style={{ color: '#64748B' }}>No XP history yet.</p>
               ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {filteredXpHistory.map((log, i) => (
-                    <div key={log.id || i} className="flex items-center justify-between p-2 rounded-lg" 
-                      style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid rgba(56,189,248,0.1)' }}>
-                      <div>
-                        <p className="text-xs font-bold text-white">{getReasonLabel(log.reasonKey)}</p>
-                        <p className="text-[10px]" style={{ color: '#64748B' }}>
-                          {log.created_at ? new Date(log.created_at).toLocaleString() : (log.date || '')}
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  {groupedXpHistory.map((group) => (
+                    <div key={group.dayKey} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] font-bold tracking-widest" style={{ color: '#94A3B8' }}>
+                          {group.dayKey}
+                        </p>
+                        <p className={`text-[11px] font-black ${group.netXp >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          NET {group.netXp >= 0 ? '+' : ''}{group.netXp} XP
                         </p>
                       </div>
-                      <span className={`text-sm font-bold ${log.delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {log.delta >= 0 ? '+' : ''}{log.delta} XP
-                      </span>
+
+                      {group.logs.map((log, index) => (
+                        <div
+                          key={log.id || `${group.dayKey}-${index}`}
+                          className="flex items-start justify-between gap-3 p-2 rounded-lg"
+                          style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid rgba(56,189,248,0.1)' }}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-white">
+                              {getReasonLabel(log.reasonKey)} · {(log.source || log.reasonKey || 'manual').toUpperCase()}
+                            </p>
+                            <p className="text-[10px]" style={{ color: '#64748B' }}>
+                              {log.timestamp ? log.timestamp.toLocaleString() : (log.date || '')}
+                            </p>
+                          </div>
+                          <span className={`text-sm font-bold whitespace-nowrap ${log.delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {log.delta >= 0 ? '+' : ''}{log.delta} XP
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>
               )}
             </HoloPanel>
 
-            {/* Quest History */}
             <div>
               <p className="text-xs font-bold tracking-widest mb-3" style={{ color: '#FBBF24' }}>QUEST HISTORY</p>
-              {([...completed, ...failed]).length === 0 ? (
+              {questHistory.length === 0 ? (
                 <div className="text-center py-6 rounded-2xl" style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid #1e3a4a' }}>
-                  <p style={{ color: '#64748B' }}>No quest history yet.</p>
+                  <p style={{ color: '#64748B' }}>No completed or failed quests yet.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {([...completed, ...failed]).map((q, i) => (
-                    <QuestCard key={q.id} quest={q} index={i} />
+                  {questHistory.map((quest, index) => (
+                    <QuestCard key={`${quest.id}-${index}`} quest={quest} index={index} nowMs={nowMs} />
                   ))}
                 </div>
               )}
