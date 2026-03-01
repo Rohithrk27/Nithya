@@ -46,6 +46,7 @@ import {
   getLocalDateKey,
   hasReminderFired,
   markReminderFired,
+  syncWebPushSubscription,
   showReminderNotification,
 } from '@/lib/reminderNotifications';
 import { speakWithFemaleVoice } from '@/lib/voice';
@@ -966,6 +967,14 @@ export default function Dashboard() {
     }, 60000);
     return () => clearInterval(intervalId);
   }, [notify, pendingPunishments, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void syncWebPushSubscription({
+      userId: user.id,
+      reminderTime: profile?.reminder_time || '21:00',
+    });
+  }, [profile?.reminder_time, user?.id]);
 
   // Background-safe reminder scheduler with catch-up checks.
   useEffect(() => {

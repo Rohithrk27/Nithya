@@ -513,6 +513,7 @@ export default function Profile() {
             <div className="space-y-1">
               <Label className="text-xs tracking-widest font-bold" style={{ color: '#64748B' }}>REMINDER TIME</Label>
               <HabitReminderSetup reminderTime={form.reminder_time} habits={habits}
+                userId={profile?.id || user?.id || null}
                 onTimeChange={t => setForm(f => ({ ...f, reminder_time: t }))} />
             </div>
 

@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase';
+
 const DEFAULT_ICON = '/logo/logo.png';
 
 export const getNotificationPermission = () => {
@@ -23,6 +25,77 @@ const getRegistration = async () => {
   } catch (_) {
     return null;
   }
+};
+
+const isPushSupported = () => (
+  typeof window !== 'undefined'
+  && 'serviceWorker' in navigator
+  && 'PushManager' in window
+);
+
+const getPushPublicKey = () => String(import.meta.env.VITE_WEB_PUSH_PUBLIC_KEY || '').trim();
+
+const toUint8Array = (base64String) => {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+};
+
+const buildPushSubscriptionRow = ({ userId, subscription, reminderTime = '21:00' }) => {
+  const json = subscription?.toJSON ? subscription.toJSON() : null;
+  const endpoint = subscription?.endpoint || json?.endpoint || null;
+  const p256dh = json?.keys?.p256dh || null;
+  const auth = json?.keys?.auth || null;
+  if (!userId || !endpoint || !p256dh || !auth) return null;
+  return {
+    user_id: userId,
+    endpoint,
+    p256dh,
+    auth,
+    content_encoding: json?.contentEncoding || null,
+    reminder_time: String(reminderTime || '21:00').slice(0, 5),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    is_active: true,
+    last_seen_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+};
+
+export const syncWebPushSubscription = async ({ userId, reminderTime = '21:00' } = {}) => {
+  if (!userId) return { ok: false, reason: 'missing_user' };
+  if (!isNotificationGranted()) return { ok: false, reason: 'permission_not_granted' };
+  if (!isPushSupported()) return { ok: false, reason: 'push_unsupported' };
+
+  const publicKey = getPushPublicKey();
+  if (!publicKey) return { ok: false, reason: 'missing_vapid_public_key' };
+
+  const registration = (await navigator.serviceWorker.ready.catch(() => null))
+    || (await getRegistration());
+  if (!registration?.pushManager) return { ok: false, reason: 'missing_push_manager' };
+
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: toUint8Array(publicKey),
+    });
+  }
+  if (!subscription) return { ok: false, reason: 'subscription_failed' };
+
+  const row = buildPushSubscriptionRow({ userId, subscription, reminderTime });
+  if (!row) return { ok: false, reason: 'invalid_subscription' };
+
+  const { error } = await supabase
+    .from('web_push_subscriptions')
+    .upsert(row, { onConflict: 'user_id,endpoint' });
+
+  if (error) return { ok: false, reason: 'db_error', error };
+  return { ok: true, subscription };
 };
 
 export const getLocalDateKey = (date = new Date()) => {
@@ -69,7 +142,10 @@ export const showReminderNotification = async ({
     icon,
     badge,
     renotify,
-    data,
+    data: {
+      url: '/dashboard',
+      ...data,
+    },
   };
 
   const registration = await getRegistration();

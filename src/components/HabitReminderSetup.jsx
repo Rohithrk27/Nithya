@@ -8,6 +8,7 @@ import {
   hasReminderFired,
   markReminderFired,
   requestNotificationPermission,
+  syncWebPushSubscription,
   showReminderNotification,
 } from '@/lib/reminderNotifications';
 
@@ -124,7 +125,7 @@ export function initHabitReminders(reminderTime, habits) {
   return scheduleReminder(reminderTime, habits);
 }
 
-export default function HabitReminderSetup({ reminderTime, habits, onTimeChange }) {
+export default function HabitReminderSetup({ reminderTime, habits, onTimeChange, userId = null }) {
   const [permission, setPermission] = useState(getNotificationPermission());
   const [saved, setSaved] = useState(false);
 
@@ -134,12 +135,18 @@ export default function HabitReminderSetup({ reminderTime, habits, onTimeChange 
 
   useEffect(() => {
     if (permission !== 'granted') return undefined;
+    if (userId) {
+      void syncWebPushSubscription({ userId, reminderTime });
+    }
     return scheduleReminder(reminderTime, habits);
-  }, [permission, reminderTime, habits]);
+  }, [permission, reminderTime, habits, userId]);
 
   const requestPermission = async () => {
     const result = await requestNotificationPermission();
     setPermission(result);
+    if (result === 'granted' && userId) {
+      void syncWebPushSubscription({ userId, reminderTime });
+    }
   };
 
   const handleSaveTime = () => {

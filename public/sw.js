@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const SHELL_CACHE = `nithya-shell-${CACHE_VERSION}`;
 const ASSET_CACHE = `nithya-asset-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `nithya-runtime-${CACHE_VERSION}`;
@@ -123,6 +123,52 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(staleWhileRevalidate(event.request, RUNTIME_CACHE));
 });
 
+self.addEventListener('push', (event) => {
+  const fallback = {
+    title: 'Nithya Reminder',
+    body: 'Time to check your habits.',
+    tag: 'nithya-push',
+    url: '/dashboard',
+  };
+
+  let payload = fallback;
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      payload = {
+        ...fallback,
+        ...(parsed && typeof parsed === 'object' ? parsed : {}),
+      };
+    }
+  } catch (_) {
+    try {
+      const text = event.data ? event.data.text() : '';
+      payload = { ...fallback, body: text || fallback.body };
+    } catch (_) {
+      payload = fallback;
+    }
+  }
+
+  const title = String(payload.title || fallback.title);
+  const options = {
+    body: String(payload.body || fallback.body),
+    icon: payload.icon || '/logo/logo.png',
+    badge: payload.badge || '/logo/logo.png',
+    tag: String(payload.tag || fallback.tag),
+    renotify: !!payload.renotify,
+    data: {
+      ...(payload.data && typeof payload.data === 'object' ? payload.data : {}),
+      url: payload.url || payload?.data?.url || fallback.url,
+    },
+  };
+
+  if (event.waitUntil) {
+    event.waitUntil(self.registration.showNotification(title, options));
+  } else {
+    void self.registration.showNotification(title, options);
+  }
+});
+
 self.addEventListener('message', (event) => {
   const payload = event?.data || {};
   if (payload.type === 'SKIP_WAITING') {
@@ -153,6 +199,9 @@ self.addEventListener('notificationclick', (event) => {
         const openedUrl = new URL(client.url);
         const desiredUrl = new URL(targetUrl, self.location.origin);
         if (openedUrl.origin === desiredUrl.origin) {
+          if (typeof client.navigate === 'function' && openedUrl.pathname !== desiredUrl.pathname) {
+            await client.navigate(desiredUrl.toString());
+          }
           if (typeof client.focus === 'function') {
             await client.focus();
           }
