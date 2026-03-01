@@ -18,6 +18,8 @@ const FEMALE_VOICE_HINTS = [
   'heera',
 ];
 
+const INDIAN_ENGLISH_LANG = 'en-IN';
+
 const toLower = (value) => String(value || '').toLowerCase();
 
 const isFemaleLikeVoice = (voice) => {
@@ -25,30 +27,21 @@ const isFemaleLikeVoice = (voice) => {
   return FEMALE_VOICE_HINTS.some((hint) => name.includes(hint));
 };
 
+const isIndianEnglishVoice = (voice) => toLower(voice?.lang).startsWith('en-in');
+
 export function pickPreferredFemaleVoice(voices = []) {
   const list = Array.isArray(voices) ? voices : [];
   if (!list.length) return null;
 
   const englishIndianFemale = list.find((voice) => (
-    toLower(voice?.lang).startsWith('en-in') && isFemaleLikeVoice(voice)
+    isIndianEnglishVoice(voice) && isFemaleLikeVoice(voice)
   ));
   if (englishIndianFemale) return englishIndianFemale;
 
-  const englishFemale = list.find((voice) => (
-    toLower(voice?.lang).startsWith('en') && isFemaleLikeVoice(voice)
-  ));
-  if (englishFemale) return englishFemale;
-
-  const anyFemale = list.find((voice) => isFemaleLikeVoice(voice));
-  if (anyFemale) return anyFemale;
-
-  const englishIndian = list.find((voice) => toLower(voice?.lang).startsWith('en-in'));
+  const englishIndian = list.find((voice) => isIndianEnglishVoice(voice));
   if (englishIndian) return englishIndian;
 
-  const english = list.find((voice) => toLower(voice?.lang).startsWith('en'));
-  if (english) return english;
-
-  return list[0] || null;
+  return null;
 }
 
 export function speakWithFemaleVoice(text, options = {}) {
@@ -60,6 +53,7 @@ export function speakWithFemaleVoice(text, options = {}) {
 
   const synth = window.speechSynthesis;
   const utter = new SpeechSynthesisUtterance(spokenText);
+  utter.lang = INDIAN_ENGLISH_LANG;
   utter.rate = Number.isFinite(options.rate) ? options.rate : 0.95;
   utter.pitch = Number.isFinite(options.pitch) ? options.pitch : 1.2;
   utter.volume = Number.isFinite(options.volume) ? options.volume : 1;
@@ -68,10 +62,6 @@ export function speakWithFemaleVoice(text, options = {}) {
     const preferred = pickPreferredFemaleVoice(synth.getVoices());
     if (preferred) {
       utter.voice = preferred;
-      utter.lang = preferred.lang || utter.lang;
-    }
-    if (!utter.lang) {
-      utter.lang = (typeof options.lang === 'string' && options.lang.trim()) ? options.lang.trim() : 'en-IN';
     }
     if (options.cancel !== false) synth.cancel();
     synth.speak(utter);
