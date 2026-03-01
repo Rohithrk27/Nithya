@@ -113,12 +113,12 @@ export default function HabitReminderSetup({ reminderTime, habits, onTimeChange 
   if (permission === 'unsupported') return null;
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-2 flex-wrap w-full">
       {permission !== 'granted' ? (
         <Button
           size="sm"
           onClick={requestPermission}
-          className="bg-[#334155] hover:bg-[#475569] text-[#F8FAFC] gap-2"
+          className="bg-[#334155] hover:bg-[#475569] text-[#F8FAFC] gap-2 w-full sm:w-auto"
         >
           <Bell className="w-4 h-4 text-yellow-400" />
           Enable Reminders
@@ -130,12 +130,12 @@ export default function HabitReminderSetup({ reminderTime, habits, onTimeChange 
             type="time"
             value={reminderTime}
             onChange={e => onTimeChange && onTimeChange(e.target.value)}
-            className="bg-[#0F172A] border border-[#334155] text-[#F8FAFC] rounded px-2 py-1 text-sm"
+            className="bg-[#0F172A] border border-[#334155] text-[#F8FAFC] rounded px-2 py-1 text-sm min-w-0 w-full sm:w-auto"
           />
           <Button
             size="sm"
             onClick={handleSaveTime}
-            className={`transition-all ${saved ? 'bg-green-600 hover:bg-green-600' : 'bg-[#3B82F6] hover:bg-[#3B82F6]/90'}`}
+            className={`transition-all w-full sm:w-auto ${saved ? 'bg-green-600 hover:bg-green-600' : 'bg-[#3B82F6] hover:bg-[#3B82F6]/90'}`}
           >
             {saved ? <><Check className="w-3 h-3 mr-1" /> Saved</> : 'Save'}
           </Button>

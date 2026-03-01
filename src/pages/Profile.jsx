@@ -326,7 +326,7 @@ export default function Profile() {
   );
 
   const section = (title, children) => (
-    <div className="rounded-2xl p-5 space-y-4"
+    <div className="w-full overflow-hidden rounded-2xl p-5 space-y-4"
       style={{ background: 'rgba(15,32,39,0.7)', backdropFilter: 'blur(16px)', border: '1px solid rgba(56,189,248,0.15)' }}>
       <h2 className="text-xs font-bold tracking-widest" style={{ color: '#38BDF8' }}>{title}</h2>
       {children}
@@ -334,8 +334,8 @@ export default function Profile() {
   );
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
-      <div className="max-w-xl mx-auto p-4 md:p-6 space-y-5">
+    <div className="min-h-screen overflow-x-hidden" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
+      <div className="max-w-xl mx-auto p-4 md:p-6 space-y-5 overflow-x-hidden">
 
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(createPageUrl('Dashboard'))}
@@ -351,7 +351,7 @@ export default function Profile() {
 
         <div ref={shareCaptureRef}>
           {section('PLAYER IDENTITY', (
-            <div className="flex gap-5 items-center">
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-center">
               <RPGHumanoidAvatar
                 level={level}
                 totalXp={profile?.total_xp || 0}
@@ -360,7 +360,7 @@ export default function Profile() {
                 stability={avatarStability}
                 relicCount={relicBalance}
               />
-              <div className="flex-1 space-y-1">
+              <div className="w-full min-w-0 flex-1 space-y-1">
                 <p className="text-2xl font-black text-white">{profile?.name}</p>
                 <p className="text-xs font-bold tracking-widest" style={{ color: '#38BDF8' }}>Lv. {level} · {rankTitle}</p>
                 <p className="text-xs" style={{ color: '#64748B' }}>Tier {tier} Avatar</p>
@@ -394,15 +394,15 @@ export default function Profile() {
 
         {section('PROFILE SHARING', (
           <div className="space-y-3">
-            <div className="rounded-xl p-3 flex items-center justify-between"
+            <div className="rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
               style={{ background: 'rgba(15,32,39,0.6)', border: '1px solid rgba(56,189,248,0.12)' }}>
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4" style={{ color: publicProfile?.is_public ? '#34D399' : '#64748B' }} />
-                <div>
+              <div className="flex items-start gap-2 min-w-0 flex-1">
+                <Globe className="w-4 h-4 mt-0.5 shrink-0" style={{ color: publicProfile?.is_public ? '#34D399' : '#64748B' }} />
+                <div className="min-w-0">
                   <p className="text-xs font-black tracking-widest" style={{ color: publicProfile?.is_public ? '#34D399' : '#64748B' }}>
                     PUBLIC PROFILE
                   </p>
-                  <p className="text-xs" style={{ color: '#334155' }}>
+                  <p className="text-xs break-words" style={{ color: '#334155' }}>
                     {publicProfile?.is_public ? 'Visible at /profile/:username' : 'Hidden from share link'}
                   </p>
                 </div>
@@ -421,12 +421,12 @@ export default function Profile() {
               <p className="text-xs break-all" style={{ color: '#94A3B8' }}>
                 {shareUrl || 'Enable public profile to generate a share link.'}
               </p>
-              <div className="flex gap-2">
-                <Button onClick={sharePublicLink} disabled={shareBusy} className="flex-1">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button onClick={sharePublicLink} disabled={shareBusy} className="w-full sm:flex-1">
                   <Share2 className="w-4 h-4 mr-2" />
                   Share Profile
                 </Button>
-                <Button variant="outline" onClick={() => profile?.id && syncPublicShare(profile.id, true)} disabled={shareBusy}>
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => profile?.id && syncPublicShare(profile.id, true)} disabled={shareBusy}>
                   <RefreshCcw className="w-4 h-4" />
                 </Button>
               </div>
@@ -441,29 +441,29 @@ export default function Profile() {
           <div className="space-y-4">
             <div className="space-y-1">
               <Label className="text-xs tracking-widest font-bold" style={{ color: '#64748B' }}>NAME</Label>
-              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+              <Input className="w-full" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                 style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a', color: '#F1F5F9' }} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-xs tracking-widest font-bold" style={{ color: '#64748B' }}>AGE</Label>
-                <Input type="number" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })}
+                <Input className="w-full" type="number" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })}
                   style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a', color: '#F1F5F9' }} />
               </div>
               <div className="space-y-1">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <Label className="text-xs tracking-widest font-bold" style={{ color: '#64748B' }}>HEIGHT</Label>
                   <button onClick={() => setHeightUnit(u => u === 'cm' ? 'ft' : 'cm')}
-                    className="text-xs" style={{ color: '#38BDF8' }}>
+                    className="text-xs shrink-0" style={{ color: '#38BDF8' }}>
                     {heightUnit === 'cm' ? '→ ft' : '→ cm'}
                   </button>
                 </div>
                 {heightUnit === 'cm' ? (
-                  <Input type="number" placeholder="cm" value={form.height_cm}
+                  <Input className="w-full" type="number" placeholder="cm" value={form.height_cm}
                     onChange={e => setForm({ ...form, height_cm: e.target.value })}
                     style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a', color: '#F1F5F9' }} />
                 ) : (
-                  <Input type="number" placeholder="ft"
+                  <Input className="w-full" type="number" placeholder="ft"
                     value={form.height_cm ? (Number(form.height_cm) / 30.48).toFixed(1) : ''}
                     onChange={e => setForm({ ...form, height_cm: e.target.value ? String(Math.round(Number(e.target.value) * 30.48)) : '' })}
                     style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a', color: '#F1F5F9' }} />
@@ -472,7 +472,7 @@ export default function Profile() {
             </div>
             <div className="space-y-1">
               <Label className="text-xs tracking-widest font-bold" style={{ color: '#64748B' }}>WEIGHT (kg)</Label>
-              <Input type="number" value={form.weight_kg} onChange={e => setForm({ ...form, weight_kg: e.target.value })}
+              <Input className="w-full" type="number" value={form.weight_kg} onChange={e => setForm({ ...form, weight_kg: e.target.value })}
                 style={{ background: 'rgba(15,32,39,0.8)', border: '1px solid #1e3a4a', color: '#F1F5F9' }} />
             </div>
             <div className="space-y-1">
@@ -481,13 +481,13 @@ export default function Profile() {
                 onTimeChange={t => setForm(f => ({ ...f, reminder_time: t }))} />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl"
+            <div className="flex items-start sm:items-center justify-between gap-3 p-3 rounded-xl"
               style={{ background: 'rgba(15,32,39,0.6)', border: '1px solid rgba(56,189,248,0.12)' }}>
-              <div className="flex items-center gap-2">
+              <div className="flex items-start gap-2 min-w-0">
                 {voiceEnabled ? <Volume2 className="w-4 h-4" style={{ color: '#38BDF8' }} /> : <VolumeX className="w-4 h-4" style={{ color: '#475569' }} />}
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs font-black tracking-widest" style={{ color: voiceEnabled ? '#38BDF8' : '#475569' }}>SYSTEM VOICE</p>
-                  <p className="text-xs" style={{ color: '#334155' }}>Personalized greeting on login</p>
+                  <p className="text-xs break-words" style={{ color: '#334155' }}>Personalized greeting on login</p>
                 </div>
               </div>
               <button onClick={toggleVoice}
@@ -498,12 +498,12 @@ export default function Profile() {
               </button>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl"
+            <div className="flex items-start sm:items-center justify-between gap-3 p-3 rounded-xl"
               style={{ background: hardcoreMode ? 'rgba(56,189,248,0.06)' : 'rgba(15,32,39,0.6)', border: `1px solid ${hardcoreMode ? 'rgba(56,189,248,0.3)' : 'rgba(56,189,248,0.12)'}` }}>
-              <div className="flex items-center gap-2">
-                <div>
+              <div className="flex items-start gap-2 min-w-0">
+                <div className="min-w-0">
                   <p className="text-xs font-black tracking-widest" style={{ color: hardcoreMode ? '#38BDF8' : '#475569' }}>HARDCORE MODE</p>
-                  <p className="text-xs" style={{ color: '#334155' }}>10s hold-to-confirm · stronger penalties · stat decay</p>
+                  <p className="text-xs break-words" style={{ color: '#334155' }}>10s hold-to-confirm · stronger penalties · stat decay</p>
                 </div>
               </div>
               <button onClick={() => setHardcoreMode(h => !h)}
