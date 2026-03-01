@@ -10,20 +10,16 @@ import XPDeltaPulse from '@/components/XPDeltaPulse';
 import { applyProgressionSnapshot, penaltyXpRpc } from '@/lib/progression';
 import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 import {
-  fetchActivePunishments,
+  ensurePendingPunishmentsForMissedHabits,
   getPunishmentProjectedLoss,
   getPunishmentRemainingMs,
+  isOpenPunishment,
   resolvePunishmentEarly,
   resolvePunishmentTimeouts,
 } from '@/lib/punishments';
 import { formatCountdown } from '@/lib/gameState';
 
-const isOpenPunishment = (row) => {
-  if (!row) return false;
-  if (row.resolved || row.penalty_applied) return false;
-  if (row.status === 'completed' || row.status === 'timed_out' || row.status === 'refused') return false;
-  return true;
-};
+const PUNISHMENT_TIME_LIMIT_HOURS = 8;
 
 const rowDateSafe = (row) => (row?.date || row?.logged_at || row?.created_at || '').toString().slice(0, 10);
 
@@ -44,20 +40,31 @@ export default function Punishments() {
     setLoadError('');
     try {
       await resolvePunishmentTimeouts({ userId, source: 'punishment_timeout' });
-      const [rows, habitsRes, logsRes, profileRes] = await Promise.all([
-        fetchActivePunishments(userId),
+      const [punishmentsRes, habitsRes, logsRes, profileRes] = await Promise.all([
+        supabase.from('punishments').select('*').eq('user_id', userId),
         supabase.from('habits').select('id,title,punishment_text,punishment_xp_penalty_pct').eq('user_id', userId),
         supabase.from('habit_logs').select('*').eq('user_id', userId),
         supabase.from('profiles').select('*').eq('id', userId).limit(1),
       ]);
 
+      if (punishmentsRes.error) throw punishmentsRes.error;
       if (habitsRes.error) throw habitsRes.error;
       if (logsRes.error) throw logsRes.error;
       if (profileRes.error) throw profileRes.error;
 
+      const profileRow = profileRes.data?.[0] || null;
+      const allPunishments = await ensurePendingPunishmentsForMissedHabits({
+        userId,
+        profile: profileRow,
+        habits: habitsRes.data || [],
+        logs: logsRes.data || [],
+        punishments: punishmentsRes.data || [],
+        timeLimitHours: PUNISHMENT_TIME_LIMIT_HOURS,
+      });
+
       const habits = new Map((habitsRes.data || []).map((h) => [h.id, h]));
       const logs = new Map((logsRes.data || []).map((l) => [l.id, l]));
-      const normalized = (rows || [])
+      const normalized = (allPunishments || [])
         .filter(isOpenPunishment)
         .map((punishment) => {
           const habit = habits.get(punishment.habit_id) || null;
@@ -76,7 +83,7 @@ export default function Punishments() {
         .sort((a, b) => new Date(a.punishment.expires_at || a.punishment.created_at).getTime() - new Date(b.punishment.expires_at || b.punishment.created_at).getTime());
 
       setEntries(normalized);
-      setProfile(profileRes.data?.[0] || null);
+      setProfile(profileRow);
     } catch (err) {
       setLoadError(err?.message || 'Failed to load punishments.');
     } finally {
@@ -204,7 +211,7 @@ export default function Punishments() {
             <div className="flex-1">
               <p className="text-red-400 text-xs font-black tracking-widest">PUNISHMENT CONTROL</p>
               <p className="text-white text-base font-bold">
-                {entries.length} active · projected loss {projectedLoss} XP
+                {entries.length} active · accumulated punishment {projectedLoss} XP
               </p>
             </div>
             <Button variant="outline" onClick={() => user?.id && loadData(user.id)}>Refresh</Button>

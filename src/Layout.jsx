@@ -27,8 +27,10 @@ const NAV_ITEMS = [
   { label: 'Analytics', page: 'Analytics', icon: BarChart2 },
   { label: 'Quests', page: 'Quests', icon: Sword },
   { label: 'Relics', page: 'Relics', icon: Gem },
+  { label: 'Redeem Codes', page: 'RedeemCodes', icon: Ticket },
   { label: 'Archive', page: 'Archive', icon: Archive },
   { label: 'Dungeon', page: 'Dungeon', icon: Flame },
+  { label: 'Punishments', page: 'Punishments', icon: ShieldAlert },
   { label: 'Profile', page: 'Profile', icon: User },
 ];
 
@@ -318,7 +320,7 @@ export default function Layout({ children, currentPageName }) {
           </nav>
 
           {/* Desktop side nav */}
-          <nav className="hidden md:flex fixed left-0 top-0 bottom-0 w-16 flex-col items-center py-4 gap-4 z-50"
+          <nav className="hidden md:flex fixed left-0 top-0 bottom-0 w-16 flex-col items-center py-4 z-50"
             style={{ background: 'rgba(15,32,39,0.95)', backdropFilter: 'blur(16px)', borderRight: '1px solid rgba(56,189,248,0.15)' }}>
             {LOGO_URL && (
               <img
@@ -349,25 +351,27 @@ export default function Layout({ children, currentPageName }) {
                 <span style={{ color: '#4FD1C5' }}>N</span>
               </div>
             )}
-            {NAV_ITEMS.map(({ label, page, icon: Icon }) => {
-              const active = currentPageName === page;
-              return (
-                <Link
-                  key={page}
-                  to={createPageUrl(page)}
-                  title={label}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110"
-                  style={{
-                    background: active ? 'rgba(56,189,248,0.2)' : 'transparent',
-                    border: active ? '1px solid rgba(56,189,248,0.4)' : '1px solid transparent',
-                    color: active ? '#38BDF8' : '#475569',
-                    boxShadow: active ? '0 0 12px rgba(56,189,248,0.3)' : 'none',
-                  }}
-                >
-                  <Icon className="w-5 h-5" />
-                </Link>
-              );
-            })}
+            <div className="w-full flex-1 flex flex-col items-center gap-3 overflow-y-auto overflow-x-hidden py-1">
+              {NAV_ITEMS.map(({ label, page, icon: Icon }) => {
+                const active = currentPageName === page;
+                return (
+                  <Link
+                    key={page}
+                    to={createPageUrl(page)}
+                    title={label}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110 shrink-0"
+                    style={{
+                      background: active ? 'rgba(56,189,248,0.2)' : 'transparent',
+                      border: active ? '1px solid rgba(56,189,248,0.4)' : '1px solid transparent',
+                      color: active ? '#38BDF8' : '#475569',
+                      boxShadow: active ? '0 0 12px rgba(56,189,248,0.3)' : 'none',
+                    }}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </Link>
+                );
+              })}
+            </div>
             {isAuthenticated ? (
               <button
                 title="Sign Out"

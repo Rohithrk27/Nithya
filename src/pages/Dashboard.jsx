@@ -32,6 +32,7 @@ import {
   resolveExpiredQuests,
 } from '@/lib/gameState';
 import {
+  ensurePendingPunishmentsForMissedHabits,
   getPunishmentProjectedLoss,
   getPunishmentRemainingMs,
   markPunishmentUrgencyNotified,
@@ -477,45 +478,14 @@ export default function Dashboard() {
       }
 
       let punishmentsData = punishmentsRes.data || [];
-
-      const punishmentLogIds = new Set(punishmentsData.map((p) => p.habit_log_id).filter(Boolean));
-      const missingPunishments = logsData
-        .filter((l) => l.status === 'missed')
-        .filter((l) => !punishmentLogIds.has(l.id))
-        .map((l) => {
-          const habit = habitsData.find((h) => h.id === l.habit_id);
-          if (!habit?.punishment_text) return null;
-          const penaltyEstimate = punishmentRefusalPenalty(p, habit?.punishment_xp_penalty_pct || 10);
-          const startIso = new Date().toISOString();
-          const expiryIso = new Date(Date.now() + (PUNISHMENT_TIME_LIMIT_HOURS * 60 * 60 * 1000)).toISOString();
-          return {
-            user_id: userId,
-            habit_id: habit.id,
-            habit_log_id: l.id,
-            status: 'pending',
-            text: habit.punishment_text,
-            reason: habit.punishment_text,
-            total_xp_penalty: penaltyEstimate,
-            accumulated_penalty: penaltyEstimate,
-            started_at: startIso,
-            expires_at: expiryIso,
-            resolved: false,
-            penalty_applied: false,
-            warning_notified: false,
-            urgency_notified: false,
-          };
-        })
-        .filter(Boolean);
-
-      if (missingPunishments.length > 0) {
-        const { data: insertedPunishments, error: missingPunishmentError } = await supabase
-          .from('punishments')
-          .insert(missingPunishments)
-          .select('*');
-        if (!missingPunishmentError && insertedPunishments?.length) {
-          punishmentsData = [...punishmentsData, ...insertedPunishments];
-        }
-      }
+      punishmentsData = await ensurePendingPunishmentsForMissedHabits({
+        userId,
+        profile: p,
+        habits: habitsData,
+        logs: logsData,
+        punishments: punishmentsData,
+        timeLimitHours: PUNISHMENT_TIME_LIMIT_HOURS,
+      });
 
       setPendingPunishments(buildPendingPunishments(punishmentsData, habitsData, logsData));
 
