@@ -10,8 +10,7 @@ import BMIMeter from '../components/BMIMeter';
 import HabitReminderSetup from '../components/HabitReminderSetup';
 import RPGHumanoidAvatar, { getAvatarTier } from '../components/RPGHumanoidAvatar';
 import StatGrid from '../components/StatGrid';
-import { computeLevel, getRankTitle, computeAllStats } from '../components/gameEngine';
-import html2canvas from 'html2canvas';
+import { computeLevel, getRankTitle } from '../components/gameEngine';
 import {
   fetchOwnPublicProfile,
   getPublicProfileShareUrl,
@@ -185,7 +184,6 @@ export default function Profile() {
   const level = useMemo(() => computeLevel(profile?.total_xp || 0), [profile]);
   const tier = useMemo(() => getAvatarTier(level), [level]);
   const rankTitle = useMemo(() => String(getRankTitle(level)), [level]);
-  const finalStats = useMemo(() => profile ? computeAllStats(profile, level) : {}, [profile, level]);
   const liveBMI = form.weight_kg && form.height_cm
     ? Number(form.weight_kg) / Math.pow(Number(form.height_cm) / 100, 2)
     : 0;
@@ -235,6 +233,7 @@ export default function Profile() {
       const captureNode = shareCaptureRef.current;
       let screenshotFile = null;
       if (captureNode) {
+        const { default: html2canvas } = await import('html2canvas');
         const canvas = await html2canvas(captureNode, {
           backgroundColor: '#0f2027',
           scale: Math.min(2, window.devicePixelRatio || 1),
@@ -322,6 +321,53 @@ export default function Profile() {
   return (
     <div className="min-h-screen overflow-x-hidden" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
       <div className="max-w-xl mx-auto p-4 md:p-6 space-y-5 overflow-x-hidden">
+        <div
+          aria-hidden
+          style={{
+            position: 'fixed',
+            left: -10000,
+            top: 0,
+            width: 420,
+            pointerEvents: 'none',
+            zIndex: -1,
+          }}
+        >
+          <div
+            ref={shareCaptureRef}
+            className="w-full rounded-2xl p-5 space-y-4"
+            style={{
+              background: 'linear-gradient(145deg, rgba(15,32,39,0.96), rgba(11,26,33,0.96))',
+              border: '1px solid rgba(56,189,248,0.25)',
+            }}
+          >
+            <p className="text-xs font-black tracking-widest" style={{ color: '#38BDF8' }}>PROFILE SNAPSHOT</p>
+            <div className="flex items-center gap-4">
+              <RPGHumanoidAvatar
+                level={level}
+                totalXp={profile?.total_xp || 0}
+                streak={profile?.daily_streak ?? profile?.global_streak ?? 0}
+                shadowDebt={systemState?.shadow_debt_xp || 0}
+                stability={avatarStability}
+                relicCount={relicBalance}
+              />
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-xl font-black text-white">{profile?.name || 'Player'}</p>
+                <p className="text-xs font-bold tracking-wide text-slate-300">
+                  @{publicProfile?.username || 'username-unavailable'}
+                </p>
+                <p className="text-xs font-bold tracking-widest" style={{ color: '#38BDF8' }}>Lv. {level} · {rankTitle}</p>
+                <p className="text-xs" style={{ color: '#64748B' }}>Tier {tier} Avatar</p>
+              </div>
+            </div>
+            <div
+              className="rounded-xl p-3"
+              style={{ background: 'rgba(15,32,39,0.66)', border: '1px solid rgba(56,189,248,0.16)' }}
+            >
+              <p className="text-[10px] font-black tracking-widest mb-2" style={{ color: '#38BDF8' }}>STAT GRAPH</p>
+              <StatGrid profile={profile} level={level} statPoints={0} onAllocate={() => {}} compact />
+            </div>
+          </div>
+        </div>
 
         <div className="flex items-center gap-3">
           <button onClick={() => navigate(createPageUrl('Dashboard'))}
@@ -335,7 +381,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div ref={shareCaptureRef} className="space-y-5">
+        <div className="space-y-5">
           {section('PLAYER IDENTITY', (
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-center">
               <RPGHumanoidAvatar

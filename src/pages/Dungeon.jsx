@@ -110,8 +110,8 @@ export default function Dungeon() {
         fetchPartyMembers(currentParty.id),
         fetchPartyRewards(currentParty.id),
       ]);
-      setPartyMembers(members || []);
-      setPartyRewards(rewards || []);
+      setPartyMembers(Array.isArray(members) ? members.filter(Boolean) : []);
+      setPartyRewards(Array.isArray(rewards) ? rewards.filter(Boolean) : []);
     } else {
       setPartyMembers([]);
       setPartyRewards([]);
@@ -119,7 +119,7 @@ export default function Dungeon() {
 
     try {
       const activeFriends = await fetchFriendActiveDungeons(userId);
-      setFriendRuns(activeFriends || []);
+      setFriendRuns(Array.isArray(activeFriends) ? activeFriends.filter(Boolean) : []);
     } catch (_) {
       setFriendRuns([]);
     }
@@ -325,7 +325,6 @@ export default function Dungeon() {
         inviteCode: joinCode.trim(),
       });
       setJoinCode('');
-      await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
       toastError(err?.message || 'Failed to join party.');
@@ -339,7 +338,6 @@ export default function Dungeon() {
     setPartyBusy(true);
     try {
       await joinDungeonParty({ userId: user.id, partyId, role: 'member' });
-      await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
       toastError(err?.message || 'Failed to join friend party.');
@@ -395,7 +393,6 @@ export default function Dungeon() {
         failedUserId: user.id,
         stabilityPenalty: 15,
       });
-      await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
       toastError(err?.message || 'Failed to apply party failure penalty.');
@@ -414,7 +411,6 @@ export default function Dungeon() {
         setXpDelta((merged.nextProfile.total_xp || 0) - (profile?.total_xp || 0));
         setProfile(merged.nextProfile);
       }
-      await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
       toastError(err?.message || 'Failed to claim party reward.');
@@ -546,7 +542,8 @@ export default function Dungeon() {
   };
 
   const requestDeleteParty = () => {
-    if (!isPartyHost || !party?.id || party.status !== 'waiting' || partyBusy) return;
+    if (!isPartyHost || !party?.id || partyBusy) return;
+    if (party.status === 'completed') return;
     setShowDeletePartyConfirm(true);
   };
 
@@ -559,7 +556,6 @@ export default function Dungeon() {
         partyId: party.id,
       });
       toastInfo('Hosted collab party deleted.');
-      await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
       toastError(err?.message || 'Failed to delete hosted collab party.');
@@ -604,10 +600,11 @@ export default function Dungeon() {
   const xpMult = activeDungeon?.xp_bonus_multiplier || 1.5;
   const isCollabRun = activeDungeon?.mode === 'collab';
   const isPartyHost = !!(user?.id && party?.host_user_id === user.id);
+  const safePartyMembers = Array.isArray(partyMembers) ? partyMembers.filter(Boolean) : [];
+  const safeFriendRuns = Array.isArray(friendRuns) ? friendRuns.filter(Boolean) : [];
   const canEditPartySetup = !party || (isPartyHost && party.status === 'waiting');
-  const memberCount = (partyMembers || []).filter((m) => ['joined', 'completed'].includes(m.status)).length;
+  const memberCount = safePartyMembers.filter((m) => ['joined', 'completed'].includes(m?.status)).length;
   const myPartyReward = (partyRewards || []).find((r) => r.user_id === user?.id) || null;
-  const myPartyMember = (partyMembers || []).find((m) => m.user_id === user?.id) || null;
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f2027' }}>
@@ -649,7 +646,9 @@ export default function Dungeon() {
       <ConfirmActionModal
         open={showDeletePartyConfirm}
         title="Delete hosted collab party?"
-        message="This removes the waiting party and invite code for all members."
+        message={party?.status === 'active'
+          ? 'This ends and deletes the active hosted collab party for all members.'
+          : 'This removes the waiting party and invite code for all members.'}
         confirmText="Delete Party"
         cancelText="Cancel"
         danger
@@ -843,6 +842,18 @@ export default function Dungeon() {
                     </Button>
                   )}
                 </div>
+                {isPartyHost && party.status !== 'completed' && (
+                  <Button
+                    variant="ghost"
+                    onClick={requestDeleteParty}
+                    disabled={partyBusy}
+                    className="w-full"
+                    style={{ border: '1px solid rgba(248,113,113,0.35)', color: '#F87171' }}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Hosted Party
+                  </Button>
+                )}
               </div>
             )}
 
@@ -1172,23 +1183,25 @@ export default function Dungeon() {
                         </p>
                       </div>
                       <div className="space-y-1 max-h-40 overflow-y-auto">
-                        {partyMembers.map((member) => (
+                        {safePartyMembers.map((member) => (
                           <div key={member.user_id} className="rounded-md px-2 py-1.5 flex items-center justify-between border border-slate-700/50 bg-slate-900/40">
                             <p className="text-xs text-slate-100 truncate">{member.user_id}</p>
                             <p className="text-[10px] text-cyan-300 font-bold">{member.role?.toUpperCase()} · {member.status?.toUpperCase()}</p>
                           </div>
                         ))}
                       </div>
-                      {isPartyHost && party.status === 'waiting' && (
+                      {isPartyHost && party.status !== 'completed' && (
                         <div className="grid grid-cols-12 gap-2">
-                          <Button onClick={startPartyDungeon} disabled={partyBusy} className="w-full col-span-8">
-                            {partyBusy ? 'Starting...' : 'Start Party Dungeon'}
-                          </Button>
+                          {party.status === 'waiting' && (
+                            <Button onClick={startPartyDungeon} disabled={partyBusy} className="w-full col-span-8">
+                              {partyBusy ? 'Starting...' : 'Start Party Dungeon'}
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             onClick={requestDeleteParty}
                             disabled={partyBusy}
-                            className="w-full col-span-4"
+                            className={`w-full ${party.status === 'waiting' ? 'col-span-4' : 'col-span-12'}`}
                             style={{ border: '1px solid rgba(248,113,113,0.35)', color: '#F87171' }}
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
@@ -1205,12 +1218,12 @@ export default function Dungeon() {
                   )}
                 </div>
 
-                {friendRuns.length > 0 && (
+                {safeFriendRuns.length > 0 && (
                   <div className="rounded-2xl p-4 space-y-2" style={{ background: 'rgba(10,25,33,0.72)', border: '1px solid rgba(56,189,248,0.18)' }}>
                     <p className="text-xs font-black tracking-widest text-cyan-300 flex items-center gap-2">
                       <Link2 className="w-3.5 h-3.5" /> FRIEND ACTIVE DUNGEONS
                     </p>
-                    {friendRuns.map((run) => (
+                    {safeFriendRuns.map((run) => (
                       <div key={run.dungeon_run_id} className="rounded-lg p-2 flex items-center justify-between gap-2" style={{ background: 'rgba(15,23,42,0.55)', border: '1px solid rgba(56,189,248,0.15)' }}>
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-white truncate">{run.friend_name} · {run.challenge_title}</p>

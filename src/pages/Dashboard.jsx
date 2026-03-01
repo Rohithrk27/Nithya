@@ -1386,8 +1386,13 @@ export default function Dashboard() {
   }
 
   const activeQuests = quests.filter((q) => isQuestInProgressStatus(q.status));
-  const completedHabitsToday = logs.filter((l) => l.status === 'completed').length;
   const totalHabitsToday = habits.length;
+  const habitIdSet = new Set(habits.map((h) => h.id));
+  const completedHabitsToday = new Set(
+    logs
+      .filter((l) => l.status === 'completed' && habitIdSet.has(l.habit_id))
+      .map((l) => l.habit_id)
+  ).size;
   const habitProgressPct = totalHabitsToday > 0
     ? Math.min(100, Math.round((completedHabitsToday / totalHabitsToday) * 100))
     : 0;
