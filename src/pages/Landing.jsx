@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -6,17 +6,76 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Shield, Sword, Trophy } from 'lucide-react';
 import { createPageUrl } from '../utils';
+import LogoMark from '../../logo/logo.svg';
+import './LandingIntro.css';
 
 const generateUserCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let suffix = '';
-  for (let i = 0; i < 6; i += 1) {
-    suffix += chars[Math.floor(Math.random() * chars.length)];
-  }
+  for (let i = 0; i < 6; i += 1) suffix += chars[Math.floor(Math.random() * chars.length)];
   return `HNTR-${suffix}`;
 };
+
+const IntroHero = memo(function IntroHero({ onBeginJourney, onSignIn }) {
+  return (
+    <div className="intro-page">
+      <motion.div
+        className="intro-bg-fade"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.75, ease: 'easeOut' }}
+      />
+
+      <main className="intro-hero" role="main">
+        <motion.section
+          className="intro-logo-section"
+          initial={{ opacity: 0, scale: 0.86 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.22, duration: 0.65, ease: [0.2, 0.8, 0.2, 1] }}
+        >
+          <div className="intro-logo-wave" aria-hidden="true" />
+          <div className="intro-avatar-silhouette" aria-hidden="true" />
+          <div className="intro-logo-crop">
+            <img src={LogoMark} alt="Nithya logo" className="intro-logo-svg" />
+          </div>
+        </motion.section>
+
+        <motion.h1
+          className="intro-header-text"
+          initial={{ opacity: 0, y: 26 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35, duration: 0.7, ease: [0.2, 0.8, 0.2, 1] }}
+        >
+          NITHYA
+        </motion.h1>
+
+        <motion.p
+          className="intro-tagline"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.58, duration: 0.62, ease: 'easeOut' }}
+        >
+          Discipline. Evolve. Conquer.
+        </motion.p>
+
+        <motion.div
+          className="intro-cta"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.82, duration: 0.5, ease: 'easeOut' }}
+        >
+          <Button type="button" className="intro-btn intro-btn--primary" onClick={onBeginJourney}>
+            Begin Journey
+          </Button>
+          <Button type="button" className="intro-btn intro-btn--secondary" onClick={onSignIn}>
+            Sign In
+          </Button>
+        </motion.div>
+      </main>
+    </div>
+  );
+});
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -27,7 +86,7 @@ export default function Landing() {
     age: '',
     height_cm: '',
     weight_kg: '',
-    reminder_time: '09:00'
+    reminder_time: '09:00',
   });
 
   const normalizeErrorMessage = (errorLike) => {
@@ -41,14 +100,12 @@ export default function Landing() {
 
   useEffect(() => {
     const init = async () => {
-      // Set a timeout to prevent getting stuck on loading
       const timeoutId = setTimeout(() => {
         setStep('intro');
-      }, 5000); // 5 second timeout as fallback
+      }, 5000);
 
       try {
         const { data: { user } } = await supabase.auth.getUser();
-
         clearTimeout(timeoutId);
 
         if (!user) {
@@ -82,10 +139,8 @@ export default function Landing() {
 
   const goToAuthFlow = (mode) => {
     const loginTarget = `${createPageUrl('Login')}?mode=${mode}`;
-    // Navigate immediately so button clicks always feel responsive.
     navigate(loginTarget);
 
-    // If an active session exists, prefer onboarding/dashboard flow.
     void supabase.auth.getUser()
       .then(async ({ data: { user } }) => {
         if (!user) return;
@@ -152,66 +207,21 @@ export default function Landing() {
     }
   };
 
+  const introHandlers = useMemo(() => ({
+    onBeginJourney: () => goToAuthFlow('signup'),
+    onSignIn: () => goToAuthFlow('login'),
+  }), []);
+
   if (step === 'loading') {
     return (
-      <div className="min-h-screen bg-[#0F172A] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0EA5E9]"></div>
+      <div className="min-h-screen bg-[#030712] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#22D3EE]" />
       </div>
     );
   }
 
   if (step === 'intro') {
-    return (
-      <div className="min-h-screen relative overflow-hidden bg-[#071229] text-white">
-        <div className="absolute inset-0 pointer-events-none" style={{
-          background: 'radial-gradient(circle at 20% 20%, rgba(56,189,248,0.18), transparent 45%), radial-gradient(circle at 80% 30%, rgba(56,189,248,0.16), transparent 48%)'
-        }} />
-        <div className="absolute inset-0 pointer-events-none" style={{
-          backgroundImage: 'linear-gradient(rgba(56,189,248,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,0.05) 1px, transparent 1px)',
-          backgroundSize: '70px 70px',
-        }} />
-
-        <div className="relative z-10 min-h-screen max-w-5xl mx-auto px-6 py-12 flex flex-col justify-center">
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="max-w-3xl">
-            <p className="text-cyan-300 text-xs tracking-[0.2em] font-black mb-3">SYSTEM BOOTING</p>
-            <h1 className="text-3xl md:text-5xl lg:text-6xl font-black leading-tight">
-              Awaken Your <span className="text-cyan-300">Limitless Self</span>
-            </h1>
-            <p className="text-slate-300 mt-5 text-base md:text-lg max-w-2xl">
-              Nithya transforms daily habits into a Solo Leveling style progression: quests, ranks, stats, and strict consequences.
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-8"
-          >
-            <div className="rounded-xl border border-cyan-400/20 bg-[#0f1f34cc] p-4">
-              <Sword className="w-5 h-5 text-cyan-300 mb-2" />
-              <p className="font-bold">Daily Quests</p>
-              <p className="text-xs text-slate-400 mt-1">One completion per day. No grinding loopholes.</p>
-            </div>
-            <div className="rounded-xl border border-cyan-400/20 bg-[#0f1f34cc] p-4">
-              <Shield className="w-5 h-5 text-cyan-300 mb-2" />
-              <p className="font-bold">Strict Penalties</p>
-              <p className="text-xs text-slate-400 mt-1">Missed tasks trigger punishments and strike sanctions.</p>
-            </div>
-            <div className="rounded-xl border border-cyan-400/20 bg-[#0f1f34cc] p-4">
-              <Trophy className="w-5 h-5 text-cyan-300 mb-2" />
-              <p className="font-bold">Rank Progression</p>
-              <p className="text-xs text-slate-400 mt-1">Unlock gates, clear evaluations, rise through ranks.</p>
-            </div>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mt-8 flex flex-wrap gap-3">
-            <Button type="button" className="h-11 px-6" onClick={() => goToAuthFlow('signup')}>Create Account</Button>
-            <Button type="button" variant="outline" className="h-11 px-6 border-cyan-500/40 text-cyan-300" onClick={() => goToAuthFlow('login')}>Sign In</Button>
-          </motion.div>
-        </div>
-      </div>
-    );
+    return <IntroHero {...introHandlers} />;
   }
 
   return (

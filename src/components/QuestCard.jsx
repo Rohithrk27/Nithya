@@ -11,7 +11,33 @@ const TYPE_CONFIG = {
   penalty: { label: 'PENALTY', color: '#F87171', icon: Skull },
 };
 
-export default function QuestCard({ quest, onComplete = async (_quest) => {}, onFail = null, index = 0, disabled = false }) {
+const getQuestRemainingMs = (quest, nowMs) => {
+  if (!quest) return 0;
+  const exp = quest.expires_at || quest.expires_date || null;
+  if (!exp) return 0;
+  const parsed = new Date(exp);
+  if (Number.isNaN(parsed.getTime())) return 0;
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  return Math.max(0, parsed.getTime() - now);
+};
+
+const toCountdown = (ms) => {
+  const safe = Math.max(0, Number(ms || 0));
+  const totalSeconds = Math.floor(safe / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${String(hours).padStart(2, '0')}h`;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+const isQuestInProgressStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return ['active', 'in_progress', 'accepted', 'inprogress', 'ongoing', 'started', 'start'].includes(normalized);
+};
+
+export default function QuestCard({ quest, onComplete = async (_quest) => {}, onFail = null, index = 0, disabled = false, nowMs = Date.now() }) {
   const [completing, setCompleting] = useState(false);
   const cfg = TYPE_CONFIG[quest.type] || TYPE_CONFIG.daily;
   const Icon = cfg.icon;
@@ -19,6 +45,11 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
   const progressCurrent = Math.max(0, Number(quest.progress_current || 0));
   const progressTarget = Math.max(1, Number(quest.progress_target || 100));
   const progressPct = Math.min(100, Math.round((progressCurrent / progressTarget) * 100));
+  const remainingMs = Number.isFinite(quest.remaining_ms) ? Math.max(0, quest.remaining_ms) : getQuestRemainingMs(quest, nowMs);
+  const countdownLabel = quest.remaining_label || toCountdown(remainingMs);
+  const timerUrgency = quest.timer_urgency || (remainingMs <= (2 * 60 * 60 * 1000) ? 'high' : (remainingMs <= (8 * 60 * 60 * 1000) ? 'medium' : 'low'));
+  const timerColor = timerUrgency === 'high' ? '#F87171' : (timerUrgency === 'medium' ? '#FBBF24' : '#34D399');
+  const inProgress = isQuestInProgressStatus(quest.status);
 
   const handleComplete = async () => {
     setCompleting(true);
@@ -53,6 +84,11 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-xs font-bold tracking-widest" style={{ color: cfg.color }}>{cfg.label}</span>
+              {inProgress && (
+                <span className="text-[10px] font-black tracking-wide px-1.5 py-0.5 rounded border" style={{ color: '#38BDF8', borderColor: '#38BDF866', background: '#0C4A6E44' }}>
+                  IN PROGRESS
+                </span>
+              )}
               {quest.stat_reward && (
                 <span className="text-xs" style={{ color: `${cfg.color}88` }}>+{quest.stat_reward_amount || 1} {quest.stat_reward?.toUpperCase()}</span>
               )}
@@ -65,6 +101,14 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
               <span className="text-xs font-bold" style={{ color: '#FBBF24' }}>⚡ +{quest.xp_reward} XP</span>
               {quest.expires_date && (
                 <span className="text-xs" style={{ color: '#64748B' }}>Expires {quest.expires_date}</span>
+              )}
+              {(quest.expires_at || quest.expires_date) && inProgress && (
+                <span
+                  className="text-[10px] font-black tracking-wide px-2 py-0.5 rounded border"
+                  style={{ color: timerColor, borderColor: `${timerColor}66`, background: `${timerColor}18` }}
+                >
+                  {countdownLabel}
+                </span>
               )}
             </div>
             <div className="mt-2.5 space-y-1">
@@ -79,12 +123,29 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
                 />
               </div>
             </div>
+            {(quest.expires_at || quest.expires_date) && inProgress && (
+              <div className="mt-2">
+                <p className="text-[10px] mb-1 font-bold tracking-wide" style={{ color: timerColor }}>
+                  Remaining: {countdownLabel}
+                </p>
+                <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(100,116,139,0.25)' }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${timerUrgency === 'high' ? 100 : timerUrgency === 'medium' ? 65 : 35}%`,
+                      background: `linear-gradient(90deg, ${timerColor}, rgba(255,255,255,0.6))`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {quest.status === 'active' && (
+        {inProgress && (
           <div className="flex gap-2 mt-3">
             <Button
+              type="button"
               size="sm"
               onClick={handleComplete}
               disabled={completing || disabled}
@@ -100,6 +161,7 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
             </Button>
             {!isPenalty && onFail && (
               <Button
+                type="button"
                 size="sm"
                 onClick={() => onFail(quest)}
                 variant="ghost"

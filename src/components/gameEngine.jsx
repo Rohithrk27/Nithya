@@ -132,16 +132,19 @@ export function applyStatDecay(profile, statKey) {
 // ─── AVATAR TIER ────────────────────────────────────────────────────────────
 
 export function getAvatarTier(level) {
-  if (level >= 1000) return 10;
-  if (level >= 900)  return 9;
-  if (level >= 800)  return 8;
-  if (level >= 650)  return 7;
-  if (level >= 500)  return 6;
-  if (level >= 350)  return 5;
-  if (level >= 200)  return 4;
-  if (level >= 100)  return 3;
-  if (level >= 50)   return 2;
-  if (level >= 10)   return 1;
+  const safeLevel = Math.max(0, Number(level) || 0);
+  // Keep avatar evolution responsive in early progression.
+  // This restores gradual visible upgrades similar to the earlier 3/8/16 stage cadence.
+  if (safeLevel >= 300) return 10;
+  if (safeLevel >= 230) return 9;
+  if (safeLevel >= 170) return 8;
+  if (safeLevel >= 120) return 7;
+  if (safeLevel >= 80)  return 6;
+  if (safeLevel >= 50)  return 5;
+  if (safeLevel >= 30)  return 4;
+  if (safeLevel >= 16)  return 3;
+  if (safeLevel >= 8)   return 2;
+  if (safeLevel >= 3)   return 1;
   return 0;
 }
 

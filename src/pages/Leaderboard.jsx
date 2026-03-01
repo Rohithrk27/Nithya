@@ -8,6 +8,12 @@ import { Input } from '@/components/ui/input';
 import HoloPanel from '@/components/HoloPanel';
 import SystemBackground from '@/components/SystemBackground';
 import { computeLevel, STAT_KEYS } from '@/components/gameEngine';
+import {
+  fetchFriendsState,
+  respondFriendRequestRpc,
+  searchProfileByUserCode,
+  sendFriendRequestRpc,
+} from '@/lib/social';
 
 const SCORE_WEIGHTS = {
   level: 12,
@@ -93,6 +99,7 @@ export default function Leaderboard() {
   const [activeTab, setActiveTab] = useState('global');
   const [loading, setLoading] = useState(true);
   const [friendsFeatureEnabled, setFriendsFeatureEnabled] = useState(true);
+  const [respondingRequestId, setRespondingRequestId] = useState('');
 
   const hydrateRows = useCallback((profiles) => {
     return (profiles || [])
@@ -121,43 +128,30 @@ export default function Leaderboard() {
         directorySeed[profile.id] = profile;
       }
 
-      const { data: requests, error: reqError } = await supabase
-        .from('friend_requests')
-        .select('*')
-        .or(`requester_id.eq.${userId},receiver_id.eq.${userId}`);
-
-      if (reqError) {
-        setFriendsFeatureEnabled(false);
-        setIncomingRequests([]);
-        setSentRequests([]);
-        setFriendRows([]);
-        setProfileDirectory(directorySeed);
-      } else {
+      try {
+        const friendState = await fetchFriendsState(userId);
         setFriendsFeatureEnabled(true);
-        const incoming = (requests || []).filter((r) => r.receiver_id === userId && r.status === 'pending');
-        const sent = (requests || []).filter((r) => r.requester_id === userId && r.status === 'pending');
+        const incoming = (friendState.incoming || []).map((row) => ({
+          id: `${row.user_id}:${row.friend_user_id}`,
+          requester_id: row.user_id,
+          receiver_id: row.friend_user_id,
+          status: row.status,
+        }));
+        const sent = (friendState.outgoing || []).map((row) => ({
+          id: `${row.user_id}:${row.friend_user_id}`,
+          requester_id: row.user_id,
+          receiver_id: row.friend_user_id,
+          status: row.status,
+        }));
         setIncomingRequests(incoming);
         setSentRequests(sent);
 
-        const relatedIds = Array.from(new Set((requests || []).flatMap((r) => [r.requester_id, r.receiver_id])));
-        const idsToFetch = relatedIds.filter((id) => !directorySeed[id]);
-        if (idsToFetch.length > 0) {
-          const { data: relatedProfiles } = await supabase
-            .from('profiles')
-            .select('*')
-            .in('id', idsToFetch);
-          for (const rp of relatedProfiles || []) {
-            directorySeed[rp.id] = rp;
-          }
+        for (const [id, p] of Object.entries(friendState.profilesById || {})) {
+          if (!directorySeed[id]) directorySeed[id] = p;
         }
-        setProfileDirectory(directorySeed);
+        setProfileDirectory({ ...directorySeed });
 
-        const accepted = (requests || []).filter((r) => r.status === 'accepted');
-        const friendIds = Array.from(
-          new Set(
-            accepted.map((r) => (r.requester_id === userId ? r.receiver_id : r.requester_id))
-          )
-        );
+        const friendIds = Array.from(new Set((friendState.accepted || []).map((r) => r.friend_user_id)));
         const ids = Array.from(new Set([userId, ...friendIds]));
         const { data: friendsProfiles, error: friendsError } = await supabase
           .from('profiles')
@@ -170,6 +164,12 @@ export default function Leaderboard() {
           setProfileDirectory({ ...directorySeed });
           setFriendRows(hydrateRows(friendsProfiles));
         }
+      } catch (_friendErr) {
+        setFriendsFeatureEnabled(false);
+        setIncomingRequests([]);
+        setSentRequests([]);
+        setFriendRows([]);
+        setProfileDirectory(directorySeed);
       }
     } finally {
       setLoading(false);
@@ -222,11 +222,13 @@ export default function Leaderboard() {
       return;
     }
 
-    const { data: targetProfile } = await supabase
-      .from('profiles')
-      .select('id,name,email,user_code')
-      .eq('user_code', targetCode)
-      .maybeSingle();
+    let targetProfile = null;
+    try {
+      targetProfile = await searchProfileByUserCode(targetCode);
+    } catch (_) {
+      setStatusText('User lookup failed.');
+      return;
+    }
 
     if (!targetProfile?.id) {
       setStatusText('User not found for that User ID.');
@@ -238,39 +240,40 @@ export default function Leaderboard() {
       return;
     }
 
-    const { data: existing } = await supabase
-      .from('friend_requests')
-      .select('id,status,requester_id,receiver_id')
-      .or(`and(requester_id.eq.${user.id},receiver_id.eq.${targetProfile.id}),and(requester_id.eq.${targetProfile.id},receiver_id.eq.${user.id})`)
-      .limit(1);
-
-    if (existing?.length) {
-      setStatusText(`Request already exists (${existing[0].status}).`);
+    try {
+      const row = await sendFriendRequestRpc({ userId: user.id, friendUserId: targetProfile.id });
+      if (row?.status === 'accepted') {
+        setStatusText(`Friend connected with ${formatHunterName(targetProfile)}.`);
+      } else {
+        setStatusText(`Friend request sent to ${formatHunterName(targetProfile)}.`);
+      }
+      setSearchUserCode('');
+      await loadData(user.id);
+    } catch (err) {
+      setStatusText(err?.message || 'Failed to send request.');
       return;
     }
-
-    const { error } = await supabase.from('friend_requests').insert({
-      requester_id: user.id,
-      receiver_id: targetProfile.id,
-      status: 'pending',
-    });
-    if (error) {
-      setStatusText('Failed to send request.');
-      return;
-    }
-    setStatusText(`Friend request sent to ${formatHunterName(targetProfile)}.`);
-    setSearchUserCode('');
-    await loadData(user.id);
   };
 
-  const respondRequest = async (requestId, action) => {
+  const respondRequest = async (requesterId, action) => {
     if (!user?.id) return;
-    await supabase
-      .from('friend_requests')
-      .update({ status: action })
-      .eq('id', requestId)
-      .eq('receiver_id', user.id);
-    await loadData(user.id);
+    const reqKey = `${requesterId}:${action}`;
+    if (respondingRequestId) return;
+    setRespondingRequestId(reqKey);
+    try {
+      const mapped = action === 'accepted' ? 'accepted' : 'declined';
+      await respondFriendRequestRpc({
+        userId: user.id,
+        friendUserId: requesterId,
+        action: mapped,
+      });
+      setStatusText(mapped === 'accepted' ? 'Friend request accepted.' : 'Friend request rejected.');
+      await loadData(user.id);
+    } catch (err) {
+      setStatusText(err?.message || 'Failed to update request.');
+    } finally {
+      setRespondingRequestId('');
+    }
   };
 
   const tabs = useMemo(() => ([
@@ -347,7 +350,7 @@ export default function Leaderboard() {
               <Users className="w-3.5 h-3.5" /> FRIEND LEADERBOARD
             </p>
             {!friendsFeatureEnabled ? (
-              <p className="text-sm" style={{ color: '#64748B' }}>Friends feature requires `friend_requests` table setup in Supabase.</p>
+              <p className="text-sm" style={{ color: '#64748B' }}>Friends feature requires `friends` RPC migration setup in Supabase.</p>
             ) : (
               <LeaderboardTable rows={friendRows} currentUserId={user?.id} />
             )}
@@ -383,11 +386,23 @@ export default function Leaderboard() {
                       {formatHunterName(requester, r.requester_id)} <span className="text-xs text-slate-400">{formatHunterCode(requester)}</span>
                     </p>
                     <div className="flex gap-1">
-                      <button onClick={() => respondRequest(r.id, 'accepted')} className="px-2 py-1 rounded text-xs font-bold" style={{ color: '#34D399', border: '1px solid rgba(52,211,153,0.4)' }}>
-                        <Check className="w-3 h-3 inline mr-1" /> Accept
+                      <button
+                        type="button"
+                        onClick={() => respondRequest(r.requester_id, 'accepted')}
+                        disabled={Boolean(respondingRequestId)}
+                        className="px-2 py-1 rounded text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{ color: '#34D399', border: '1px solid rgba(52,211,153,0.4)' }}
+                      >
+                        <Check className="w-3 h-3 inline mr-1" /> {respondingRequestId === `${r.requester_id}:accepted` ? '...' : 'Accept'}
                       </button>
-                      <button onClick={() => respondRequest(r.id, 'rejected')} className="px-2 py-1 rounded text-xs font-bold" style={{ color: '#F87171', border: '1px solid rgba(248,113,113,0.4)' }}>
-                        <X className="w-3 h-3 inline mr-1" /> Reject
+                      <button
+                        type="button"
+                        onClick={() => respondRequest(r.requester_id, 'declined')}
+                        disabled={Boolean(respondingRequestId)}
+                        className="px-2 py-1 rounded text-xs font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{ color: '#F87171', border: '1px solid rgba(248,113,113,0.4)' }}
+                      >
+                        <X className="w-3 h-3 inline mr-1" /> {respondingRequestId === `${r.requester_id}:declined` ? '...' : 'Reject'}
                       </button>
                     </div>
                   </div>

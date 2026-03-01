@@ -55,8 +55,11 @@ import Landing from './pages/Landing';
 import Leaderboard from './pages/Leaderboard';
 import Profile from './pages/Profile';
 import Quests from './pages/Quests';
+import RedeemCodes from './pages/RedeemCodes';
+import Relics from './pages/Relics';
 import Habits from './pages/Habits';
 import Login from './pages/Login';
+import Punishments from './pages/Punishments';
 import __Layout from './Layout.jsx';
 
 
@@ -69,8 +72,11 @@ export const PAGES = {
     "Leaderboard": Leaderboard,
     "Profile": Profile,
     "Quests": Quests,
+    "RedeemCodes": RedeemCodes,
+    "Relics": Relics,
     "Habits": Habits,
     "Login": Login,
+    "Punishments": Punishments,
 }
 
 export const pagesConfig = {

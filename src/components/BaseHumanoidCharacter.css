@@ -1,0 +1,359 @@
+.bhc {
+  position: relative;
+  width: 132px;
+  max-width: 100%;
+  aspect-ratio: 132 / 220;
+  margin: 0 auto;
+  border-radius: 14px;
+  overflow: hidden;
+  isolation: isolate;
+  contain: layout paint style;
+}
+
+.bhc--with-bg {
+  background: linear-gradient(165deg, #020a1a 0%, #06233b 58%, #0a4d5d 100%);
+}
+
+.bhc-radial-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 78%;
+  height: 74%;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(79, 209, 255, 0.25) 0%, rgba(79, 209, 255, 0.08) 36%, rgba(79, 209, 255, 0) 75%);
+  filter: blur(14px);
+  z-index: 0;
+}
+
+.bhc-svg {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.bhc-character,
+.bhc-aura-layer,
+.bhc-particles,
+.bhc-trail,
+.bhc-relic-symbol,
+.bhc-burst-layer {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.bhc-character {
+  transform-origin: 150px 420px;
+}
+
+.bhc--animate .bhc-character {
+  animation: bhcIdleBreath 4.8s ease-in-out infinite;
+}
+
+.bhc--stage-2.bhc--animate .bhc-character,
+.bhc--stage-3.bhc--animate .bhc-character {
+  animation: bhcIdleFloat 4.4s ease-in-out infinite;
+}
+
+.bhc--debt.bhc--animate .bhc-character {
+  animation-duration: 6.2s;
+}
+
+.bhc--unstable .bhc-character {
+  animation: bhcWeakIdle 5.8s ease-in-out infinite;
+}
+
+.bhc--still .bhc-character {
+  animation: none;
+}
+
+.bhc-rim-light {
+  opacity: 0.84;
+}
+
+.bhc-surface {
+  stroke: rgba(190, 233, 255, 0.34);
+  stroke-width: 0.9;
+}
+
+.bhc-joint {
+  fill: rgba(219, 231, 244, 0.74);
+  stroke: rgba(174, 211, 236, 0.52);
+  stroke-width: 0.8;
+}
+
+.bhc-face {
+  animation: bhcEyeBlink 5.6s linear infinite;
+}
+
+.bhc-eye,
+.bhc-eye-glow {
+  animation: bhcEyePulse 2.6s ease-in-out infinite;
+}
+
+.bhc-eye {
+  opacity: 0.88;
+}
+
+.bhc-eye-glow {
+  opacity: 0.62;
+}
+
+.bhc--stage-0 .bhc-eye,
+.bhc--stage-0 .bhc-eye-glow {
+  opacity: 0.72;
+}
+
+.bhc--stage-1 .bhc-eye,
+.bhc--stage-1 .bhc-eye-glow {
+  opacity: 0.92;
+}
+
+.bhc--stage-2 .bhc-eye,
+.bhc--stage-2 .bhc-eye-glow,
+.bhc--stage-3 .bhc-eye,
+.bhc--stage-3 .bhc-eye-glow {
+  opacity: 1;
+}
+
+.bhc-aura-layer {
+  opacity: 0.15;
+}
+
+.bhc-aura-core,
+.bhc-aura-ring {
+  animation: bhcAuraPulse 3.2s ease-in-out infinite;
+}
+
+.bhc-aura-ring {
+  opacity: 0.6;
+}
+
+.bhc--stage-1 .bhc-aura-layer {
+  opacity: 0.22;
+}
+
+.bhc--stage-2 .bhc-aura-layer {
+  opacity: 0.32;
+}
+
+.bhc--stage-3 .bhc-aura-layer {
+  opacity: 0.42;
+}
+
+.bhc--streak-hot .bhc-aura-layer {
+  opacity: 0.58;
+}
+
+.bhc--unstable .bhc-aura-layer {
+  opacity: 0.12;
+}
+
+.bhc--debt .bhc-aura-layer {
+  animation: bhcAuraFlicker 1.45s steps(8, end) infinite;
+}
+
+.bhc-energy-lines {
+  fill: none;
+  stroke: rgba(124, 214, 255, 0.55);
+  stroke-width: 4;
+  stroke-linecap: round;
+  opacity: 0;
+}
+
+.bhc--stage-1 .bhc-energy-lines {
+  opacity: 0.18;
+}
+
+.bhc--stage-2 .bhc-energy-lines {
+  opacity: 0.28;
+}
+
+.bhc--stage-3 .bhc-energy-lines {
+  opacity: 0.35;
+}
+
+.bhc-cracks {
+  fill: none;
+  stroke: rgba(248, 113, 113, 0.85);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+
+.bhc--debt .bhc-cracks {
+  opacity: 0.66;
+  animation: bhcDamageFlicker 2.2s linear infinite;
+}
+
+.bhc--debt-severe .bhc-cracks {
+  stroke-width: 2.1;
+  opacity: 0.9;
+}
+
+.bhc-particles {
+  fill: #87e7ff;
+  opacity: 0;
+}
+
+.bhc--stage-2 .bhc-particles,
+.bhc--stage-3 .bhc-particles {
+  opacity: 0.48;
+}
+
+.bhc-particle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.bhc--animate .bhc-particle-1 { animation: bhcParticleFloatA 9.5s linear infinite; }
+.bhc--animate .bhc-particle-2 { animation: bhcParticleFloatB 10.2s linear infinite -2s; }
+.bhc--animate .bhc-particle-3 { animation: bhcParticleFloatA 10.8s linear infinite -3.5s; }
+.bhc--animate .bhc-particle-4 { animation: bhcParticleFloatB 9.2s linear infinite -1.2s; }
+.bhc--animate .bhc-particle-5 { animation: bhcParticleFloatA 8.8s linear infinite -4.4s; }
+.bhc--animate .bhc-particle-6 { animation: bhcParticleFloatB 11.3s linear infinite -5s; }
+
+.bhc-trail {
+  opacity: 0;
+}
+
+.bhc--stage-3 .bhc-trail {
+  opacity: 0.66;
+}
+
+.bhc-trail-dot {
+  fill: rgba(103, 232, 249, 0.66);
+  opacity: 0;
+  animation: bhcTrailDrift 3.1s ease-out infinite;
+}
+
+.bhc-trail-dot-1 { animation-delay: 0s; }
+.bhc-trail-dot-2 { animation-delay: 0.8s; }
+.bhc-trail-dot-3 { animation-delay: 1.5s; }
+
+.bhc-relic-symbol {
+  opacity: 0;
+  transform-origin: 238px 132px;
+}
+
+.bhc--relic .bhc-relic-symbol {
+  opacity: 1;
+  animation: bhcRelicFloat 2.8s ease-in-out infinite;
+}
+
+.bhc-relic-halo {
+  fill: rgba(251, 191, 36, 0.26);
+  animation: bhcRelicShimmer 2.1s ease-in-out infinite;
+}
+
+.bhc-burst-layer {
+  opacity: 0;
+}
+
+.bhc-burst-ring {
+  fill: none;
+  stroke: rgba(103, 232, 249, 0.85);
+  stroke-width: 2.5;
+}
+
+.bhc--levelup .bhc-burst-layer {
+  opacity: 1;
+  animation: bhcLevelBurst 0.95s ease-out 1;
+}
+
+.bhc--stage-3.bhc--levelup .bhc-burst-layer {
+  animation-duration: 1.15s;
+}
+
+.bhc--xp-mid .bhc-aura-layer {
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.3));
+}
+
+.bhc--xp-high .bhc-aura-layer {
+  filter: drop-shadow(0 0 14px rgba(103, 232, 249, 0.55));
+}
+
+@keyframes bhcIdleBreath {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.012); }
+}
+
+@keyframes bhcIdleFloat {
+  0%, 100% { transform: translateY(0) scale(1.01); }
+  50% { transform: translateY(-6px) scale(1.018); }
+}
+
+@keyframes bhcWeakIdle {
+  0%, 100% { transform: translateY(2px) rotate(1deg) scale(0.995); }
+  50% { transform: translateY(5px) rotate(2deg) scale(0.988); }
+}
+
+@keyframes bhcAuraPulse {
+  0%, 100% { transform: scale(0.98); opacity: 0.45; }
+  50% { transform: scale(1.04); opacity: 0.9; }
+}
+
+@keyframes bhcAuraFlicker {
+  0%, 100% { opacity: 0.2; }
+  10% { opacity: 0.58; }
+  18% { opacity: 0.12; }
+  42% { opacity: 0.56; }
+  67% { opacity: 0.2; }
+  85% { opacity: 0.46; }
+}
+
+@keyframes bhcEyePulse {
+  0%, 100% { opacity: 0.62; }
+  50% { opacity: 1; }
+}
+
+@keyframes bhcEyeBlink {
+  0%, 45%, 48%, 100% { transform: scaleY(1); }
+  46.5% { transform: scaleY(0.2); }
+}
+
+@keyframes bhcDamageFlicker {
+  0%, 100% { opacity: 0.7; }
+  12% { opacity: 0.24; }
+  36% { opacity: 0.82; }
+  52% { opacity: 0.3; }
+  74% { opacity: 0.86; }
+}
+
+@keyframes bhcParticleFloatA {
+  0% { transform: translateY(0) scale(0.9); opacity: 0; }
+  15% { opacity: 0.48; }
+  100% { transform: translateY(-230px) scale(1.2); opacity: 0; }
+}
+
+@keyframes bhcParticleFloatB {
+  0% { transform: translateY(0) translateX(0) scale(0.88); opacity: 0; }
+  15% { opacity: 0.42; }
+  100% { transform: translateY(-220px) translateX(8px) scale(1.15); opacity: 0; }
+}
+
+@keyframes bhcTrailDrift {
+  0% { transform: translate(0, 0) scale(0.9); opacity: 0; }
+  20% { opacity: 0.42; }
+  100% { transform: translate(-10px, -22px) scale(1.2); opacity: 0; }
+}
+
+@keyframes bhcRelicShimmer {
+  0%, 100% { opacity: 0.35; transform: scale(0.95); }
+  50% { opacity: 0.95; transform: scale(1.08); }
+}
+
+@keyframes bhcRelicFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes bhcLevelBurst {
+  0% { transform: scale(0.75); opacity: 0.95; }
+  100% { transform: scale(2.7); opacity: 0; }
+}

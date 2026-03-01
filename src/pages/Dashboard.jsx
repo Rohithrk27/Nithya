@@ -495,17 +495,23 @@ export default function Dashboard() {
       setPendingPunishments(buildPendingPunishments(punishmentsData, habitsData, logsData));
 
       const userQuestMap = buildUserQuestMap(userQuestsRes.data || []);
-      const merged = (questsRes.data || []).map((q) => ({
-        ...q,
-        type: inferQuestType(q, userQuestMap.get(q.id) || null),
-        started_at: userQuestMap.get(q.id)?.started_at || null,
-        expires_at: userQuestMap.get(q.id)?.expires_at || q?.expires_at || null,
-        failed: !!userQuestMap.get(q.id)?.failed,
-        penalty_applied: !!userQuestMap.get(q.id)?.penalty_applied,
-        quest_type: userQuestMap.get(q.id)?.quest_type || inferQuestType(q, userQuestMap.get(q.id) || null),
-        xp_reward: Number(userQuestMap.get(q.id)?.xp_reward ?? q?.xp_reward ?? 0),
-        ...resolveQuestStatus(userQuestMap.get(q.id)),
-      }));
+      const merged = (questsRes.data || []).map((q) => {
+        const userQuest = userQuestMap.get(q.id) || null;
+        const inferredType = inferQuestType(q, userQuest);
+        return {
+          ...q,
+          type: inferredType,
+          started_at: userQuest?.started_at || null,
+          expires_at: userQuest?.expires_at || q?.expires_at || null,
+          failed: !!userQuest?.failed,
+          penalty_applied: !!userQuest?.penalty_applied,
+          quest_type: userQuest?.quest_type || inferredType,
+          xp_reward: Number(userQuest?.xp_reward ?? q?.xp_reward ?? 0),
+          progress_current: Math.max(0, Number(userQuest?.progress_current ?? q?.progress_current ?? 0)),
+          progress_target: Math.max(1, Number(userQuest?.progress_target ?? q?.progress_target ?? 1)),
+          ...resolveQuestStatus(userQuest),
+        };
+      });
       setQuests(merged);
       let challengeToday = (dailyRes.data || []).find((d) => rowDate(d) === today) || null;
       if (!challengeToday) {
@@ -1309,7 +1315,7 @@ export default function Dashboard() {
   }
 
   const activeQuests = quests.filter((q) => isQuestInProgressStatus(q.status));
-  const activeWeeklyQuest = activeQuests.find((q) => q.type === 'weekly') || null;
+  const activeWeeklyQuest = activeQuests.find((q) => normalizeQuestType(q?.type || q?.quest_type) === 'weekly') || null;
   const weeklyProgressCurrent = Math.max(0, Number(activeWeeklyQuest?.progress_current || 0));
   const weeklyProgressTarget = Math.max(1, Number(activeWeeklyQuest?.progress_target || 1));
   const weeklyProgressPct = activeWeeklyQuest

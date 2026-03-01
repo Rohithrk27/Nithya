@@ -1,0 +1,239 @@
+.intro-page {
+  /* Suggested palette variables for future intro theming */
+  --intro-bg-0: #020617;
+  --intro-bg-1: #071229;
+  --intro-bg-2: #0b1f3a;
+  --intro-cyan: #22d3ee;
+  --intro-electric: #38bdf8;
+  --intro-gold: #fbbf24;
+  --intro-text-soft: #cbd5e1;
+
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: linear-gradient(160deg, var(--intro-bg-0) 0%, var(--intro-bg-1) 52%, var(--intro-bg-2) 100%);
+  color: #f8fafc;
+  isolation: isolate;
+}
+
+.intro-bg-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 50% 16%, rgba(34, 211, 238, 0.14), transparent 46%),
+    radial-gradient(circle at 50% 82%, rgba(56, 189, 248, 0.1), transparent 52%);
+}
+
+.intro-hero {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: clamp(3.6rem, 8vw, 5.8rem) 1.1rem 2rem;
+  gap: clamp(0.8rem, 2.2vw, 1.35rem);
+}
+
+.intro-header-text {
+  margin-top: clamp(-0.35rem, -0.8vw, -0.14rem);
+  margin-bottom: 0;
+  font-size: clamp(2.4rem, 8.6vw, 5rem);
+  line-height: 0.95;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: linear-gradient(
+    90deg,
+    #f6e05e 0%,
+    #ed64a6 22%,
+    #9f7aea 48%,
+    #4299e1 72%,
+    #4fd1c5 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.28));
+  animation: introFloat 4.8s ease-in-out infinite;
+}
+
+.intro-logo-section {
+  position: relative;
+  width: clamp(142px, 28vw, 228px);
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+}
+
+.intro-logo-wave {
+  position: absolute;
+  inset: -22%;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(56, 189, 248, 0.34) 0%, rgba(56, 189, 248, 0.12) 36%, transparent 72%),
+    radial-gradient(ellipse at 50% 55%, rgba(34, 211, 238, 0.24) 0%, transparent 72%);
+  filter: blur(12px);
+  animation: introLogoWaveGlow 6.4s ease-in-out infinite;
+}
+
+.intro-logo-crop {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 26%;
+  -webkit-mask-image: radial-gradient(circle at 50% 46%, #000 58%, transparent 88%);
+  mask-image: radial-gradient(circle at 50% 46%, #000 58%, transparent 88%);
+}
+
+.intro-avatar-silhouette {
+  position: absolute;
+  width: 36%;
+  height: 48%;
+  bottom: 16%;
+  border-radius: 46% 46% 42% 42%;
+  opacity: 0.22;
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.42), rgba(56, 189, 248, 0.16));
+  filter: blur(0.35px);
+  transform-origin: center bottom;
+  animation: introBreath 4.4s ease-in-out infinite;
+}
+
+.intro-logo-svg {
+  width: 132%;
+  height: 132%;
+  display: block;
+  object-fit: cover;
+  object-position: center 35%;
+  transform: translateY(4%);
+  transform-origin: center;
+  filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.3)) drop-shadow(0 0 30px rgba(251, 191, 36, 0.12));
+  animation: introLogoPulse 4.2s ease-in-out infinite;
+}
+
+.intro-tagline {
+  margin-top: 0.2rem;
+  color: var(--intro-text-soft);
+  font-size: clamp(0.96rem, 1.7vw, 1.2rem);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.intro-cta {
+  margin-top: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.intro-btn {
+  min-height: 45px;
+  min-width: 154px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  transition: transform 220ms ease, box-shadow 220ms ease, background 220ms ease, border-color 220ms ease, color 220ms ease;
+}
+
+.intro-btn:hover {
+  transform: translateY(-2px);
+}
+
+.intro-btn--primary {
+  border: 1px solid rgba(34, 211, 238, 0.55);
+  color: #e0f2fe;
+  background: linear-gradient(90deg, rgba(8, 145, 178, 0.46), rgba(14, 116, 144, 0.65));
+  box-shadow: 0 0 0 rgba(34, 211, 238, 0), 0 10px 24px rgba(2, 132, 199, 0.3);
+}
+
+.intro-btn--primary:hover {
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.45), 0 14px 30px rgba(14, 116, 144, 0.42);
+}
+
+.intro-btn--secondary {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.66);
+}
+
+.intro-btn--secondary:hover {
+  border-color: rgba(251, 191, 36, 0.55);
+  color: #fde68a;
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.26);
+}
+
+@keyframes introFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes introGlowPulse {
+  0%, 100% { filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.28)); }
+  50% { filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.55)) drop-shadow(0 0 24px rgba(34, 211, 238, 0.38)); }
+}
+
+@keyframes introLogoPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.038); }
+}
+
+@keyframes introAuraPulse {
+  0%, 100% { opacity: 0.65; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+@keyframes introLogoWaveGlow {
+  0%, 100% { opacity: 0.62; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+
+@keyframes introBreath {
+  0%, 100% { transform: scaleY(1) translateY(0); opacity: 0.2; }
+  50% { transform: scaleY(1.04) translateY(-2px); opacity: 0.34; }
+}
+
+@media (max-width: 767px) {
+  .intro-hero {
+    padding-top: 5.4rem;
+    gap: 1rem;
+  }
+
+  .intro-logo-section {
+    width: clamp(128px, 36vw, 180px);
+  }
+
+  .intro-header-text {
+    font-size: clamp(2.1rem, 12vw, 3.2rem);
+    letter-spacing: 0.1em;
+  }
+
+  .intro-tagline {
+    font-size: 0.86rem;
+    letter-spacing: 0.16em;
+    max-width: 90vw;
+    line-height: 1.6;
+  }
+
+  .intro-btn {
+    width: min(90vw, 280px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .intro-bg-fade {
+    animation: introParallaxGlow 20s ease-in-out infinite;
+  }
+}
+
+@keyframes introParallaxGlow {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-2%, 1.5%, 0); }
+}

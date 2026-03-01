@@ -10,6 +10,13 @@ import SystemBackground from '../components/SystemBackground';
 import HoloPanel from '../components/HoloPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { scaledXP } from '../components/gameEngine';
+import {
+  completeHabitSubtask,
+  createHabitSubtask,
+  deleteHabitSubtask,
+  fetchHabitSubtasks,
+  mapSubtasksByHabit,
+} from '@/lib/habitSubtasks';
 
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
 const PUNISHMENT_DIFFS = ['low', 'medium', 'high', 'extreme'];
@@ -32,6 +39,9 @@ export default function Habits() {
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  const [subtasksByHabit, setSubtasksByHabit] = useState({});
+  const [subtaskDrafts, setSubtaskDrafts] = useState({});
+  const [subtaskBusyId, setSubtaskBusyId] = useState('');
 
   useEffect(() => {
     const init = async () => {
@@ -63,7 +73,19 @@ export default function Habits() {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-    setHabits(data || []);
+    const habitRows = data || [];
+    setHabits(habitRows);
+    const habitIds = habitRows.map((row) => row.id).filter(Boolean);
+    if (habitIds.length > 0) {
+      try {
+        const subtasks = await fetchHabitSubtasks({ userId, habitIds });
+        setSubtasksByHabit(mapSubtasksByHabit(subtasks));
+      } catch (_) {
+        setSubtasksByHabit({});
+      }
+    } else {
+      setSubtasksByHabit({});
+    }
     setLoading(false);
   };
 
@@ -102,6 +124,9 @@ export default function Habits() {
     } else {
       const { data } = await supabase.from('habits').insert(payload).select().single();
       setHabits(h => [...h, data || { ...payload }]);
+      if (data?.id) {
+        setSubtasksByHabit((prev) => ({ ...prev, [data.id]: [] }));
+      }
     }
     setShowForm(false);
     setEditingId(null);
@@ -111,6 +136,85 @@ export default function Habits() {
   const handleDelete = async (id) => {
     await supabase.from('habits').delete().eq('id', id).eq('user_id', user.id);
     setHabits(h => h.filter(x => x.id !== id));
+    setSubtasksByHabit((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const updateSubtaskDraft = (habitId, patch) => {
+    setSubtaskDrafts((prev) => ({
+      ...prev,
+      [habitId]: {
+        title: '',
+        xpValue: 10,
+        ...(prev[habitId] || {}),
+        ...(patch || {}),
+      },
+    }));
+  };
+
+  const addSubtask = async (habitId) => {
+    if (!user?.id || !habitId || subtaskBusyId) return;
+    const draft = subtaskDrafts[habitId] || { title: '', xpValue: 10 };
+    if (!draft.title?.trim()) return;
+    setSubtaskBusyId(habitId);
+    try {
+      const created = await createHabitSubtask({
+        habitId,
+        title: draft.title.trim(),
+        xpValue: Number(draft.xpValue || 10),
+        sortOrder: (subtasksByHabit[habitId] || []).length,
+      });
+      setSubtasksByHabit((prev) => ({
+        ...prev,
+        [habitId]: [...(prev[habitId] || []), created],
+      }));
+      updateSubtaskDraft(habitId, { title: '', xpValue: draft.xpValue || 10 });
+    } finally {
+      setSubtaskBusyId('');
+    }
+  };
+
+  const toggleSubtask = async (habitId, subtask) => {
+    if (!user?.id || !subtask?.id || subtaskBusyId) return;
+    setSubtaskBusyId(subtask.id);
+    try {
+      const nextComplete = !subtask.completed;
+      const snapshot = await completeHabitSubtask({
+        userId: user.id,
+        subtaskId: subtask.id,
+        complete: nextComplete,
+      });
+      setSubtasksByHabit((prev) => ({
+        ...prev,
+        [habitId]: (prev[habitId] || []).map((row) => (
+          row.id === subtask.id
+            ? { ...row, completed: nextComplete, completed_at: nextComplete ? new Date().toISOString() : null }
+            : row
+        )),
+      }));
+      if (snapshot?.habit_completed && nextComplete) {
+        alert('All subtasks completed. Habit streak updated and XP granted.');
+      }
+    } finally {
+      setSubtaskBusyId('');
+    }
+  };
+
+  const removeSubtask = async (habitId, subtaskId) => {
+    if (!user?.id || !subtaskId || subtaskBusyId) return;
+    setSubtaskBusyId(subtaskId);
+    try {
+      await deleteHabitSubtask({ userId: user.id, subtaskId });
+      setSubtasksByHabit((prev) => ({
+        ...prev,
+        [habitId]: (prev[habitId] || []).filter((row) => row.id !== subtaskId),
+      }));
+    } finally {
+      setSubtaskBusyId('');
+    }
   };
 
   const f = (field, val) => setForm(p => ({ ...p, [field]: val }));
@@ -274,6 +378,9 @@ export default function Habits() {
             const dc = DIFF_COLORS[habit.difficulty] || '#64748B';
             const pc = PDIFF_COLORS[habit.punishment_difficulty] || '#F87171';
             const expanded = expandedId === habit.id;
+            const habitSubtasks = subtasksByHabit[habit.id] || [];
+            const completedSubtasks = habitSubtasks.filter((s) => s.completed).length;
+            const draft = subtaskDrafts[habit.id] || { title: '', xpValue: 10 };
             return (
               <motion.div key={habit.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
                 <HoloPanel glowColor={dc}>
@@ -322,6 +429,81 @@ export default function Habits() {
                             <p className="text-xs mt-1" style={{ color: '#475569' }}>
                               Refusal penalty: <span style={{ color: '#F87171' }}>{habit.punishment_xp_penalty_pct || 10}% XP</span>
                             </p>
+                          </div>
+
+                          <div className="rounded-lg p-3 space-y-2" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.2)' }}>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-black tracking-widest" style={{ color: '#38BDF8' }}>
+                                SUBTASKS
+                              </p>
+                              <p className="text-[10px] font-bold" style={{ color: '#94A3B8' }}>
+                                {completedSubtasks}/{habitSubtasks.length} COMPLETE
+                              </p>
+                            </div>
+
+                            {habitSubtasks.length === 0 ? (
+                              <p className="text-xs" style={{ color: '#64748B' }}>No subtasks yet. Add steps to split this habit into progress chunks.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {habitSubtasks.map((subtask) => (
+                                  <div key={subtask.id} className="flex items-center gap-2 rounded-md px-2 py-1.5"
+                                    style={{ background: 'rgba(15,32,39,0.55)', border: '1px solid rgba(56,189,248,0.15)' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleSubtask(habit.id, subtask)}
+                                      disabled={!!subtaskBusyId}
+                                      className="w-4 h-4 rounded border flex items-center justify-center text-[10px]"
+                                      style={{
+                                        borderColor: subtask.completed ? '#34D399' : '#475569',
+                                        color: subtask.completed ? '#34D399' : '#64748B',
+                                      }}
+                                    >
+                                      {subtask.completed ? '✓' : ''}
+                                    </button>
+                                    <p className="text-xs flex-1" style={{ color: subtask.completed ? '#34D399' : '#F1F5F9' }}>
+                                      {subtask.title}
+                                    </p>
+                                    <span className="text-[10px] font-bold" style={{ color: '#FBBF24' }}>+{subtask.xp_value || 0} XP</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSubtask(habit.id, subtask.id)}
+                                      disabled={!!subtaskBusyId}
+                                      className="text-[10px]"
+                                      style={{ color: '#F87171' }}
+                                    >
+                                      DEL
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-12 gap-2">
+                              <Input
+                                className="col-span-8"
+                                value={draft.title || ''}
+                                onChange={(e) => updateSubtaskDraft(habit.id, { title: e.target.value })}
+                                placeholder="Add subtask title"
+                                style={{ background: 'rgba(10,25,33,0.8)', border: '1px solid rgba(56,189,248,0.2)', color: '#F1F5F9' }}
+                              />
+                              <Input
+                                className="col-span-2"
+                                type="number"
+                                min={1}
+                                max={500}
+                                value={draft.xpValue || 10}
+                                onChange={(e) => updateSubtaskDraft(habit.id, { xpValue: e.target.value })}
+                                style={{ background: 'rgba(10,25,33,0.8)', border: '1px solid rgba(56,189,248,0.2)', color: '#F1F5F9' }}
+                              />
+                              <Button
+                                className="col-span-2"
+                                onClick={() => addSubtask(habit.id)}
+                                disabled={!!subtaskBusyId || !(draft.title || '').trim()}
+                                style={{ background: 'rgba(56,189,248,0.2)', border: '1px solid rgba(56,189,248,0.4)', color: '#38BDF8' }}
+                              >
+                                + Step
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </motion.div>

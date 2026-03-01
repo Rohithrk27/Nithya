@@ -41,9 +41,18 @@ export default function PunishmentModal({ pendingPunishments, hardcoreMode, onDo
   const diffLevel = habit.punishment_difficulty || 'medium';
   const diffStyle = DIFFICULTY_COLORS[diffLevel] || DIFFICULTY_COLORS.medium;
   const xpPenaltyPct = habit.punishment_xp_penalty_pct || 10;
-  const xpPenalty = Math.max(50, Math.floor((habit.xp_value || 100) * (xpPenaltyPct / 100)));
-  const createdAtMs = new Date(punishment?.created_at || Date.now()).getTime();
-  const deadlineMs = createdAtMs + (timeLimitHours * 60 * 60 * 1000);
+  const rawPenalty = punishment?.total_xp_penalty
+    ?? punishment?.accumulated_penalty
+    ?? ((habit.xp_value || 100) * (xpPenaltyPct / 100));
+  const xpPenalty = Math.max(
+    0,
+    Math.floor(Number(rawPenalty || 0))
+  );
+  const startedAtMs = new Date(punishment?.started_at || punishment?.created_at || Date.now()).getTime();
+  const explicitDeadlineMs = new Date(punishment?.expires_at || 0).getTime();
+  const deadlineMs = Number.isFinite(explicitDeadlineMs) && explicitDeadlineMs > 0
+    ? explicitDeadlineMs
+    : startedAtMs + (timeLimitHours * 60 * 60 * 1000);
   const remainingMs = Math.max(0, deadlineMs - now);
   const expired = remainingMs <= 0;
   const timeLeftLabel = expired

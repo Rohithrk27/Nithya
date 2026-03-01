@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ResetPassword from './pages/ResetPassword';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
+import PublicProfile from './pages/PublicProfile';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -64,6 +65,14 @@ const AuthenticatedApp = () => {
           element={
             <LayoutWrapper currentPageName="ResetPassword">
               <ResetPassword />
+            </LayoutWrapper>
+          }
+        />
+        <Route
+          path="/profile/:username"
+          element={
+            <LayoutWrapper currentPageName="PublicProfile">
+              <PublicProfile />
             </LayoutWrapper>
           }
         />
@@ -129,6 +138,14 @@ const AuthenticatedApp = () => {
         element={
           <LayoutWrapper currentPageName="ResetPassword">
             <ResetPassword />
+          </LayoutWrapper>
+        }
+      />
+      <Route
+        path="/profile/:username"
+        element={
+          <LayoutWrapper currentPageName="PublicProfile">
+            <PublicProfile />
           </LayoutWrapper>
         }
       />

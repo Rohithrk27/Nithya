@@ -1,16 +1,25 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Save, Volume2, VolumeX, LogOut } from 'lucide-react';
+import { ArrowLeft, Save, Volume2, VolumeX, LogOut, Globe, Share2, RefreshCcw } from 'lucide-react';
 import BMIMeter from '../components/BMIMeter';
 import HabitReminderSetup from '../components/HabitReminderSetup';
 import RPGHumanoidAvatar, { getAvatarTier } from '../components/RPGHumanoidAvatar';
 import StatGrid from '../components/StatGrid';
 import { computeLevel, getRankTitle, computeAllStats } from '../components/gameEngine';
+import html2canvas from 'html2canvas';
+import {
+  fetchOwnPublicProfile,
+  getPublicProfileShareUrl,
+  refreshPublicProfile,
+  setPublicProfileVisibility,
+} from '@/lib/publicProfiles';
+import { fetchRelicBalance } from '@/lib/relics';
+import { fetchActiveDungeonRun } from '@/lib/gameState';
 
 const LOGO_URL = "";
 const EMPTY_FORM = {
@@ -32,6 +41,12 @@ export default function Profile() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [hardcoreMode, setHardcoreMode] = useState(false);
+  const [publicProfile, setPublicProfile] = useState(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareMessage, setShareMessage] = useState('');
+  const [relicBalance, setRelicBalance] = useState(0);
+  const [avatarStability, setAvatarStability] = useState(100);
+  const shareCaptureRef = useRef(null);
 
   useEffect(() => {
     const init = async () => {
@@ -54,13 +69,28 @@ export default function Profile() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const syncPublicShare = async (userId, shouldRefresh = true) => {
+    if (!userId) return null;
+    try {
+      const row = shouldRefresh
+        ? await refreshPublicProfile(userId)
+        : await fetchOwnPublicProfile(userId);
+      setPublicProfile(row || null);
+      return row || null;
+    } catch (_) {
+      return null;
+    }
+  };
+
   const loadProfile = async (userId) => {
     if (!userId) return;
     
-    const [profilesRes, habitsRes, statsRes] = await Promise.all([
+    const [profilesRes, habitsRes, statsRes, relicBalanceSnapshot, activeDungeonRun] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).limit(1),
       supabase.from('habits').select('*').eq('user_id', userId),
       supabase.from('stats').select('*').eq('user_id', userId).limit(1),
+      Promise.resolve(fetchRelicBalance(userId)).catch(() => 0),
+      Promise.resolve(fetchActiveDungeonRun(userId)).catch(() => null),
     ]);
 
     const profiles = profilesRes.data || [];
@@ -77,6 +107,8 @@ export default function Profile() {
     const ss = stateData && stateData[0] ? stateData[0] : null;
     setProfile(p);
     setSystemState(ss);
+    setRelicBalance(Math.max(0, Number(relicBalanceSnapshot || 0)));
+    setAvatarStability(Math.max(0, Math.min(100, Number(activeDungeonRun?.stability ?? 100))));
     setVoiceEnabled(ss?.voice_enabled !== false);
     setHardcoreMode(!!ss?.hardcore_mode);
     setHabits(habitData || []);
@@ -87,6 +119,7 @@ export default function Profile() {
       weight_kg: p.weight_kg !== null && p.weight_kg !== undefined ? String(p.weight_kg) : '',
       reminder_time: p.reminder_time || '09:00',
     });
+    await syncPublicShare(userId, true);
     setLoading(false);
   };
 
@@ -150,6 +183,7 @@ export default function Profile() {
       });
     }
     
+    await syncPublicShare(profile.id, true);
     setSaving(false);
     navigate(createPageUrl('Dashboard'));
   };
@@ -169,6 +203,121 @@ export default function Profile() {
   const liveBMI = form.weight_kg && form.height_cm
     ? Number(form.weight_kg) / Math.pow(Number(form.height_cm) / 100, 2)
     : 0;
+  const shareUrl = useMemo(() => getPublicProfileShareUrl(publicProfile?.username), [publicProfile?.username]);
+
+  const togglePublicShare = async () => {
+    if (!profile?.id || shareBusy) return;
+    setShareBusy(true);
+    setShareMessage('');
+    try {
+      const row = await setPublicProfileVisibility({
+        userId: profile.id,
+        isPublic: !publicProfile?.is_public,
+      });
+      setPublicProfile(row || null);
+      setShareMessage(row?.is_public ? 'Public profile enabled.' : 'Public profile hidden.');
+    } catch (err) {
+      setShareMessage(err?.message || 'Failed to update share visibility.');
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const sharePublicLink = async () => {
+    if (!profile?.id || shareBusy) return;
+    setShareBusy(true);
+    setShareMessage('');
+    try {
+      let row = publicProfile?.username ? publicProfile : await syncPublicShare(profile.id, true);
+      if (!row?.is_public) {
+        row = await setPublicProfileVisibility({
+          userId: profile.id,
+          isPublic: true,
+        });
+        setPublicProfile(row || null);
+      }
+
+      const link = getPublicProfileShareUrl(row?.username);
+      if (!link) {
+        throw new Error('Unable to generate share link.');
+      }
+
+      const subjectName = (profile?.name || 'Player').trim() || 'Player';
+      const shareTitle = `${subjectName}'s Profile`;
+      const shareText = `Check out ${subjectName}'s RPG progress profile.`;
+
+      const captureNode = shareCaptureRef.current;
+      let screenshotFile = null;
+      if (captureNode) {
+        const canvas = await html2canvas(captureNode, {
+          backgroundColor: '#0f2027',
+          scale: Math.min(2, window.devicePixelRatio || 1),
+          useCORS: true,
+          logging: false,
+        });
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+        if (blob) {
+          screenshotFile = new File([blob], `${subjectName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'player'}-profile.png`, {
+            type: 'image/png',
+          });
+        }
+      }
+
+      if (screenshotFile) {
+        if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+          const canShareFiles = typeof navigator.canShare === 'function'
+            ? navigator.canShare({ files: [screenshotFile] })
+            : true;
+
+          if (canShareFiles) {
+            await navigator.share({
+              title: shareTitle,
+              text: `${shareText}\n${link}`,
+              files: [screenshotFile],
+            });
+            setShareMessage('Shared successfully.');
+            return;
+          }
+        }
+
+        const tempUrl = URL.createObjectURL(screenshotFile);
+        const anchor = document.createElement('a');
+        anchor.href = tempUrl;
+        anchor.download = screenshotFile.name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(tempUrl);
+        setShareMessage('Share not supported here. Screenshot downloaded.');
+        return;
+      }
+
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({
+          title: shareTitle,
+          text: `${shareText}\n${link}`,
+        });
+        setShareMessage('Shared successfully.');
+        return;
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+        setShareMessage('Share not supported here. Link copied.');
+        return;
+      }
+
+      setShareMessage('Share not supported on this device.');
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        setShareMessage('Share cancelled.');
+      } else {
+        setShareMessage(err?.message || 'Failed to share link.');
+      }
+    } finally {
+      setShareBusy(false);
+    }
+  };
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
@@ -200,29 +349,38 @@ export default function Profile() {
           </div>
         </div>
 
-        {section('PLAYER IDENTITY', (
-          <div className="flex gap-5 items-center">
-            <RPGHumanoidAvatar level={level} />
-            <div className="flex-1 space-y-1">
-              <p className="text-2xl font-black text-white">{profile?.name}</p>
-              <p className="text-xs font-bold tracking-widest" style={{ color: '#38BDF8' }}>Lv. {level} · {rankTitle}</p>
-              <p className="text-xs" style={{ color: '#64748B' }}>Tier {tier} Avatar</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
-                {[
-                  ['Total XP', (profile?.total_xp || 0).toLocaleString()],
-                  ['Quests Done', profile?.quests_completed || 0],
-                  ['Streak', `${profile?.global_streak || 0}d`],
-                  ['Stat Pts', profile?.stat_points || 0],
-                ].map(([k, v]) => (
-                  <div key={k}>
-                    <p className="text-xs" style={{ color: '#64748B' }}>{k}</p>
-                    <p className="text-sm font-bold text-white">{v}</p>
-                  </div>
-                ))}
+        <div ref={shareCaptureRef}>
+          {section('PLAYER IDENTITY', (
+            <div className="flex gap-5 items-center">
+              <RPGHumanoidAvatar
+                level={level}
+                totalXp={profile?.total_xp || 0}
+                streak={profile?.daily_streak ?? profile?.global_streak ?? 0}
+                shadowDebt={systemState?.shadow_debt_xp || 0}
+                stability={avatarStability}
+                relicCount={relicBalance}
+              />
+              <div className="flex-1 space-y-1">
+                <p className="text-2xl font-black text-white">{profile?.name}</p>
+                <p className="text-xs font-bold tracking-widest" style={{ color: '#38BDF8' }}>Lv. {level} · {rankTitle}</p>
+                <p className="text-xs" style={{ color: '#64748B' }}>Tier {tier} Avatar</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                  {[
+                    ['Total XP', (profile?.total_xp || 0).toLocaleString()],
+                    ['Quests Done', profile?.quests_completed || 0],
+                    ['Streak', `${profile?.global_streak || 0}d`],
+                    ['Stat Pts', profile?.stat_points || 0],
+                  ].map(([k, v]) => (
+                    <div key={k}>
+                      <p className="text-xs" style={{ color: '#64748B' }}>{k}</p>
+                      <p className="text-sm font-bold text-white">{v}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
 
         {section('BODY METRICS', (
           <div className="flex flex-col items-center">
@@ -232,6 +390,51 @@ export default function Profile() {
 
         {section('STAT SUMMARY', (
           <StatGrid profile={profile} level={level} statPoints={0} onAllocate={() => {}} />
+        ))}
+
+        {section('PROFILE SHARING', (
+          <div className="space-y-3">
+            <div className="rounded-xl p-3 flex items-center justify-between"
+              style={{ background: 'rgba(15,32,39,0.6)', border: '1px solid rgba(56,189,248,0.12)' }}>
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4" style={{ color: publicProfile?.is_public ? '#34D399' : '#64748B' }} />
+                <div>
+                  <p className="text-xs font-black tracking-widest" style={{ color: publicProfile?.is_public ? '#34D399' : '#64748B' }}>
+                    PUBLIC PROFILE
+                  </p>
+                  <p className="text-xs" style={{ color: '#334155' }}>
+                    {publicProfile?.is_public ? 'Visible at /profile/:username' : 'Hidden from share link'}
+                  </p>
+                </div>
+              </div>
+              <button onClick={togglePublicShare}
+                className="w-11 h-6 rounded-full transition-all relative flex-shrink-0"
+                style={{ background: publicProfile?.is_public ? 'rgba(52,211,153,0.3)' : 'rgba(71,85,105,0.3)', border: `1px solid ${publicProfile?.is_public ? 'rgba(52,211,153,0.5)' : 'rgba(71,85,105,0.4)'}` }}>
+                <span className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+                  style={{ left: publicProfile?.is_public ? '22px' : '2px', background: publicProfile?.is_public ? '#34D399' : '#475569' }} />
+              </button>
+            </div>
+
+            <div className="rounded-xl p-3 space-y-2"
+              style={{ background: 'rgba(15,32,39,0.6)', border: '1px solid rgba(56,189,248,0.12)' }}>
+              <p className="text-xs font-black tracking-widest" style={{ color: '#38BDF8' }}>SHARE LINK</p>
+              <p className="text-xs break-all" style={{ color: '#94A3B8' }}>
+                {shareUrl || 'Enable public profile to generate a share link.'}
+              </p>
+              <div className="flex gap-2">
+                <Button onClick={sharePublicLink} disabled={shareBusy} className="flex-1">
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Share Profile
+                </Button>
+                <Button variant="outline" onClick={() => profile?.id && syncPublicShare(profile.id, true)} disabled={shareBusy}>
+                  <RefreshCcw className="w-4 h-4" />
+                </Button>
+              </div>
+              {shareMessage && (
+                <p className="text-xs" style={{ color: '#64748B' }}>{shareMessage}</p>
+              )}
+            </div>
+          </div>
         ))}
 
         {section('EDIT DETAILS', (
