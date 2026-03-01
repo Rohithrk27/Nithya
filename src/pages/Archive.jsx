@@ -5,9 +5,11 @@ import { createPageUrl } from '../utils';
 import { ArrowLeft, Trophy, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { computeLevel } from '../components/gameEngine';
-import { ACHIEVEMENT_DEFS, checkNewAchievements, computeHiddenRank } from '../components/systemFeatures';
+import { ACHIEVEMENT_DEFS, computeHiddenRank } from '../components/systemFeatures';
 import SystemBackground from '../components/SystemBackground';
 import HoloPanel from '../components/HoloPanel';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
+import { syncUserAchievements } from '@/lib/achievements';
 
 const CATEGORY_COLORS = {
   streak: '#FB923C',
@@ -19,6 +21,7 @@ const CATEGORY_COLORS = {
 
 export default function Archive() {
   const navigate = useNavigate();
+  const { user, authReady } = useAuthedPageUser();
   const [profile, setProfile] = useState(null);
   const [systemState, setSystemState] = useState(null);
   const [achievements, setAchievements] = useState([]);
@@ -26,33 +29,16 @@ export default function Archive() {
   const [equipping, setEquipping] = useState(null);
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      await loadData(authUser.id);
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      await loadData(session.user.id);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+    if (!authReady || !user?.id) return;
+    void loadData(user.id);
+  }, [authReady, user?.id]);
 
   const loadData = async (userId) => {
     if (!userId) return;
     
-    const [profileRes, stateRes, achievementsRes] = await Promise.all([
+    const [profileRes, stateRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).limit(1),
       supabase.from('stats').select('*').eq('user_id', userId).limit(1),
-      supabase.from('achievements').select('*').eq('user_id', userId),
     ]);
 
     const profiles = profileRes.data || [];
@@ -60,48 +46,9 @@ export default function Archive() {
     if (!profiles || profiles.length === 0) { navigate(createPageUrl('Landing')); return; }
 
     const currentProfile = profiles[0];
-    const level = computeLevel(currentProfile?.total_xp || 0);
-    const unlockedByRule = ACHIEVEMENT_DEFS.filter((def) => def.check(currentProfile, level));
-
-    let storedAchievements = [];
-    let canPersistAchievements = !achievementsRes.error;
-    if (canPersistAchievements) {
-      storedAchievements = achievementsRes.data || [];
-      const storedKeys = storedAchievements.map((a) => a.key);
-      const missing = checkNewAchievements(currentProfile, level, storedKeys).map((def) => ({
-        user_id: userId,
-        key: def.key,
-        title: def.title,
-        description: def.description,
-        icon: def.icon,
-        category: def.category,
-        unlocked_date: new Date().toISOString().slice(0, 10),
-      }));
-      if (missing.length > 0) {
-        const { data: insertedAchievements, error: insertError } = await supabase
-          .from('achievements')
-          .insert(missing)
-          .select('*');
-        if (!insertError && insertedAchievements?.length) {
-          storedAchievements = [...storedAchievements, ...insertedAchievements];
-        }
-      }
-    }
-
-    // Fallback when achievements table is unavailable.
-    const derivedAchievements = canPersistAchievements
-      ? storedAchievements
-      : unlockedByRule.map((def) => ({
-          key: def.key,
-          title: def.title,
-          description: def.description,
-          icon: def.icon,
-          category: def.category,
-          unlocked_date: new Date().toISOString().slice(0, 10),
-        }));
-
-    setProfile(currentProfile);
-    setAchievements(derivedAchievements);
+    const synced = await syncUserAchievements({ userId, profile: currentProfile });
+    setProfile(synced.achievementProfile || currentProfile);
+    setAchievements(synced.achievements || []);
     setSystemState(stateData && stateData[0] ? stateData[0] : null);
     setLoading(false);
   };

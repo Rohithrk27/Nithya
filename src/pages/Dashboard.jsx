@@ -38,7 +38,9 @@ import {
   markPunishmentWarningNotified,
   resolvePunishmentEarly,
 } from '@/lib/punishments';
-import { fetchRelicBalance } from '@/lib/relics';
+import { fetchRelicBalance, maybeAwardRelic } from '@/lib/relics';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
+import { applyShadowArmyXpBonus, computeShadowArmyCount, getShadowArmyBonusPct, getStreakDays } from '@/lib/shadowArmy';
 import {
   getLocalDateKey,
   hasReminderFired,
@@ -46,6 +48,7 @@ import {
   showReminderNotification,
 } from '@/lib/reminderNotifications';
 import { speakWithFemaleVoice } from '@/lib/voice';
+import { syncUserAchievements } from '@/lib/achievements';
 
 const DAILY_PRINCIPLES = [
   'It does not matter how slowly you go as long as you do not stop.',
@@ -234,6 +237,16 @@ const playPendingHabitReminderCue = (message, includeSpeech = true) => {
 };
 
 const getSystemWarningDailyStorageKey = (userId, dateKey) => `nithya_system_warning_daily_${userId}_${dateKey}`;
+const hasWeeklyTarget120Progress = (rows) => (
+  (rows || []).some((row) => {
+    const type = String(row?.quest_type || '').trim().toLowerCase();
+    if (type !== 'weekly') return false;
+    const target = Math.max(0, Number(row?.progress_target || 0));
+    const current = Math.max(0, Number(row?.progress_current || 0));
+    if (!target) return false;
+    return current >= Math.ceil(target * 1.2);
+  })
+);
 
 const hasSystemWarningShownToday = (userId, dateKey) => {
   if (!userId || !dateKey || typeof window === 'undefined') return false;
@@ -255,7 +268,7 @@ const markSystemWarningShownToday = (userId, dateKey) => {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, authReady } = useAuthedPageUser();
   const [profile, setProfile] = useState(null);
   const [systemState, setSystemState] = useState(null);
   const [habits, setHabits] = useState([]);
@@ -293,7 +306,7 @@ export default function Dashboard() {
   const dailyPrinciple = DAILY_PRINCIPLES[dayNumber % DAILY_PRINCIPLES.length];
   const level = useMemo(() => computeLevel(profile?.total_xp || 0), [profile?.total_xp]);
   const avatarTier = useMemo(() => getAvatarTier(level), [level]);
-  const rankTitle = useMemo(() => getRankTitle(level), [level]);
+  const rankTitle = useMemo(() => String(getRankTitle(level)), [level]);
   const interruptEvent = useMemo(
     () => getDailySystemInterrupt({
       userId: user?.id,
@@ -560,6 +573,63 @@ export default function Dashboard() {
         }
       }
       setDailyChallenge(challengeToday || null);
+
+      try {
+        const relicAwardAttempts = [];
+        const streakCount = Math.max(0, Number(p?.daily_streak ?? p?.global_streak ?? 0) || 0);
+        const shadowDebt = Number(baseSystemState?.shadow_debt_xp ?? Number.NaN);
+        const weeklyOverTarget = hasWeeklyTarget120Progress(userQuestsRes.data || []);
+
+        if (streakCount >= 7) {
+          relicAwardAttempts.push(maybeAwardRelic({
+            userId,
+            source: 'perfect_weekly_streak',
+          }));
+        }
+        if (weeklyOverTarget) {
+          relicAwardAttempts.push(maybeAwardRelic({
+            userId,
+            source: 'weekly_target_120',
+          }));
+        }
+        if (Number.isFinite(shadowDebt) && shadowDebt <= 0) {
+          relicAwardAttempts.push(maybeAwardRelic({
+            userId,
+            source: 'shadow_debt_cleared',
+          }));
+        }
+
+        if (relicAwardAttempts.length) {
+          const awardResults = await Promise.allSettled(relicAwardAttempts);
+          const awardedCount = awardResults.filter((res) => res.status === 'fulfilled' && res.value?.awarded).length;
+          if (awardedCount > 0) {
+            const refreshedRelicBalance = await fetchRelicBalance(userId).catch(() => null);
+            if (refreshedRelicBalance !== null) {
+              setRelicBalance(Math.max(0, Number(refreshedRelicBalance || 0)));
+            }
+            notify('quest', 'Relic earned', `+${awardedCount} relic${awardedCount > 1 ? 's' : ''} added.`);
+          }
+        }
+      } catch (_) {
+        // Soft-fail relic sync; dashboard data should still load.
+      }
+
+      try {
+        const achievementSync = await syncUserAchievements({ userId, profile: p });
+        if (achievementSync?.achievementProfile) {
+          p = achievementSync.achievementProfile;
+          setProfile((prev) => ({ ...(prev || {}), ...achievementSync.achievementProfile }));
+        }
+        const unlockedNow = achievementSync?.newlyUnlocked || [];
+        if (unlockedNow.length > 0) {
+          const firstTitle = unlockedNow[0]?.title || 'Achievement';
+          const extra = unlockedNow.length > 1 ? ` (+${unlockedNow.length - 1} more)` : '';
+          notify('quest', 'Achievement unlocked', `${firstTitle}${extra}`);
+        }
+      } catch (_) {
+        // Soft-fail achievement sync; archive page can still reconcile.
+      }
+
       await ensureRankEvaluation(userId, computeLevel(p.total_xp || 0));
     } catch (err) {
       setLoadError(err?.message || 'Failed to load dashboard data.');
@@ -569,29 +639,9 @@ export default function Dashboard() {
   }, [ensureRankEvaluation, navigate, notify, today]);
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        setLoading(false);
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser(authUser);
-      await loadData(authUser.id);
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        setLoading(false);
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser(session.user);
-      await loadData(session.user.id);
-    });
-    return () => subscription.unsubscribe();
-  }, [loadData, navigate]);
+    if (!authReady || !user?.id) return;
+    void loadData(user.id);
+  }, [authReady, loadData, user?.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !user?.id) return undefined;
@@ -1035,6 +1085,15 @@ export default function Dashboard() {
     }
 
     const metadata = options?.metadata || {};
+    if (!isPenalty) {
+      const boosted = applyShadowArmyXpBonus(amount, getStreakDays(profile));
+      if (boosted.bonusXp > 0) {
+        amount = boosted.totalXp;
+        metadata.shadow_army_bonus_xp = boosted.bonusXp;
+        metadata.shadow_army_bonus_pct = boosted.bonusPct;
+        metadata.shadow_army_count = boosted.shadowArmyCount;
+      }
+    }
     const eventId = options?.eventId || null;
     const snapshot = isPenalty
       ? await penaltyXpRpc({
@@ -1366,8 +1425,9 @@ export default function Dashboard() {
   const xpInLevel = Math.max(0, Math.floor(xpIntoCurrentLevel(totalXp)));
   const xpNeededForNextLevel = Math.max(1, Math.floor(xpBetweenLevels(level)));
   const xpProgressPct = Math.max(0, Math.min(100, Math.round(levelProgressPct(totalXp))));
-  const streakDays = profile?.daily_streak ?? profile?.global_streak ?? 0;
-  const shadowArmyCount = Math.max(0, Math.floor(streakDays / 7));
+  const streakDays = getStreakDays(profile);
+  const shadowArmyCount = computeShadowArmyCount(streakDays);
+  const shadowArmyBonusPct = getShadowArmyBonusPct(shadowArmyCount);
   const gateRank = getGateRank(level);
   const shadowDebt = systemState?.shadow_debt_xp || 0;
   const strikeCount = systemState?.strict_strikes || 0;
@@ -1569,7 +1629,9 @@ export default function Dashboard() {
             <div className="rounded-xl p-3 border border-[#0284c755] bg-[#1a0f2b99]">
               <p className="text-[10px] tracking-widest font-black text-[#67e8f9]">SHADOW ARMY</p>
               <p className="text-2xl font-black text-white mt-1">{shadowArmyCount}</p>
-              <p className="text-xs text-slate-400">Unlocked from streak milestones</p>
+              <p className="text-xs text-slate-400">
+                {shadowArmyBonusPct > 0 ? `+${shadowArmyBonusPct}% XP bonus on rewards` : 'Build streaks to activate XP bonus'}
+              </p>
             </div>
             <div className="rounded-xl p-3 border border-[#0ea5e955] bg-[#08202e99]">
               <p className="text-[10px] tracking-widest font-black text-cyan-300">GATE RANK</p>
