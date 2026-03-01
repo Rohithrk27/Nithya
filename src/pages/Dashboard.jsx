@@ -39,6 +39,12 @@ import {
   resolvePunishmentEarly,
 } from '@/lib/punishments';
 import { fetchRelicBalance } from '@/lib/relics';
+import {
+  getLocalDateKey,
+  hasReminderFired,
+  markReminderFired,
+  showReminderNotification,
+} from '@/lib/reminderNotifications';
 import { speakWithFemaleVoice } from '@/lib/voice';
 
 const DAILY_PRINCIPLES = [
@@ -177,6 +183,12 @@ const computeAdaptiveReminderTime = (historyLogs, fallback = '21:00') => {
   const h = Math.floor(reminderMins / 60);
   const m = reminderMins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+const parseClockTime = (value) => {
+  const parts = String(value || '').split(':').map(Number);
+  if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) return null;
+  return { hours: parts[0], minutes: parts[1] };
 };
 
 const playPendingHabitReminderCue = (message, includeSpeech = true) => {
@@ -935,50 +947,79 @@ export default function Dashboard() {
     return () => clearInterval(intervalId);
   }, [notify, pendingPunishments, user?.id]);
 
-  // FIXED: Use ASCII-safe storage key for habit reminders
+  // Background-safe reminder scheduler with catch-up checks.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!habits.length) return;
 
-    const completedHabitIds = new Set(logs.filter((l) => l.status === 'completed').map((l) => l.habit_id));
-    const incompleteHabits = habits.filter((h) => !completedHabitIds.has(h.id));
-    if (!incompleteHabits.length) return;
+    let running = false;
+    const tick = async () => {
+      if (running) return;
+      running = true;
+      try {
+        const completedHabitIds = new Set(logs.filter((l) => l.status === 'completed').map((l) => l.habit_id));
+        const incompleteHabits = habits.filter((h) => !completedHabitIds.has(h.id));
+        if (!incompleteHabits.length) return;
 
-    const timers = [];
-    const sendReminder = (tag) => {
-      // FIXED: Use ASCII-safe key instead of special Unicode characters
-      const storageKey = `nithya_habit_reminder_${today}_${tag}`;
-      if (localStorage.getItem(storageKey)) return;
-      const habitPreview = incompleteHabits.slice(0, 3).map((h) => h.title).join(', ');
-      const body = `${incompleteHabits.length} habits pending before day ends: ${habitPreview}${incompleteHabits.length > 3 ? ', ...' : ''}`;
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Nithya Habit Reminder', {
-          body,
-          tag: `habit-reminder-${tag}`,
-        });
+        const now = new Date();
+        const dateKey = getLocalDateKey(now);
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const habitPreview = incompleteHabits.slice(0, 3).map((h) => h.title).join(', ');
+        const body = `${incompleteHabits.length} habits pending before day ends: ${habitPreview}${incompleteHabits.length > 3 ? ', ...' : ''}`;
+
+        const sendReminder = async (tag, reason) => {
+          if (hasReminderFired(dateKey, tag)) return;
+          await showReminderNotification({
+            title: 'Nithya Habit Reminder',
+            body,
+            tag: `habit-reminder-${tag}`,
+            data: { dateKey, reason, tag },
+          });
+          playPendingHabitReminderCue(
+            `Reminder. You still have ${incompleteHabits.length} pending habits. ${habitPreview}.`,
+            systemState?.voice_enabled !== false
+          );
+          markReminderFired(dateKey, tag);
+        };
+
+        const adaptiveTime = computeAdaptiveReminderTime(historyLogs, profile?.reminder_time || '21:00');
+        const adaptive = parseClockTime(adaptiveTime);
+        if (adaptive) {
+          const adaptiveMinutes = adaptive.hours * 60 + adaptive.minutes;
+          if (nowMinutes >= adaptiveMinutes) {
+            await sendReminder('adaptive', 'adaptive');
+          }
+
+          // Regular nudges every 2 hours while habits are still pending.
+          const regularStart = Math.max(8 * 60, adaptiveMinutes - 60);
+          const regularEnd = 22 * 60 + 30;
+          if (nowMinutes >= regularStart && nowMinutes <= regularEnd) {
+            const slot = Math.floor((nowMinutes - regularStart) / 120);
+            await sendReminder(`regular_${slot}`, 'regular');
+          }
+        }
+
+        const dayEnd = parseClockTime('21:30');
+        if (dayEnd && nowMinutes >= (dayEnd.hours * 60 + dayEnd.minutes)) {
+          await sendReminder('day_end', 'day_end');
+        }
+      } finally {
+        running = false;
       }
-      playPendingHabitReminderCue(
-        `Reminder. You still have ${incompleteHabits.length} pending habits. ${habitPreview}.`,
-        systemState?.voice_enabled !== false
-      );
-      localStorage.setItem(storageKey, '1');
     };
 
-    const scheduleAt = (hours, minutes, tag) => {
-      const target = new Date();
-      target.setHours(hours, minutes, 0, 0);
-      const ms = target.getTime() - Date.now();
-      if (ms <= 0) return;
-      timers.push(setTimeout(() => sendReminder(tag), ms));
+    void tick();
+    const intervalId = window.setInterval(() => { void tick(); }, 30000);
+    const onWake = () => { void tick(); };
+    window.addEventListener('focus', onWake);
+    document.addEventListener('visibilitychange', onWake);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', onWake);
+      document.removeEventListener('visibilitychange', onWake);
     };
-
-    const adaptiveTime = computeAdaptiveReminderTime(historyLogs, profile?.reminder_time || '21:00');
-    const [h, m] = adaptiveTime.split(':').map(Number);
-    scheduleAt(h, m, 'adaptive');
-    scheduleAt(21, 30, 'day_end');
-
-    return () => timers.forEach((t) => clearTimeout(t));
-  }, [profile?.reminder_time, habits, historyLogs, logs, today, systemState?.voice_enabled]);
+  }, [profile?.reminder_time, habits, historyLogs, logs, systemState?.voice_enabled]);
 
   const awardXp = async (xp, source, options = {}) => {
     if (!profile || !user?.id) return null;

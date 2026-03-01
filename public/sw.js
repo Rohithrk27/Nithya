@@ -124,7 +124,47 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event?.data?.type === 'SKIP_WAITING') {
+  const payload = event?.data || {};
+  if (payload.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
   }
+
+  if (payload.type === 'SHOW_NOTIFICATION') {
+    const title = typeof payload.title === 'string' && payload.title.trim() ? payload.title : 'Nithya Reminder';
+    const options = payload.options && typeof payload.options === 'object' ? payload.options : {};
+    if (event.waitUntil) {
+      event.waitUntil(self.registration.showNotification(title, options));
+    } else {
+      void self.registration.showNotification(title, options);
+    }
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  event.waitUntil((async () => {
+    const targetUrl = event.notification?.data?.url || '/';
+    const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+    for (const client of clientList) {
+      try {
+        const openedUrl = new URL(client.url);
+        const desiredUrl = new URL(targetUrl, self.location.origin);
+        if (openedUrl.origin === desiredUrl.origin) {
+          if (typeof client.focus === 'function') {
+            await client.focus();
+          }
+          return;
+        }
+      } catch (_) {
+        // Try next client.
+      }
+    }
+
+    if (typeof self.clients.openWindow === 'function') {
+      await self.clients.openWindow(targetUrl);
+    }
+  })());
 });

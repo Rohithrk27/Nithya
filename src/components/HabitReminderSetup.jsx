@@ -1,7 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Bell, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { speakWithFemaleVoice } from '@/lib/voice';
+import {
+  getLocalDateKey,
+  getNotificationPermission,
+  hasReminderFired,
+  markReminderFired,
+  requestNotificationPermission,
+  showReminderNotification,
+} from '@/lib/reminderNotifications';
 
 function playHabitReminderCue(message) {
   if (typeof window === 'undefined') return;
@@ -48,63 +56,93 @@ function playHabitReminderCue(message) {
   }
 }
 
-// Schedules a browser notification at a given time string "HH:MM"
+const parseTime = (value) => {
+  const parts = String(value || '').split(':').map(Number);
+  if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) return null;
+  return { hours: parts[0], minutes: parts[1] };
+};
+
+const buildReminderText = (habits) => {
+  const incompleteHabits = habits.map((h) => h.title).join(', ');
+  return {
+    preview: incompleteHabits,
+    spoken: `Reminder. Time to check in. Today's habits: ${incompleteHabits}`,
+    body: `Time to check in! Today's habits: ${incompleteHabits}`,
+  };
+};
+
+// Background-safe scheduler: interval + focus/visibility catch-up.
 function scheduleReminder(time, habits) {
-  if (typeof window === 'undefined') return;
-  if (!time || habits.length === 0) return;
+  if (typeof window === 'undefined') return () => {};
+  if (!time || habits.length === 0) return () => {};
 
-  const [h, m] = time.split(':').map(Number);
-  const now = new Date();
-  const target = new Date();
-  target.setHours(h, m, 0, 0);
-  if (target <= now) target.setDate(target.getDate() + 1); // next day if past
+  const parsed = parseTime(time);
+  if (!parsed) return () => {};
 
-  const msUntil = target.getTime() - now.getTime();
-  const win = /** @type {any} */ (window);
+  const tag = 'profile_daily';
+  let firing = false;
+  const tick = async () => {
+    if (firing) return;
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(parsed.hours, parsed.minutes, 0, 0);
+    if (now.getTime() < target.getTime()) return;
 
-  // Clear any existing timer
-  if (win._habitReminderTimer) clearTimeout(win._habitReminderTimer);
+    const dateKey = getLocalDateKey(now);
+    if (hasReminderFired(dateKey, tag)) return;
 
-  win._habitReminderTimer = setTimeout(() => {
-    const incompleteHabits = habits.map(h => h.title).join(', ');
-    const reminderText = `Reminder. Time to check in. Today's habits: ${incompleteHabits}`;
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('⚡ Habit Reminder', {
-        body: `Time to check in! Today's habits: ${incompleteHabits}`,
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
+    firing = true;
+    try {
+      const message = buildReminderText(habits);
+      await showReminderNotification({
+        title: '⚡ Habit Reminder',
+        body: message.body,
         tag: 'habit-reminder',
+        data: { source: 'profile', dateKey, tag },
       });
-    }
-    playHabitReminderCue(reminderText);
-    // Re-schedule for the next day
-    scheduleReminder(time, habits);
-  }, msUntil);
-}
-
-export function initHabitReminders(reminderTime, habits) {
-  scheduleReminder(reminderTime, habits);
-}
-
-export default function HabitReminderSetup({ reminderTime, habits, onTimeChange }) {
-  const [permission, setPermission] = useState(
-    'Notification' in window ? Notification.permission : 'unsupported'
-  );
-  const [saved, setSaved] = useState(false);
-
-  const requestPermission = async () => {
-    if (!('Notification' in window)) return;
-    const result = await Notification.requestPermission();
-    setPermission(result);
-    if (result === 'granted') {
-      scheduleReminder(reminderTime, habits);
+      playHabitReminderCue(message.spoken);
+      markReminderFired(dateKey, tag);
+    } finally {
+      firing = false;
     }
   };
 
+  void tick();
+  const intervalId = window.setInterval(() => { void tick(); }, 30000);
+  const onVisibility = () => { void tick(); };
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('focus', onVisibility);
+
+  return () => {
+    clearInterval(intervalId);
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('focus', onVisibility);
+  };
+}
+
+export function initHabitReminders(reminderTime, habits) {
+  return scheduleReminder(reminderTime, habits);
+}
+
+export default function HabitReminderSetup({ reminderTime, habits, onTimeChange }) {
+  const [permission, setPermission] = useState(getNotificationPermission());
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setPermission(getNotificationPermission());
+  }, []);
+
+  useEffect(() => {
+    if (permission !== 'granted') return undefined;
+    return scheduleReminder(reminderTime, habits);
+  }, [permission, reminderTime, habits]);
+
+  const requestPermission = async () => {
+    const result = await requestNotificationPermission();
+    setPermission(result);
+  };
+
   const handleSaveTime = () => {
-    if (permission === 'granted') {
-      scheduleReminder(reminderTime, habits);
-    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     onTimeChange && onTimeChange(reminderTime);
