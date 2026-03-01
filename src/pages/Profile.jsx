@@ -349,7 +349,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div ref={shareCaptureRef}>
+        <div ref={shareCaptureRef} className="space-y-5">
           {section('PLAYER IDENTITY', (
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-center">
               <RPGHumanoidAvatar
@@ -362,13 +362,16 @@ export default function Profile() {
               />
               <div className="w-full min-w-0 flex-1 space-y-1">
                 <p className="text-2xl font-black text-white">{profile?.name}</p>
+                <p className="text-xs font-bold tracking-wide text-slate-300">
+                  @{publicProfile?.username || 'username-unavailable'}
+                </p>
                 <p className="text-xs font-bold tracking-widest" style={{ color: '#38BDF8' }}>Lv. {level} · {rankTitle}</p>
                 <p className="text-xs" style={{ color: '#64748B' }}>Tier {tier} Avatar</p>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
                   {[
                     ['Total XP', (profile?.total_xp || 0).toLocaleString()],
                     ['Quests Done', profile?.quests_completed || 0],
-                    ['Streak', `${profile?.global_streak || 0}d`],
+                    ['Streak', `${profile?.daily_streak ?? profile?.global_streak ?? 0}d`],
                     ['Stat Pts', profile?.stat_points || 0],
                   ].map(([k, v]) => (
                     <div key={k}>
@@ -380,17 +383,17 @@ export default function Profile() {
               </div>
             </div>
           ))}
+
+          {section('BODY METRICS', (
+            <div className="flex flex-col items-center">
+              <BMIMeter bmi={liveBMI} />
+            </div>
+          ))}
+
+          {section('STAT SUMMARY', (
+            <StatGrid profile={profile} level={level} statPoints={0} onAllocate={() => {}} />
+          ))}
         </div>
-
-        {section('BODY METRICS', (
-          <div className="flex flex-col items-center">
-            <BMIMeter bmi={liveBMI} />
-          </div>
-        ))}
-
-        {section('STAT SUMMARY', (
-          <StatGrid profile={profile} level={level} statPoints={0} onAllocate={() => {}} />
-        ))}
 
         {section('PROFILE SHARING', (
           <div className="space-y-3">

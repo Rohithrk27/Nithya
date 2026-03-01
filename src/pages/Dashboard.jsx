@@ -1357,12 +1357,6 @@ export default function Dashboard() {
   }
 
   const activeQuests = quests.filter((q) => isQuestInProgressStatus(q.status));
-  const activeWeeklyQuest = activeQuests.find((q) => normalizeQuestType(q?.type || q?.quest_type) === 'weekly') || null;
-  const weeklyProgressCurrent = Math.max(0, Number(activeWeeklyQuest?.progress_current || 0));
-  const weeklyProgressTarget = Math.max(1, Number(activeWeeklyQuest?.progress_target || 1));
-  const weeklyProgressPct = activeWeeklyQuest
-    ? Math.min(100, Math.round((weeklyProgressCurrent / weeklyProgressTarget) * 100))
-    : 0;
   const completedHabitsToday = logs.filter((l) => l.status === 'completed').length;
   const totalHabitsToday = habits.length;
   const habitProgressPct = totalHabitsToday > 0
@@ -1540,25 +1534,6 @@ export default function Dashboard() {
         <HoloPanel>
           <p className="text-cyan-400 text-xs uppercase tracking-widest font-bold mb-3">Progress Snapshot</p>
           <div className="space-y-3">
-            <div className="rounded-xl p-3 border border-cyan-500/20 bg-slate-900/40">
-              <div className="flex items-center justify-between gap-2 text-xs font-bold">
-                <p className="text-cyan-300">Weekly Quest</p>
-                <p className="text-cyan-100 text-right">
-                  {activeWeeklyQuest ? `${weeklyProgressCurrent}/${weeklyProgressTarget}` : 'No active weekly quest'}
-                </p>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1 break-words">
-                {activeWeeklyQuest?.title || 'Accept a weekly quest from the Quests page.'}
-              </p>
-              <div className="h-2 rounded-full overflow-hidden bg-slate-900/70 mt-2">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${weeklyProgressPct}%`, background: 'linear-gradient(90deg, #38BDF8, #22D3EE)' }}
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">{weeklyProgressPct}%</p>
-            </div>
-
             <div className="rounded-xl p-3 border border-emerald-500/20 bg-slate-900/40">
               <div className="flex items-center justify-between gap-2 text-xs font-bold">
                 <p className="text-emerald-300">Today Habits</p>
