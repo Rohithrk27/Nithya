@@ -793,11 +793,12 @@ export default function Dashboard() {
         }
 
         const warningShownToday = hasSystemWarningShownToday(user.id, today);
-        const shouldShowPopup = ['active', 'paused', 'penalized'].includes(nextStatus)
+        const interruptStillActionable = ['active', 'paused', 'penalized'].includes(nextStatus);
+        const shouldAutoShowPopup = interruptStillActionable
           && !warningShownToday
           && elapsedMs < (24 * 60 * 60 * 1000)
           && dismissedInterruptId !== interruptRecord.id;
-        setShowWarningPopup(shouldShowPopup);
+        setShowWarningPopup((prev) => (interruptStillActionable ? (prev || shouldAutoShowPopup) : false));
       } catch (_) {
         // keep current state if resolve call fails; next tick retries
       } finally {
@@ -1405,21 +1406,21 @@ export default function Dashboard() {
           onGlowPulse={handleGlowPulse}
         />
       )}
-      <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
+      <div className="w-full max-w-2xl mx-auto p-4 md:p-6 space-y-4 overflow-x-hidden">
         <HoloPanel>
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-cyan-300 text-[10px] tracking-[0.2em] font-black">HUNTER PROFILE</p>
               <p className="text-white text-lg font-bold">{profile?.name || 'PLAYER'}</p>
               <p className="text-cyan-400 text-xs">
                 {format(now, 'EEE, MMM d').toUpperCase()} · {format(now, 'hh:mm:ss a')}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full sm:w-auto items-center justify-start sm:justify-end gap-2">
               <button
                 type="button"
                 onClick={() => navigate(createPageUrl('Relics'))}
-                className="px-2 py-1 rounded-md text-xs font-black tracking-widest border flex items-center gap-1"
+                className="px-2 py-1 rounded-md text-xs font-black tracking-widest border flex items-center gap-1 shrink-0"
                 style={{
                   borderColor: relicBalance > 0 ? 'rgba(34,211,238,0.45)' : 'rgba(71,85,105,0.55)',
                   color: relicBalance > 0 ? '#67E8F9' : '#94A3B8',
@@ -1429,14 +1430,14 @@ export default function Dashboard() {
                 <Gem className="w-3.5 h-3.5" />
                 RELIC {relicBalance}
               </button>
-              <Button onClick={() => navigate(createPageUrl('Profile'))}>PROFILE</Button>
+              <Button className="shrink-0" onClick={() => navigate(createPageUrl('Profile'))}>PROFILE</Button>
             </div>
           </div>
         </HoloPanel>
 
         <HoloPanel>
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] items-start">
-            <div className="flex gap-4 items-center">
+            <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-start">
               <RPGHumanoidAvatar
                 level={level}
                 totalXp={totalXp}
@@ -1474,12 +1475,12 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-            <div className="rounded-xl p-3 border border-cyan-500/20 bg-slate-900/45">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-cyan-400 text-xs uppercase tracking-widest font-bold flex items-center gap-2">
+            <div className="rounded-xl p-3 border border-cyan-500/20 bg-slate-900/45 overflow-hidden">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <p className="text-cyan-400 text-xs uppercase tracking-widest font-bold flex items-center gap-2 min-w-0">
                   <Shield className="w-3.5 h-3.5" /> CORE STAT PANEL
                 </p>
-                <span className="px-2 py-1 rounded border border-yellow-700 text-yellow-300 text-xs font-bold">
+                <span className="px-2 py-1 rounded border border-yellow-700 text-yellow-300 text-xs font-bold whitespace-nowrap">
                   {profile?.stat_points || 0} PTS
                 </span>
               </div>
@@ -1498,13 +1499,13 @@ export default function Dashboard() {
           <p className="text-cyan-400 text-xs uppercase tracking-widest font-bold mb-3">Progress Snapshot</p>
           <div className="space-y-3">
             <div className="rounded-xl p-3 border border-cyan-500/20 bg-slate-900/40">
-              <div className="flex items-center justify-between text-xs font-bold">
+              <div className="flex items-center justify-between gap-2 text-xs font-bold">
                 <p className="text-cyan-300">Weekly Quest</p>
-                <p className="text-cyan-100">
+                <p className="text-cyan-100 text-right">
                   {activeWeeklyQuest ? `${weeklyProgressCurrent}/${weeklyProgressTarget}` : 'No active weekly quest'}
                 </p>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1 truncate">
+              <p className="text-[11px] text-slate-400 mt-1 break-words">
                 {activeWeeklyQuest?.title || 'Accept a weekly quest from the Quests page.'}
               </p>
               <div className="h-2 rounded-full overflow-hidden bg-slate-900/70 mt-2">
@@ -1517,7 +1518,7 @@ export default function Dashboard() {
             </div>
 
             <div className="rounded-xl p-3 border border-emerald-500/20 bg-slate-900/40">
-              <div className="flex items-center justify-between text-xs font-bold">
+              <div className="flex items-center justify-between gap-2 text-xs font-bold">
                 <p className="text-emerald-300">Today Habits</p>
                 <p className="text-emerald-100">{completedHabitsToday}/{totalHabitsToday}</p>
               </div>
@@ -1531,7 +1532,7 @@ export default function Dashboard() {
             </div>
 
             <div className="rounded-xl p-3 border border-amber-500/20 bg-slate-900/40">
-              <div className="flex items-center justify-between text-xs font-bold">
+              <div className="flex items-center justify-between gap-2 text-xs font-bold">
                 <p className="text-amber-300">XP To Next Level</p>
                 <p className="text-amber-100">{xpInLevel}/{xpNeededForNextLevel}</p>
               </div>
@@ -1547,7 +1548,7 @@ export default function Dashboard() {
         </HoloPanel>
 
         <HoloPanel>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="rounded-xl p-3 border border-[#0284c755] bg-[#1a0f2b99]">
               <p className="text-[10px] tracking-widest font-black text-[#67e8f9]">SHADOW ARMY</p>
               <p className="text-2xl font-black text-white mt-1">{shadowArmyCount}</p>
@@ -1563,7 +1564,7 @@ export default function Dashboard() {
 
         <HoloPanel glowColor="#F87171" active={shadowDebt > 0 || rankEvaluation?.status === 'pending'}>
           <p className="text-red-400 text-xs tracking-widest font-bold mb-2">STRICT SYSTEM</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="rounded-xl p-2 border border-red-500/30 bg-red-950/30">
               <p className="text-[10px] tracking-widest text-red-300 font-black">SHADOW DEBT</p>
               <p className="text-lg font-black text-white">{shadowDebt}</p>
@@ -1587,7 +1588,7 @@ export default function Dashboard() {
                   OVERDUE: Daily penalty active{rankEvaluation?.last_penalty_date ? ` · Last applied ${rankEvaluation.last_penalty_date}` : ''}.
                 </p>
               )}
-              <div className="flex gap-2 mt-3">
+              <div className="flex flex-col sm:flex-row gap-2 mt-3">
                 <Button onClick={() => resolveRankEvaluation('cleared')}>CLEAR</Button>
                 <Button variant="outline" onClick={() => resolveRankEvaluation('failed')}>FAIL</Button>
               </div>
@@ -1597,7 +1598,7 @@ export default function Dashboard() {
 
         {activeDungeon && (
           <HoloPanel glowColor="#F87171" active>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-red-400 text-xs tracking-widest font-bold">ACTIVE DUNGEON</p>
               <span className="text-[10px] tracking-widest font-black px-2 py-1 rounded border border-red-500/40 text-red-300">
                 {Math.round(activeDungeonProgress.pct)}%
@@ -1632,10 +1633,10 @@ export default function Dashboard() {
             </p>
             <p className="text-white font-semibold text-xl">{dailyChallenge.title}</p>
             <p className="text-slate-400 text-sm">{dailyChallenge.description}</p>
-            <div className="flex gap-2 mt-3 items-center">
+            <div className="flex flex-wrap gap-2 mt-3 items-center">
               <span className="px-2 py-1 rounded text-yellow-300 border border-yellow-700 text-xs font-bold">+{dailyChallenge.xp_reward || 168} XP</span>
               <span className="px-2 py-1 rounded text-cyan-300 border border-cyan-700 text-xs font-bold">{(dailyChallenge.stat_reward || 'social').toUpperCase()} +1</span>
-              <Button className="ml-auto" onClick={completeDailyChallenge}>COMPLETE</Button>
+              <Button className="w-full sm:w-auto sm:ml-auto" onClick={completeDailyChallenge}>COMPLETE</Button>
             </div>
           </HoloPanel>
         )}
@@ -1647,7 +1648,7 @@ export default function Dashboard() {
 
         {interruptEvent && (
           <HoloPanel>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
               <p className="text-red-400 text-xs tracking-widest font-bold">SYSTEM WARNING</p>
               <span className="text-[10px] font-black tracking-widest px-2 py-1 rounded border border-red-500/40 text-red-300">
                 {interruptActionable
@@ -1657,16 +1658,17 @@ export default function Dashboard() {
             </div>
             <p className="text-white font-semibold text-lg">{interruptEvent.title}</p>
             <p className="text-slate-400 text-sm">{interruptEvent.description}</p>
-            <div className="flex gap-2 mt-3 items-center">
+            <div className="flex flex-wrap gap-2 mt-3 items-center">
               <span className="px-2 py-1 rounded text-yellow-300 border border-yellow-700 text-xs font-bold">+{interruptEvent.rewardXp} XP</span>
               <span className="px-2 py-1 rounded text-cyan-300 border border-cyan-700 text-xs font-bold">
                 {interruptEvent.statReward.toUpperCase()} +1
               </span>
                 {interruptActionable ? (
                 <>
-                  <Button className="ml-auto" onClick={() => resolveInterrupt('accepted')}>COMPLETE</Button>
+                  <Button className="w-full sm:w-auto sm:ml-auto" onClick={() => resolveInterrupt('accepted')}>COMPLETE</Button>
                   <Button
                     variant="outline"
+                    className="w-full sm:w-auto"
                     onClick={() => {
                       setDismissedInterruptId(null);
                       setShowWarningPopup(true);
@@ -1676,7 +1678,7 @@ export default function Dashboard() {
                   </Button>
                 </>
               ) : (
-                <p className="ml-auto text-xs font-bold text-slate-400 tracking-widest">
+                <p className="w-full sm:w-auto sm:ml-auto text-xs font-bold text-slate-400 tracking-widest">
                   {systemState?.interruptions_paused ? 'INTERRUPTS PAUSED' : 'RESOLVED TODAY'}
                 </p>
               )}
@@ -1691,7 +1693,7 @@ export default function Dashboard() {
               const done = logs.find((l) => l.habit_id === habit.id && l.status === 'completed');
               const color = difficultyColor(habit.difficulty);
               return (
-                <div key={habit.id} className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-700 bg-slate-900/40">
+                <div key={habit.id} className="w-full flex items-start sm:items-center gap-3 p-3 rounded-xl border border-slate-700 bg-slate-900/40">
                   <button onClick={() => toggleHabit(habit)} className="text-slate-400">
                     {done ? <CheckCircle2 className="w-5 h-5 text-cyan-400" /> : <Circle className="w-5 h-5" />}
                   </button>
@@ -1699,7 +1701,7 @@ export default function Dashboard() {
                     <p className="text-white font-semibold">{habit.title}</p>
                     <p className="text-yellow-300 text-sm font-bold">+{habit.xp_value || 0} XP</p>
                   </div>
-                  <span className="px-2 py-1 rounded text-xs font-black" style={{ color, border: `1px solid ${color}66`, background: `${color}22` }}>
+                  <span className="px-2 py-1 rounded text-xs font-black shrink-0" style={{ color, border: `1px solid ${color}66`, background: `${color}22` }}>
                     {(habit.difficulty || 'medium').toUpperCase()}
                   </span>
                 </div>
@@ -1708,9 +1710,9 @@ export default function Dashboard() {
           </div>
         </HoloPanel>
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <p className="text-yellow-300 text-xs tracking-widest font-bold">ACTIVE QUESTS</p>
-          <button onClick={() => navigate(createPageUrl('Quests'))} className="text-cyan-400 text-xs font-bold">VIEW ALL</button>
+          <button onClick={() => navigate(createPageUrl('Quests'))} className="text-cyan-400 text-xs font-bold whitespace-nowrap">VIEW ALL</button>
         </div>
         <div className="space-y-3">
           {activeQuests.slice(0, 2).map((quest, i) => (

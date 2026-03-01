@@ -58,13 +58,13 @@ function StatBar({ meta, value, canAllocate, onAllocate, flash }) {
         boxShadow: flash ? `0 0 8px ${color}44` : 'none',
       }}
     >
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-sm leading-none">{icon}</span>
           <span className="text-xs font-bold tracking-widest" style={{ color }}>{label}</span>
-          <span className="text-xs hidden sm:inline" style={{ color: `${color}66` }}>{fullLabel}</span>
+          <span className="text-xs hidden md:inline truncate" style={{ color: `${color}66` }}>{fullLabel}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs font-mono font-bold" style={{ color }}>
             <AnimatedNumber value={value} />
           </span>
@@ -119,15 +119,15 @@ export default function StatGrid({ profile, level = 0, statPoints = 0, onAllocat
   return (
     <div className="space-y-3">
       {/* Pentagon Graph */}
-      <div className="flex justify-center mb-4">
+      <div className="flex justify-center mb-4 overflow-hidden pt-4">
         <button
           type="button"
           onClick={() => expandable && setExpanded((prev) => !prev)}
-          className={expandable ? 'transition-transform duration-200 hover:scale-[1.02]' : ''}
+          className={`w-full max-w-[220px] ${expandable ? 'transition-transform duration-200 hover:scale-[1.02]' : ''}`}
           style={{ cursor: expandable ? 'pointer' : 'default' }}
           aria-label={expandable ? (expanded ? 'Collapse stat details' : 'Expand stat details') : 'Stat graph'}
         >
-          <PentagonGraph stats={pentagonStats} size={180} />
+          <PentagonGraph stats={pentagonStats} size={172} />
           {expandable && (
             <p className="mt-2 text-center text-[10px] font-bold tracking-widest text-cyan-400">
               {expanded ? 'TAP TO COLLAPSE STATS' : 'TAP TO EXPAND FULL STATS'}

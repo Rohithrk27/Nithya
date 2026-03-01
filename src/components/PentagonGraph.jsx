@@ -11,51 +11,58 @@ const PENTAGON_STATS = [
 
 const MAX_STAT = 150;
 const SIZE = 160;
-const CENTER = SIZE / 2;
-const RADIUS = 70;
 
-function getPoint(index, value, totalPoints) {
+function getPoint(index, value, totalPoints, center, radius) {
   const angle = (Math.PI * 2 * index) / totalPoints - Math.PI / 2;
   const normalizedValue = Math.min(value / MAX_STAT, 1);
-  const r = RADIUS * normalizedValue;
+  const r = radius * normalizedValue;
   return {
-    x: CENTER + r * Math.cos(angle),
-    y: CENTER + r * Math.sin(angle),
+    x: center + r * Math.cos(angle),
+    y: center + r * Math.sin(angle),
   };
 }
 
-function getGridPoint(index, totalPoints, gridLevel) {
+function getGridPoint(index, totalPoints, gridLevel, center, radius) {
   const angle = (Math.PI * 2 * index) / totalPoints - Math.PI / 2;
-  const r = RADIUS * gridLevel;
+  const r = radius * gridLevel;
   return {
-    x: CENTER + r * Math.cos(angle),
-    y: CENTER + r * Math.sin(angle),
+    x: center + r * Math.cos(angle),
+    y: center + r * Math.sin(angle),
   };
 }
 
 export default function PentagonGraph({ stats, size = SIZE }) {
+  const safeSize = Math.max(120, Number(size || SIZE));
+  const center = safeSize / 2;
+  const radius = safeSize * 0.33;
+  const labelRadius = Math.min(safeSize * 0.44, radius * 1.18);
+  const dotRadius = Math.max(4, Math.round(safeSize * 0.028));
+  const labelFontSize = Math.max(9, Math.round(safeSize * 0.06));
+  const valueFontSize = Math.max(8, Math.round(safeSize * 0.045));
+  const avgFontSize = Math.max(20, Math.round(safeSize * 0.14));
+
   const points = useMemo(() => {
     return PENTAGON_STATS.map((stat, i) => {
       const value = stats[stat.key] || 0;
-      return getPoint(i, value, PENTAGON_STATS.length);
+      return getPoint(i, value, PENTAGON_STATS.length, center, radius);
     });
-  }, [stats]);
+  }, [stats, center, radius]);
 
-  const polygonPath = useMemo(() => {
-    return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z';
+  const polygonPoints = useMemo(() => {
+    return points.map((p) => `${p.x} ${p.y}`).join(' ');
   }, [points]);
 
   const gridLevels = [0.25, 0.5, 0.75, 1];
 
   return (
     <div className="relative flex flex-col items-center">
-      <svg width={size} height={size} className="overflow-visible">
+      <svg width={safeSize} height={safeSize} className="block">
         {/* Grid lines - pentagons */}
         {gridLevels.map((level, li) => (
           <polygon
             key={li}
             points={PENTAGON_STATS.map((_, i) => {
-              const p = getGridPoint(i, PENTAGON_STATS.length, level);
+              const p = getGridPoint(i, PENTAGON_STATS.length, level, center, radius);
               return `${p.x} ${p.y}`;
             }).join(' ')}
             fill="none"
@@ -67,12 +74,12 @@ export default function PentagonGraph({ stats, size = SIZE }) {
 
         {/* Axis lines from center */}
         {PENTAGON_STATS.map((_, i) => {
-          const p = getGridPoint(i, PENTAGON_STATS.length, 1);
+          const p = getGridPoint(i, PENTAGON_STATS.length, 1, center, radius);
           return (
             <line
               key={i}
-              x1={CENTER}
-              y1={CENTER}
+              x1={center}
+              y1={center}
               x2={p.x}
               y2={p.y}
               stroke="#1e3a4a"
@@ -83,7 +90,7 @@ export default function PentagonGraph({ stats, size = SIZE }) {
 
         {/* Data polygon */}
         <polygon
-          points={polygonPath.replace(/[ML]/g, '').trim().split(' ').filter(Boolean).join(' ')}
+          points={polygonPoints}
           fill="url(#statGradient)"
           fillOpacity={0.3}
           stroke="url(#statStrokeGradient)"
@@ -97,7 +104,7 @@ export default function PentagonGraph({ stats, size = SIZE }) {
             key={i}
             cx={p.x}
             cy={p.y}
-            r={5}
+            r={dotRadius}
             fill={PENTAGON_STATS[i].color}
             stroke="#0a191f"
             strokeWidth={2}
@@ -110,16 +117,16 @@ export default function PentagonGraph({ stats, size = SIZE }) {
 
         {/* Labels */}
         {PENTAGON_STATS.map((stat, i) => {
-          const p = getGridPoint(i, PENTAGON_STATS.length, 1.35);
+          const p = getGridPoint(i, PENTAGON_STATS.length, 1, center, labelRadius);
           const value = stats[stat.key] || 0;
           return (
             <g key={stat.key}>
               <text
                 x={p.x}
-                y={p.y - 8}
+                y={p.y - 6}
                 textAnchor="middle"
                 fill={stat.color}
-                fontSize="10"
+                fontSize={labelFontSize}
                 fontWeight="bold"
                 className="tracking-widest"
                 style={{ textShadow: `0 0 8px ${stat.color}66` }}
@@ -128,10 +135,10 @@ export default function PentagonGraph({ stats, size = SIZE }) {
               </text>
               <text
                 x={p.x}
-                y={p.y + 4}
+                y={p.y + 8}
                 textAnchor="middle"
                 fill="#94a3b8"
-                fontSize="8"
+                fontSize={valueFontSize}
                 fontWeight="bold"
               >
                 {value}
@@ -157,10 +164,10 @@ export default function PentagonGraph({ stats, size = SIZE }) {
       {/* Center display */}
       <div 
         className="absolute inset-0 flex items-center justify-center pointer-events-none"
-        style={{ width: size, height: size }}
+        style={{ width: safeSize, height: safeSize }}
       >
         <div className="text-center">
-          <div className="text-2xl font-black text-white" style={{ textShadow: '0 0 20px rgba(56,189,248,0.6)' }}>
+          <div className="font-black text-white" style={{ textShadow: '0 0 20px rgba(56,189,248,0.6)', fontSize: avgFontSize }}>
             {Math.round(Object.values(stats).reduce((a, b) => a + (b || 0), 0) / 5)}
           </div>
           <div className="text-[8px] font-bold tracking-widest" style={{ color: '#38BDF888' }}>

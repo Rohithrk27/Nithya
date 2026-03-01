@@ -66,7 +66,13 @@ export function speakWithFemaleVoice(text, options = {}) {
 
   const run = () => {
     const preferred = pickPreferredFemaleVoice(synth.getVoices());
-    if (preferred) utter.voice = preferred;
+    if (preferred) {
+      utter.voice = preferred;
+      utter.lang = preferred.lang || utter.lang;
+    }
+    if (!utter.lang) {
+      utter.lang = (typeof options.lang === 'string' && options.lang.trim()) ? options.lang.trim() : 'en-IN';
+    }
     if (options.cancel !== false) synth.cancel();
     synth.speak(utter);
   };

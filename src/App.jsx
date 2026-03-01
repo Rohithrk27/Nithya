@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -8,13 +9,20 @@ import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-import ResetPassword from './pages/ResetPassword';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
-import PublicProfile from './pages/PublicProfile';
+
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const PublicProfile = lazy(() => import('./pages/PublicProfile'));
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
+
+const RouteLoadingFallback = () => (
+  <div className="fixed inset-0 flex items-center justify-center">
+    <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+  </div>
+);
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -28,56 +36,54 @@ const AuthenticatedApp = () => {
 
   // Show loading spinner while checking auth
   if (isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
-      </div>
-    );
+    return <RouteLoadingFallback />;
   }
 
   // Render login route when not authenticated to avoid blank screen
   if (!isAuthenticated) {
     return (
-      <Routes>
-        {Pages.Landing && (
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <Routes>
+          {Pages.Landing && (
+            <Route
+              path={landingPath}
+              element={
+                <LayoutWrapper currentPageName="Landing">
+                  <Pages.Landing />
+                </LayoutWrapper>
+              }
+            />
+          )}
+          <Route path="/" element={<Navigate to={landingPath} replace />} />
+          {Pages.Login && (
+            <Route
+              path={loginPath}
+              element={
+                <LayoutWrapper currentPageName="Login">
+                  <Pages.Login />
+                </LayoutWrapper>
+              }
+            />
+          )}
           <Route
-            path={landingPath}
+            path="/reset-password"
             element={
-              <LayoutWrapper currentPageName="Landing">
-                <Pages.Landing />
+              <LayoutWrapper currentPageName="ResetPassword">
+                <ResetPassword />
               </LayoutWrapper>
             }
           />
-        )}
-        <Route path="/" element={<Navigate to={landingPath} replace />} />
-        {Pages.Login && (
           <Route
-            path={loginPath}
+            path="/profile/:username"
             element={
-              <LayoutWrapper currentPageName="Login">
-                <Pages.Login />
+              <LayoutWrapper currentPageName="PublicProfile">
+                <PublicProfile />
               </LayoutWrapper>
             }
           />
-        )}
-        <Route
-          path="/reset-password"
-          element={
-            <LayoutWrapper currentPageName="ResetPassword">
-              <ResetPassword />
-            </LayoutWrapper>
-          }
-        />
-        <Route
-          path="/profile/:username"
-          element={
-            <LayoutWrapper currentPageName="PublicProfile">
-              <PublicProfile />
-            </LayoutWrapper>
-          }
-        />
-        <Route path="*" element={<Navigate to={landingPath} replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to={landingPath} replace />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -94,63 +100,65 @@ const AuthenticatedApp = () => {
 
   // Render the main app
   return (
-      <Routes>
-      <Route path="/" element={
-        <LayoutWrapper currentPageName={mainPageKey}>
-          <MainPage />
-        </LayoutWrapper>
-      } />
-      {Pages.Landing && (
-        <Route
-          path={landingPath}
-          element={
-            <LayoutWrapper currentPageName="Landing">
-              <Pages.Landing />
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <Routes>
+          <Route path="/" element={
+            <LayoutWrapper currentPageName={mainPageKey}>
+              <MainPage />
             </LayoutWrapper>
-          }
-        />
-      )}
-      {Object.entries(Pages)
-        .filter(([path]) => path !== 'Login' && path !== 'Landing')
-        .map(([path, Page]) => (
-        <Route
-          key={path}
-          path={createPageUrl(path)}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
-      {Pages.Login && (
-        <Route
-          path={loginPath}
-          element={
-            <LayoutWrapper currentPageName="Login">
-              <Pages.Login />
-            </LayoutWrapper>
-          }
-        />
-      )}
-      <Route
-        path="/reset-password"
-        element={
-          <LayoutWrapper currentPageName="ResetPassword">
-            <ResetPassword />
-          </LayoutWrapper>
-        }
-      />
-      <Route
-        path="/profile/:username"
-        element={
-          <LayoutWrapper currentPageName="PublicProfile">
-            <PublicProfile />
-          </LayoutWrapper>
-        }
-      />
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+          } />
+          {Pages.Landing && (
+            <Route
+              path={landingPath}
+              element={
+                <LayoutWrapper currentPageName="Landing">
+                  <Pages.Landing />
+                </LayoutWrapper>
+              }
+            />
+          )}
+          {Object.entries(Pages)
+            .filter(([path]) => path !== 'Login' && path !== 'Landing')
+            .map(([path, Page]) => (
+              <Route
+                key={path}
+                path={createPageUrl(path)}
+                element={
+                  <LayoutWrapper currentPageName={path}>
+                    <Page />
+                  </LayoutWrapper>
+                }
+              />
+            ))}
+          {Pages.Login && (
+            <Route
+              path={loginPath}
+              element={
+                <LayoutWrapper currentPageName="Login">
+                  <Pages.Login />
+                </LayoutWrapper>
+              }
+            />
+          )}
+          <Route
+            path="/reset-password"
+            element={
+              <LayoutWrapper currentPageName="ResetPassword">
+                <ResetPassword />
+              </LayoutWrapper>
+            }
+          />
+          <Route
+            path="/profile/:username"
+            element={
+              <LayoutWrapper currentPageName="PublicProfile">
+                <PublicProfile />
+              </LayoutWrapper>
+            }
+          />
+          <Route path="*" element={<PageNotFound />} />
+        </Routes>
+      </Suspense>
   );
 };
 

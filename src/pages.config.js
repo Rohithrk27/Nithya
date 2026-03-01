@@ -47,20 +47,22 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
-import Analytics from './pages/Analytics';
-import Archive from './pages/Archive';
-import Dashboard from './pages/Dashboard';
-import Dungeon from './pages/Dungeon';
-import Landing from './pages/Landing';
-import Leaderboard from './pages/Leaderboard';
-import Profile from './pages/Profile';
-import Quests from './pages/Quests';
-import RedeemCodes from './pages/RedeemCodes';
-import Relics from './pages/Relics';
-import Habits from './pages/Habits';
-import Login from './pages/Login';
-import Punishments from './pages/Punishments';
+import { lazy } from 'react';
 import __Layout from './Layout.jsx';
+
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Archive = lazy(() => import('./pages/Archive'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Dungeon = lazy(() => import('./pages/Dungeon'));
+const Landing = lazy(() => import('./pages/Landing'));
+const Leaderboard = lazy(() => import('./pages/Leaderboard'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Quests = lazy(() => import('./pages/Quests'));
+const RedeemCodes = lazy(() => import('./pages/RedeemCodes'));
+const Relics = lazy(() => import('./pages/Relics'));
+const Habits = lazy(() => import('./pages/Habits'));
+const Login = lazy(() => import('./pages/Login'));
+const Punishments = lazy(() => import('./pages/Punishments'));
 
 
 export const PAGES = {

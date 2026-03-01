@@ -851,9 +851,9 @@ export default function Quests() {
         <div className="w-full max-w-md rounded-2xl p-5 space-y-3" style={{ background: 'rgba(15,32,39,0.7)', border: '1px solid #1e3a4a' }}>
           <p className="text-sm font-bold text-red-400 tracking-wide">QUEST BOARD LOAD FAILED</p>
           <p className="text-sm" style={{ color: '#94A3B8' }}>{loadError}</p>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button onClick={() => user?.id && loadData(user.id)} className="flex-1">Retry</Button>
-            <Button variant="outline" onClick={() => navigate(createPageUrl('Dashboard'))}>Back</Button>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate(createPageUrl('Dashboard'))}>Back</Button>
           </div>
         </div>
       </div>
@@ -861,8 +861,8 @@ export default function Quests() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
-      <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-5">
+    <div className="min-h-screen overflow-x-hidden" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
+      <div className="w-full max-w-2xl mx-auto p-4 md:p-6 space-y-5 overflow-x-hidden">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -880,13 +880,13 @@ export default function Quests() {
           </div>
         </div>
 
-        <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(15,32,39,0.7)', border: '1px solid #1e3a4a' }}>
+        <div className="flex gap-1 p-1 rounded-xl overflow-x-auto" style={{ background: 'rgba(15,32,39,0.7)', border: '1px solid #1e3a4a' }}>
           {TABS.map((entry) => (
             <button
               key={entry.id}
               type="button"
               onClick={() => setTab(entry.id)}
-              className="flex-1 py-2 rounded-lg text-xs font-bold tracking-widest transition-all flex items-center justify-center gap-1"
+              className="flex-1 min-w-[100px] py-2 rounded-lg text-xs font-bold tracking-widest transition-all flex items-center justify-center gap-1 whitespace-nowrap"
               style={{
                 background: tab === entry.id ? 'rgba(56,189,248,0.15)' : 'transparent',
                 color: tab === entry.id ? '#38BDF8' : '#64748B',
@@ -947,9 +947,9 @@ export default function Quests() {
               const Icon = display.icon;
               return (
                 <div key={section.id}>
-                  <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center gap-2 mb-3 min-w-0">
                     <Icon className="w-4 h-4" style={{ color: display.color }} />
-                    <span className="text-xs font-bold tracking-widest" style={{ color: display.color }}>
+                    <span className="text-xs font-bold tracking-widest break-words" style={{ color: display.color }}>
                       {section.label}
                     </span>
                   </div>
@@ -957,7 +957,7 @@ export default function Quests() {
                   {section.quests.length === 0 ? (
                     section.lockedQuest ? (
                       <div
-                        className="rounded-xl p-4 flex items-center justify-between gap-4"
+                        className="rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
                         style={{ background: 'rgba(15,32,39,0.7)', border: `1px solid ${display.color}22`, opacity: 0.75 }}
                       >
                         <div className="min-w-0">
@@ -987,7 +987,7 @@ export default function Quests() {
                         return (
                           <div
                             key={template.id || templateKey}
-                            className="rounded-xl p-4 flex items-center gap-4"
+                            className="rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center gap-4"
                             style={{
                               background: 'rgba(15,32,39,0.7)',
                               border: `1px solid ${display.color}22`,
@@ -997,7 +997,7 @@ export default function Quests() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-bold text-white">{template.title}</p>
                               <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{template.description}</p>
-                              <div className="flex items-center gap-3 mt-1.5">
+                              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1.5">
                                 <span className="text-xs font-bold" style={{ color: '#FBBF24' }}>+{Number(template.xp_reward || 0)} XP</span>
                                 {template.stat_reward && (
                                   <span className="text-xs" style={{ color: display.color }}>
@@ -1022,7 +1022,7 @@ export default function Quests() {
                                   void handleAcceptQuest(template);
                                 }}
                                 disabled={actionLoading || acceptBlockedByOtherMutation}
-                                className="text-xs h-8 px-3 font-bold tracking-wide"
+                                className="text-xs h-8 px-3 font-bold tracking-wide w-full sm:w-auto"
                                 style={{ background: `${display.color}22`, border: `1px solid ${display.color}44`, color: display.color }}
                               >
                                 <Plus className="w-3 h-3 mr-1" />
@@ -1035,7 +1035,7 @@ export default function Quests() {
                                 type="button"
                                 size="sm"
                                 onClick={() => setTab('progress')}
-                                className="text-xs h-8 px-3 font-bold tracking-wide"
+                                className="text-xs h-8 px-3 font-bold tracking-wide w-full sm:w-auto"
                                 style={{ background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.35)', color: '#38BDF8' }}
                               >
                                 In Progress
@@ -1061,9 +1061,9 @@ export default function Quests() {
         {tab === 'history' && (
           <div className="space-y-4">
             <HoloPanel>
-              <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <p className="text-xs font-bold tracking-widest" style={{ color: '#38BDF8' }}>XP HISTORY</p>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                   {[
                     { id: 'all', label: 'All' },
                     { id: 'rewards', label: 'Rewards' },
@@ -1092,7 +1092,7 @@ export default function Quests() {
                 <div className="space-y-3 max-h-80 overflow-y-auto">
                   {groupedXpHistory.map((group) => (
                     <div key={group.dayKey} className="space-y-2">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <p className="text-[11px] font-bold tracking-widest" style={{ color: '#94A3B8' }}>
                           {group.dayKey}
                         </p>
@@ -1104,7 +1104,7 @@ export default function Quests() {
                       {group.logs.map((log, index) => (
                         <div
                           key={log.id || `${group.dayKey}-${index}`}
-                          className="flex items-start justify-between gap-3 p-2 rounded-lg"
+                          className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-3 p-2 rounded-lg"
                           style={{ background: 'rgba(15,32,39,0.5)', border: '1px solid rgba(56,189,248,0.1)' }}
                         >
                           <div className="min-w-0">
@@ -1115,7 +1115,7 @@ export default function Quests() {
                               {log.timestamp ? log.timestamp.toLocaleString() : (log.date || '')}
                             </p>
                           </div>
-                          <span className={`text-sm font-bold whitespace-nowrap ${log.delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          <span className={`text-sm font-bold whitespace-nowrap sm:self-auto self-start ${log.delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {log.delta >= 0 ? '+' : ''}{log.delta} XP
                           </span>
                         </div>

@@ -82,7 +82,7 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
             <Icon className="w-4 h-4" style={{ color: cfg.color }} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
+            <div className="flex flex-wrap items-center gap-2 mb-0.5">
               <span className="text-xs font-bold tracking-widest" style={{ color: cfg.color }}>{cfg.label}</span>
               {inProgress && (
                 <span className="text-[10px] font-black tracking-wide px-1.5 py-0.5 rounded border" style={{ color: '#38BDF8', borderColor: '#38BDF866', background: '#0C4A6E44' }}>
@@ -90,14 +90,14 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
                 </span>
               )}
               {quest.stat_reward && (
-                <span className="text-xs" style={{ color: `${cfg.color}88` }}>+{quest.stat_reward_amount || 1} {quest.stat_reward?.toUpperCase()}</span>
+                <span className="text-xs break-words" style={{ color: `${cfg.color}88` }}>+{quest.stat_reward_amount || 1} {quest.stat_reward?.toUpperCase()}</span>
               )}
             </div>
             <p className="text-sm font-semibold text-white leading-snug">{quest.title}</p>
             {quest.description && (
               <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>{quest.description}</p>
             )}
-            <div className="flex items-center gap-3 mt-2">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
               <span className="text-xs font-bold" style={{ color: '#FBBF24' }}>⚡ +{quest.xp_reward} XP</span>
               {quest.expires_date && (
                 <span className="text-xs" style={{ color: '#64748B' }}>Expires {quest.expires_date}</span>
@@ -112,7 +112,7 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
               )}
             </div>
             <div className="mt-2.5 space-y-1">
-              <div className="flex items-center justify-between text-[10px] tracking-wide" style={{ color: '#94A3B8' }}>
+              <div className="flex items-center justify-between gap-2 text-[10px] tracking-wide" style={{ color: '#94A3B8' }}>
                 <span>Progress</span>
                 <span>{progressCurrent}/{progressTarget} ({progressPct}%)</span>
               </div>
@@ -143,13 +143,13 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
         </div>
 
         {inProgress && (
-          <div className="flex gap-2 mt-3">
+          <div className="flex flex-col sm:flex-row gap-2 mt-3">
             <Button
               type="button"
               size="sm"
               onClick={handleComplete}
               disabled={completing || disabled}
-              className="flex-1 h-8 text-xs font-bold tracking-wide"
+              className="w-full sm:flex-1 h-8 text-xs font-bold tracking-wide"
               style={{
                 background: `linear-gradient(90deg, ${cfg.color}33, ${cfg.color}55)`,
                 border: `1px solid ${cfg.color}66`,
@@ -166,7 +166,7 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
                 onClick={() => onFail(quest)}
                 variant="ghost"
                 disabled={disabled}
-                className="h-8 text-xs px-3"
+                className="h-8 text-xs px-3 w-full sm:w-auto"
                 style={{ color: '#64748B', border: '1px solid #1e3a4a' }}
               >
                 Skip
@@ -176,7 +176,7 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
         )}
 
         {quest.status === 'completed' && (
-          <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: '#34D399' }}>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs" style={{ color: '#34D399' }}>
             <CheckCircle2 className="w-4 h-4" />
             <span className="font-bold">COMPLETED</span>
             {quest.completed_date && <span style={{ color: '#64748B' }}>on {quest.completed_date}</span>}
@@ -184,7 +184,7 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
         )}
 
         {quest.status === 'failed' && (
-          <div className="mt-3 flex items-center gap-2 text-xs" style={{ color: '#F87171' }}>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs" style={{ color: '#F87171' }}>
             <AlertTriangle className="w-4 h-4" />
             <span className="font-bold">FAILED</span>
           </div>

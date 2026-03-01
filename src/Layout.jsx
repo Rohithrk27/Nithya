@@ -84,11 +84,11 @@ export default function Layout({ children, currentPageName }) {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'transparent' }}>
-      <div className={`flex-1 ${showNav ? 'pb-16 md:pb-0 md:pl-16' : ''}`}>
+    <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ background: 'transparent' }}>
+      <div className={`w-full flex-1 ${showNav ? 'pb-16 md:pb-0 md:pl-16' : ''}`}>
         {/* Header with app title */}
         <header className={`w-full sticky top-0 z-40 app-topbar ${isScrolled ? 'app-topbar--scrolled' : ''}`}>
-          <div className="pl-4 pr-4 md:pl-16 md:pr-6 py-3 flex items-center justify-between gap-3">
+          <div className="pl-4 pr-4 md:pl-16 md:pr-6 py-3 flex items-center justify-between gap-3 min-w-0">
             <img
               src={headerSrc}
               alt="Niത്യ"
@@ -100,7 +100,7 @@ export default function Layout({ children, currentPageName }) {
                 }
               }}
               style={{ display: headerBroken ? 'none' : 'block' }}
-              className={`h-8 sm:h-10 md:h-11 w-auto object-contain max-w-[72vw] sm:max-w-[420px] app-topbar__brand ${isScrolled ? 'app-topbar__brand--active' : ''}`}
+              className={`h-8 sm:h-10 md:h-11 w-auto min-w-0 object-contain max-w-[72vw] sm:max-w-[420px] app-topbar__brand ${isScrolled ? 'app-topbar__brand--active' : ''}`}
             />
             {headerBroken && (
               <div className={`app-topbar__brand ${isScrolled ? 'app-topbar__brand--active' : ''}`}>
