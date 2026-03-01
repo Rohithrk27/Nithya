@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { speakWithFemaleVoice } from '@/lib/voice';
 
-const SESSION_KEY = 'Nithya_greeted_v2';
+const SESSION_KEY_PREFIX = 'Nithya_greeted_session_v3:';
+const PERSISTED_KEY_PREFIX = 'Nithya_greeted_once_v3:';
 
 const normalizeSpeechNameToken = (token) => {
   const cleaned = String(token || '')
@@ -35,29 +36,51 @@ const pickSpeakableName = (rawName) => {
 /**
  * Plays a one-time-per-session voice greeting using Web Speech API.
  * Props:
+ *   userId: string — authenticated user id
  *   name: string — user's first name
  *   isFirstTime: bool — true if newly registered
  *   voiceEnabled: bool — from user preference
  *   onGlowPulse: fn — callback to trigger avatar glow
  */
-export default function VoiceGreeting({ name, isFirstTime, voiceEnabled, onGlowPulse }) {
+export default function VoiceGreeting({ userId, name, isFirstTime, voiceEnabled, onGlowPulse }) {
   const spokenRef = useRef(false);
+
+  useEffect(() => {
+    spokenRef.current = false;
+  }, [userId]);
 
   useEffect(() => {
     if (!voiceEnabled) return;
     if (spokenRef.current) return;
-    if (sessionStorage.getItem(SESSION_KEY)) return;
     if (!name) return;
     if (!('speechSynthesis' in window)) return;
+
+    const keyScope = String(userId || '').trim() || 'anon';
+    const sessionKey = `${SESSION_KEY_PREFIX}${keyScope}`;
+    const persistedKey = `${PERSISTED_KEY_PREFIX}${keyScope}`;
+
+    try {
+      if (sessionStorage.getItem(sessionKey)) return;
+    } catch (_) {
+      // Continue without session storage guard if browser blocks access.
+    }
+
+    let hasWelcomedBefore = false;
+    try {
+      hasWelcomedBefore = localStorage.getItem(persistedKey) === '1';
+    } catch (_) {
+      hasWelcomedBefore = false;
+    }
 
     spokenRef.current = true;
 
     const speak = () => {
       try {
         const firstName = pickSpeakableName(name) || 'Hunter';
-        const greeting = isFirstTime
-          ? `Welcome to Nithya, ${firstName}.`
-          : `Welcome back to Nithya, ${firstName}.`;
+        const shouldWelcomeBack = hasWelcomedBefore || !isFirstTime;
+        const greeting = shouldWelcomeBack
+          ? `Welcome back to Nithya, ${firstName}.`
+          : `Welcome to Nithya, ${firstName}.`;
         if (onGlowPulse) onGlowPulse(true);
         speakWithFemaleVoice(greeting, {
           rate: 0.9,
@@ -68,7 +91,16 @@ export default function VoiceGreeting({ name, isFirstTime, voiceEnabled, onGlowP
         });
         setTimeout(() => {
           if (onGlowPulse) onGlowPulse(false);
-          sessionStorage.setItem(SESSION_KEY, '1');
+          try {
+            sessionStorage.setItem(sessionKey, '1');
+          } catch (_) {
+            // Non-blocking storage fallback.
+          }
+          try {
+            localStorage.setItem(persistedKey, '1');
+          } catch (_) {
+            // Non-blocking storage fallback.
+          }
         }, 1800);
       } catch (_) {
         // Fail silently
@@ -82,7 +114,7 @@ export default function VoiceGreeting({ name, isFirstTime, voiceEnabled, onGlowP
     } else {
       window.speechSynthesis.addEventListener('voiceschanged', () => setTimeout(speak, 800), { once: true });
     }
-  }, [name, isFirstTime, voiceEnabled]);
+  }, [name, isFirstTime, userId, voiceEnabled]);
 
   return null; // No UI
 }

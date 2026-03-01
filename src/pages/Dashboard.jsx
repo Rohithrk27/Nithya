@@ -1400,6 +1400,7 @@ export default function Dashboard() {
       />
       {profile && (
         <VoiceGreeting
+          userId={user?.id || profile?.id}
           name={profile.name || ''}
           isFirstTime={(profile.total_xp || 0) === 0}
           voiceEnabled={systemState?.voice_enabled !== false}
