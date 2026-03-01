@@ -1,10 +1,56 @@
 import React, { useState } from 'react';
 import { Bell, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { speakWithFemaleVoice } from '@/lib/voice';
+
+function playHabitReminderCue(message) {
+  if (typeof window === 'undefined') return;
+  const win = /** @type {any} */ (window);
+
+  try {
+    const AudioCtor = window.AudioContext || win.webkitAudioContext;
+    if (AudioCtor) {
+      const ctx = win.__nithyaHabitReminderAudioCtx || new AudioCtor();
+      win.__nithyaHabitReminderAudioCtx = ctx;
+      if (ctx.state === 'suspended') {
+        void ctx.resume().catch(() => {});
+      }
+
+      const notes = [820, 690, 820];
+      notes.forEach((freq, index) => {
+        const start = ctx.currentTime + (index * 0.18);
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.22, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.16);
+      });
+    }
+  } catch (_) {
+    // Non-blocking audio reminder fallback.
+  }
+
+  try {
+    speakWithFemaleVoice(message, {
+      rate: 0.95,
+      pitch: 1.2,
+      volume: 1,
+      cancel: true,
+    });
+  } catch (_) {
+    // Non-blocking speech fallback.
+  }
+}
 
 // Schedules a browser notification at a given time string "HH:MM"
 function scheduleReminder(time, habits) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (typeof window === 'undefined') return;
   if (!time || habits.length === 0) return;
 
   const [h, m] = time.split(':').map(Number);
@@ -21,22 +67,23 @@ function scheduleReminder(time, habits) {
 
   win._habitReminderTimer = setTimeout(() => {
     const incompleteHabits = habits.map(h => h.title).join(', ');
+    const reminderText = `Reminder. Time to check in. Today's habits: ${incompleteHabits}`;
+    if ('Notification' in window && Notification.permission === 'granted') {
       new Notification('⚡ Habit Reminder', {
-      body: `Time to check in! Today's habits: ${incompleteHabits}`,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      tag: 'habit-reminder',
-    });
+        body: `Time to check in! Today's habits: ${incompleteHabits}`,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: 'habit-reminder',
+      });
+    }
+    playHabitReminderCue(reminderText);
     // Re-schedule for the next day
     scheduleReminder(time, habits);
   }, msUntil);
 }
 
 export function initHabitReminders(reminderTime, habits) {
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'granted') {
-    scheduleReminder(reminderTime, habits);
-  }
+  scheduleReminder(reminderTime, habits);
 }
 
 export default function HabitReminderSetup({ reminderTime, habits, onTimeChange }) {

@@ -8,8 +8,8 @@ import HoloPanel from '../components/HoloPanel';
 import QuestCard from '../components/QuestCard';
 import StatGrid from '../components/StatGrid';
 import { Button } from '@/components/ui/button';
-import { computeLevel, getRankTitle, levelProgressPct, punishmentRefusalPenalty, xpBetweenLevels, xpIntoCurrentLevel } from '../components/gameEngine';
-import { Circle, CheckCircle2, Shield, Zap } from 'lucide-react';
+import { computeLevel, getAvatarTier, getRankTitle, levelProgressPct, punishmentRefusalPenalty, xpBetweenLevels, xpIntoCurrentLevel } from '../components/gameEngine';
+import { Circle, CheckCircle2, Gem, Shield, Zap } from 'lucide-react';
 import RPGHumanoidAvatar from '../components/RPGHumanoidAvatar';
 import RPGXPBar from '../components/RPGXPBar';
 import VoiceGreeting from '../components/VoiceGreeting';
@@ -21,7 +21,25 @@ import { ensureDailyQuests } from '@/lib/questSystem';
 import { pickDailyChallenge } from '../components/systemFeatures';
 import XPDeltaPulse from '@/components/XPDeltaPulse';
 import { applyProgressionSnapshot, awardXpRpc, penaltyXpRpc, syncDailyStreak } from '@/lib/progression';
-import { ensureInterruptRecord, fetchActiveDungeonRun, getInterruptDurationMs, getInterruptRemainingMs, getDungeonProgress, reduceActiveDungeonStability } from '@/lib/gameState';
+import {
+  ensureInterruptRecord,
+  fetchActiveDungeonRun,
+  getInterruptDurationMs,
+  getInterruptRemainingMs,
+  getDungeonProgress,
+  reduceActiveDungeonStability,
+  resolveExpiredPunishments,
+  resolveExpiredQuests,
+} from '@/lib/gameState';
+import {
+  getPunishmentProjectedLoss,
+  getPunishmentRemainingMs,
+  markPunishmentUrgencyNotified,
+  markPunishmentWarningNotified,
+  resolvePunishmentEarly,
+} from '@/lib/punishments';
+import { fetchRelicBalance } from '@/lib/relics';
+import { speakWithFemaleVoice } from '@/lib/voice';
 
 const DAILY_PRINCIPLES = [
   'It does not matter how slowly you go as long as you do not stop.',
@@ -44,7 +62,7 @@ const buildPendingPunishments = (punishments, habitsData, logsData) => {
   const habitMap = new Map((habitsData || []).map((h) => [h.id, h]));
   const logMap = new Map((logsData || []).map((l) => [l.id, l]));
   return (punishments || [])
-    .filter((p) => p.status === 'pending')
+    .filter((p) => !p?.resolved && !p?.penalty_applied && !['completed', 'timed_out', 'refused'].includes(p?.status))
     .map((p) => {
       const habit = habitMap.get(p.habit_id);
       if (!habit) return null;
@@ -61,6 +79,64 @@ const buildPendingPunishments = (punishments, habitsData, logsData) => {
 };
 
 const rowDateSafe = (row) => (row?.date || row?.logged_at || row?.completed_at || row?.created_at || '').toString().slice(0, 10);
+const isQuestInProgressStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return ['active', 'in_progress', 'accepted', 'inprogress', 'ongoing', 'started', 'start'].includes(normalized);
+};
+const KNOWN_QUEST_TYPES = new Set(['daily', 'weekly', 'special', 'epic', 'penalty']);
+const normalizeQuestType = (value) => String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+const QUEST_TYPE_BY_TITLE = new Map([
+  ['iron will', 'weekly'],
+  ['strength week', 'weekly'],
+  ['scholar path', 'weekly'],
+  ['social expansion', 'special'],
+  ['career leap', 'special'],
+  ['mind & body', 'special'],
+  ['hundred day trial', 'epic'],
+  ['ascension protocol', 'epic'],
+  ['system override', 'epic'],
+]);
+
+const questStatusPriority = (status) => {
+  const key = String(status || '').trim().toLowerCase();
+  if (isQuestInProgressStatus(key)) return 4;
+  if (key === 'completed') return 3;
+  if (key === 'failed') return 2;
+  if (key) return 1;
+  return 0;
+};
+
+const toEpoch = (value) => {
+  const parsed = value ? new Date(value) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.getTime() : 0;
+};
+
+const pickBestUserQuestRow = (current, next) => {
+  if (!current) return next;
+  const currentPriority = questStatusPriority(current.status);
+  const nextPriority = questStatusPriority(next.status);
+  if (nextPriority !== currentPriority) return nextPriority > currentPriority ? next : current;
+
+  const nextTs = Math.max(toEpoch(next.updated_at), toEpoch(next.started_at), toEpoch(next.created_at), toEpoch(next.completed_at));
+  const currentTs = Math.max(toEpoch(current.updated_at), toEpoch(current.started_at), toEpoch(current.created_at), toEpoch(current.completed_at));
+  return nextTs >= currentTs ? next : current;
+};
+
+const buildUserQuestMap = (rows) => {
+  const result = new Map();
+  (rows || []).forEach((row) => {
+    if (!row?.quest_id) return;
+    const existing = result.get(row.quest_id) || null;
+    result.set(row.quest_id, pickBestUserQuestRow(existing, row));
+  });
+  return result;
+};
+
+const inferQuestType = (questRow, userQuestRow) => {
+  const explicit = normalizeQuestType(questRow?.type || userQuestRow?.quest_type || '');
+  if (KNOWN_QUEST_TYPES.has(explicit)) return explicit;
+  return QUEST_TYPE_BY_TITLE.get(String(questRow?.title || '').trim().toLowerCase()) || 'daily';
+};
 
 // FIXED: Keep completed/failed status regardless of date for history to work properly
 const resolveQuestStatus = (userQuest) => {
@@ -103,6 +179,68 @@ const computeAdaptiveReminderTime = (historyLogs, fallback = '21:00') => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
+const playPendingHabitReminderCue = (message, includeSpeech = true) => {
+  if (typeof window === 'undefined') return;
+  const win = /** @type {any} */ (window);
+
+  try {
+    const AudioCtor = window.AudioContext || win.webkitAudioContext;
+    if (AudioCtor) {
+      const ctx = win.__nithyaReminderAudioCtx || new AudioCtor();
+      win.__nithyaReminderAudioCtx = ctx;
+      if (ctx.state === 'suspended') {
+        void ctx.resume().catch(() => {});
+      }
+
+      const notes = [880, 740, 880];
+      notes.forEach((freq, index) => {
+        const start = ctx.currentTime + (index * 0.18);
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.16);
+      });
+    }
+  } catch (_) {
+    // Non-blocking reminder sound fallback.
+  }
+
+  if (!includeSpeech) return;
+  speakWithFemaleVoice(message, {
+    rate: 0.95,
+    pitch: 1.2,
+    volume: 1,
+    cancel: true,
+  });
+};
+
+const getSystemWarningDailyStorageKey = (userId, dateKey) => `nithya_system_warning_daily_${userId}_${dateKey}`;
+
+const hasSystemWarningShownToday = (userId, dateKey) => {
+  if (!userId || !dateKey || typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(getSystemWarningDailyStorageKey(userId, dateKey)) === '1';
+  } catch (_) {
+    return false;
+  }
+};
+
+const markSystemWarningShownToday = (userId, dateKey) => {
+  if (!userId || !dateKey || typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(getSystemWarningDailyStorageKey(userId, dateKey), '1');
+  } catch (_) {
+    // ignore storage failures; warning can still be shown
+  }
+};
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -115,6 +253,7 @@ export default function Dashboard() {
   const [activeDungeon, setActiveDungeon] = useState(null);
   const [dailyChallenge, setDailyChallenge] = useState(null);
   const [pendingPunishments, setPendingPunishments] = useState([]);
+  const [relicBalance, setRelicBalance] = useState(0);
   const [rankEvaluation, setRankEvaluation] = useState(null);
   const [interruptStatus, setInterruptStatus] = useState(null);
   const [interruptRecord, setInterruptRecord] = useState(null);
@@ -132,12 +271,17 @@ export default function Dashboard() {
   const overdueEvalLockRef = useRef(false);
   const interruptNoticeRef = useRef('');
   const interruptTimeoutLockRef = useRef(false);
+  const punishmentStartNoticeRef = useRef(new Set());
+  const punishmentUrgencyNoticeRef = useRef(new Set());
+  const seenXpLogRef = useRef(new Set());
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const rowDate = (row) => (row?.date || row?.logged_at || row?.completed_at || row?.created_at || '').toString().slice(0, 10);
   const dayNumber = Math.floor(new Date(today).getTime() / 86400000);
   const dailyPrinciple = DAILY_PRINCIPLES[dayNumber % DAILY_PRINCIPLES.length];
   const level = useMemo(() => computeLevel(profile?.total_xp || 0), [profile?.total_xp]);
+  const avatarTier = useMemo(() => getAvatarTier(level), [level]);
+  const rankTitle = useMemo(() => getRankTitle(level), [level]);
   const interruptEvent = useMemo(
     () => getDailySystemInterrupt({
       userId: user?.id,
@@ -196,7 +340,12 @@ export default function Dashboard() {
     setLoadError('');
     setLoading(true);
     try {
-      let [profileRes, statsRes, habitsRes, logsRes, questsRes, userQuestsRes, dailyRes, punishmentsRes, activeDungeonRun] = await Promise.all([
+      await Promise.allSettled([
+        resolveExpiredQuests({ userId, source: 'quest_timeout', decayFactor: 0.5 }),
+        resolveExpiredPunishments({ userId, source: 'punishment_timeout' }),
+      ]);
+
+      let [profileRes, statsRes, habitsRes, logsRes, questsRes, userQuestsRes, dailyRes, punishmentsRes, activeDungeonRun, relicBalanceSnapshot] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', userId).limit(1),
         supabase.from('stats').select('*').eq('user_id', userId).limit(1),
         supabase.from('habits').select('*').eq('user_id', userId),
@@ -206,6 +355,7 @@ export default function Dashboard() {
         supabase.from('daily_challenges').select('*').eq('user_id', userId),
         supabase.from('punishments').select('*').eq('user_id', userId),
         fetchActiveDungeonRun(userId),
+        Promise.resolve(fetchRelicBalance(userId)).catch(() => 0),
       ]);
 
       if (profileRes.error) throw profileRes.error;
@@ -242,6 +392,7 @@ export default function Dashboard() {
       }
 
       setProfile(p);
+      setRelicBalance(Math.max(0, Number(relicBalanceSnapshot || 0)));
       setActiveDungeon(activeDungeonRun || null);
       const baseSystemState = statsRes.data?.[0] || { voice_enabled: true };
       setSystemState({
@@ -309,12 +460,24 @@ export default function Dashboard() {
         .map((l) => {
           const habit = habitsData.find((h) => h.id === l.habit_id);
           if (!habit?.punishment_text) return null;
+          const penaltyEstimate = punishmentRefusalPenalty(p, habit?.punishment_xp_penalty_pct || 10);
+          const startIso = new Date().toISOString();
+          const expiryIso = new Date(Date.now() + (PUNISHMENT_TIME_LIMIT_HOURS * 60 * 60 * 1000)).toISOString();
           return {
             user_id: userId,
             habit_id: habit.id,
             habit_log_id: l.id,
             status: 'pending',
             text: habit.punishment_text,
+            reason: habit.punishment_text,
+            total_xp_penalty: penaltyEstimate,
+            accumulated_penalty: penaltyEstimate,
+            started_at: startIso,
+            expires_at: expiryIso,
+            resolved: false,
+            penalty_applied: false,
+            warning_notified: false,
+            urgency_notified: false,
           };
         })
         .filter(Boolean);
@@ -331,9 +494,16 @@ export default function Dashboard() {
 
       setPendingPunishments(buildPendingPunishments(punishmentsData, habitsData, logsData));
 
-      const userQuestMap = new Map((userQuestsRes.data || []).map((q) => [q.quest_id, q]));
+      const userQuestMap = buildUserQuestMap(userQuestsRes.data || []);
       const merged = (questsRes.data || []).map((q) => ({
         ...q,
+        type: inferQuestType(q, userQuestMap.get(q.id) || null),
+        started_at: userQuestMap.get(q.id)?.started_at || null,
+        expires_at: userQuestMap.get(q.id)?.expires_at || q?.expires_at || null,
+        failed: !!userQuestMap.get(q.id)?.failed,
+        penalty_applied: !!userQuestMap.get(q.id)?.penalty_applied,
+        quest_type: userQuestMap.get(q.id)?.quest_type || inferQuestType(q, userQuestMap.get(q.id) || null),
+        xp_reward: Number(userQuestMap.get(q.id)?.xp_reward ?? q?.xp_reward ?? 0),
         ...resolveQuestStatus(userQuestMap.get(q.id)),
       }));
       setQuests(merged);
@@ -406,9 +576,48 @@ export default function Dashboard() {
   }, [loadData, navigate]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || !user?.id) return undefined;
+    const handleQuestUpdate = (event) => {
+      const changedUserId = event?.detail?.userId;
+      if (changedUserId && changedUserId !== user.id) return;
+      void loadData(user.id);
+    };
+    window.addEventListener('nithya:quests-updated', handleQuestUpdate);
+    return () => window.removeEventListener('nithya:quests-updated', handleQuestUpdate);
+  }, [loadData, user?.id]);
+
+  useEffect(() => {
     const intervalId = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const channel = supabase
+      .channel(`dashboard-xp-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'xp_logs', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          const row = payload?.new || {};
+          if (!row?.id || seenXpLogRef.current.has(row.id)) return;
+          seenXpLogRef.current.add(row.id);
+          if (seenXpLogRef.current.size > 200) {
+            const next = new Set(Array.from(seenXpLogRef.current).slice(-120));
+            seenXpLogRef.current = next;
+          }
+
+          const delta = Number(row.change_amount ?? row.xp_change ?? 0);
+          if (!Number.isFinite(delta) || delta === 0) return;
+          setXpDelta(delta);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!xpDelta) return undefined;
@@ -460,11 +669,13 @@ export default function Dashboard() {
         setInterruptStatus(row?.status || 'paused');
         setInterruptRemainingMs(getInterruptRemainingMs(row, new Date()));
         if (row?.status === 'active' || row?.status === 'paused' || row?.status === 'penalized') {
-          if (interruptNoticeRef.current !== row.id) {
+          const warningShownToday = hasSystemWarningShownToday(user.id, today);
+          if (!warningShownToday && interruptNoticeRef.current !== row.id) {
             notify('xp', 'System Warning triggered', interruptEvent.title);
             interruptNoticeRef.current = row.id;
+            markSystemWarningShownToday(user.id, today);
           }
-          setShowWarningPopup(dismissedInterruptId !== row.id);
+          setShowWarningPopup(!warningShownToday && dismissedInterruptId !== row.id);
         } else {
           setShowWarningPopup(false);
         }
@@ -575,7 +786,9 @@ export default function Dashboard() {
           }
         }
 
+        const warningShownToday = hasSystemWarningShownToday(user.id, today);
         const shouldShowPopup = ['active', 'paused', 'penalized'].includes(nextStatus)
+          && !warningShownToday
           && elapsedMs < (24 * 60 * 60 * 1000)
           && dismissedInterruptId !== interruptRecord.id;
         setShowWarningPopup(shouldShowPopup);
@@ -647,67 +860,77 @@ export default function Dashboard() {
   }, [profile, rankEvaluation, systemState, today, user?.id]);
 
   useEffect(() => {
-    if (!user?.id || !profile || pendingPunishments.length === 0) return;
+    if (!user?.id || pendingPunishments.length === 0) return;
 
-    const processExpiredPunishments = async () => {
+    const tickPunishmentNotifications = async () => {
       const nowMs = Date.now();
-      const expiredItems = pendingPunishments.filter((item) => {
-        const createdMs = new Date(item?.punishment?.created_at || 0).getTime();
-        if (!createdMs) return false;
-        return createdMs + (PUNISHMENT_TIME_LIMIT_HOURS * 60 * 60 * 1000) <= nowMs;
-      });
-      if (expiredItems.length === 0) return;
+      for (const item of pendingPunishments) {
+        const punishment = item?.punishment;
+        if (!punishment?.id) continue;
 
-      const ids = expiredItems.map((item) => item.punishment.id).filter(Boolean);
-      const totalPenalty = expiredItems.reduce(
-        (sum, item) => sum + punishmentRefusalPenalty(profile, item?.habit?.punishment_xp_penalty_pct || 10),
-        0
-      );
+        if (!punishment.warning_notified && !punishmentStartNoticeRef.current.has(punishment.id)) {
+          punishmentStartNoticeRef.current.add(punishment.id);
+          notify(
+            'penalty',
+            'Punishment started',
+            `${item?.habit?.title || 'Habit'} · projected loss ${getPunishmentProjectedLoss(punishment)} XP`
+          );
+          window.dispatchEvent(new CustomEvent('nithya:punishment-notification', {
+            detail: {
+              phase: 'start',
+              punishmentId: punishment.id,
+              userId: user.id,
+            },
+          }));
+          void markPunishmentWarningNotified({ userId: user.id, punishmentId: punishment.id });
+        }
 
-      if (ids.length > 0) {
-        await supabase
-          .from('punishments')
-          .update({ status: 'timed_out' })
-          .in('id', ids)
-          .eq('user_id', user.id);
-      }
-
-      if (totalPenalty > 0) {
-        await awardXp(-totalPenalty, 'punishment_timeout', {
-          eventId: `punishment_timeout:${today}`,
-          metadata: { expired_count: expiredItems.length },
-        });
-      }
-
-      if (systemState?.hardcore_mode) {
-        const nextConsistency = Math.max(0, (profile?.stat_consistency || 0) - expiredItems.length);
-        await supabase.from('profiles').update({ stat_consistency: nextConsistency }).eq('id', user.id);
-        setProfile((prev) => ({ ...prev, stat_consistency: nextConsistency }));
-
-        if (systemState?.id) {
-          const nextIgnored = (systemState?.punishment_ignored_count || 0) + expiredItems.length;
-          await supabase
-            .from('stats')
-            .update({ punishment_ignored_count: nextIgnored })
-            .eq('id', systemState.id)
-            .eq('user_id', user.id);
-          setSystemState((prev) => ({ ...prev, punishment_ignored_count: nextIgnored }));
+        const remainingMs = getPunishmentRemainingMs(punishment, nowMs);
+        if (remainingMs > 0
+          && remainingMs <= (60 * 60 * 1000)
+          && !punishment.urgency_notified
+          && !punishmentUrgencyNoticeRef.current.has(punishment.id)) {
+          punishmentUrgencyNoticeRef.current.add(punishment.id);
+          notify(
+            'penalty',
+            'Punishment urgency',
+            `${item?.habit?.title || 'Habit'} expires in ${Math.ceil(remainingMs / 60000)}m`
+          );
+          window.dispatchEvent(new CustomEvent('nithya:punishment-notification', {
+            detail: {
+              phase: 'urgency',
+              punishmentId: punishment.id,
+              userId: user.id,
+              remainingMs,
+            },
+          }));
+          void markPunishmentUrgencyNotified({ userId: user.id, punishmentId: punishment.id });
         }
       }
-
-      setPendingPunishments((prev) => prev.filter((item) => !ids.includes(item.punishment.id)));
-      notify('penalty', 'Punishment timer expired', `-${totalPenalty} XP deducted automatically`);
     };
 
-    void processExpiredPunishments();
-    const intervalId = setInterval(() => void processExpiredPunishments(), 30000);
+    void tickPunishmentNotifications();
+    const intervalId = setInterval(() => {
+      void tickPunishmentNotifications();
+      void (async () => {
+        try {
+          const snapshot = await resolveExpiredPunishments({ userId: user.id, source: 'punishment_timeout' });
+          if (Number(snapshot?.resolved_count || 0) > 0) {
+            const totalPenalty = Math.max(0, Number(snapshot?.total_penalty || 0));
+            notify('penalty', 'Punishment timer expired', `-${totalPenalty} XP deducted automatically`);
+            setPendingPunishments((prev) => prev.filter((item) => getPunishmentRemainingMs(item?.punishment, Date.now()) > 0));
+          }
+        } catch (_) {
+          // ignore polling errors; next interval retries
+        }
+      })();
+    }, 60000);
     return () => clearInterval(intervalId);
-  }, [pendingPunishments, profile, systemState, user?.id]);
+  }, [notify, pendingPunishments, user?.id]);
 
   // FIXED: Use ASCII-safe storage key for habit reminders
   useEffect(() => {
-    if (!('Notification' in window)) return;
-    if (Notification.permission !== 'granted') return;
+    if (typeof window === 'undefined') return;
     if (!habits.length) return;
 
     const completedHabitIds = new Set(logs.filter((l) => l.status === 'completed').map((l) => l.habit_id));
@@ -720,10 +943,17 @@ export default function Dashboard() {
       const storageKey = `nithya_habit_reminder_${today}_${tag}`;
       if (localStorage.getItem(storageKey)) return;
       const habitPreview = incompleteHabits.slice(0, 3).map((h) => h.title).join(', ');
-      new Notification('Nithya Habit Reminder', {
-        body: `${incompleteHabits.length} habits pending before day ends: ${habitPreview}${incompleteHabits.length > 3 ? ', ...' : ''}`,
-        tag: `habit-reminder-${tag}`,
-      });
+      const body = `${incompleteHabits.length} habits pending before day ends: ${habitPreview}${incompleteHabits.length > 3 ? ', ...' : ''}`;
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Nithya Habit Reminder', {
+          body,
+          tag: `habit-reminder-${tag}`,
+        });
+      }
+      playPendingHabitReminderCue(
+        `Reminder. You still have ${incompleteHabits.length} pending habits. ${habitPreview}.`,
+        systemState?.voice_enabled !== false
+      );
       localStorage.setItem(storageKey, '1');
     };
 
@@ -741,7 +971,7 @@ export default function Dashboard() {
     scheduleAt(21, 30, 'day_end');
 
     return () => timers.forEach((t) => clearTimeout(t));
-  }, [profile?.reminder_time, habits, historyLogs, logs, today]);
+  }, [profile?.reminder_time, habits, historyLogs, logs, today, systemState?.voice_enabled]);
 
   const awardXp = async (xp, source, options = {}) => {
     if (!profile || !user?.id) return null;
@@ -823,8 +1053,25 @@ export default function Dashboard() {
   const handlePunishmentDone = async (_log, _habit, punishment) => {
     if (!user || !punishment?.id) return;
     try {
-      await supabase.from('punishments').update({ status: 'completed' }).eq('id', punishment.id).eq('user_id', user.id);
+      const snapshot = await resolvePunishmentEarly({
+        userId: user.id,
+        punishmentId: punishment.id,
+        source: 'punishment_resolved_early',
+      });
+
+      const merged = applyProgressionSnapshot(profile, systemState, snapshot);
+      if (merged.nextProfile) {
+        setXpDelta((merged.nextProfile.total_xp || 0) - (profile?.total_xp || 0));
+        setProfile(merged.nextProfile);
+      }
+      if (merged.nextSystemState) setSystemState(merged.nextSystemState);
+
       setPendingPunishments((prev) => prev.filter((p) => p.punishment?.id !== punishment.id));
+      notify(
+        'quest',
+        'Punishment resolved',
+        `Penalty reduced by ${Math.max(0, Number(snapshot?.reduced_by || 0))} XP`
+      );
     } catch (err) {
       notify('penalty', 'Punishment update failed', err?.message || 'Please retry.');
     }
@@ -833,7 +1080,10 @@ export default function Dashboard() {
   const handlePunishmentSkip = async (_log, habit, punishment) => {
     if (!user || !punishment?.id) return;
     try {
-      const penalty = punishmentRefusalPenalty(profile, habit?.punishment_xp_penalty_pct || 10);
+      const penalty = Math.max(
+        0,
+        Number(punishment?.total_xp_penalty ?? punishmentRefusalPenalty(profile, habit?.punishment_xp_penalty_pct || 10))
+      );
       await awardXp(-penalty, 'punishment_refused', {
         eventId: `punishment_refused:${punishment.id}`,
         metadata: { punishment_id: punishment.id, habit_id: habit?.id || null },
@@ -855,7 +1105,18 @@ export default function Dashboard() {
         }
       }
 
-      await supabase.from('punishments').update({ status: 'refused' }).eq('id', punishment.id).eq('user_id', user.id);
+      await supabase
+        .from('punishments')
+        .update({
+          status: 'refused',
+          resolved: true,
+          penalty_applied: true,
+          total_xp_penalty: penalty,
+          accumulated_penalty: penalty,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', punishment.id)
+        .eq('user_id', user.id);
       setPendingPunishments((prev) => prev.filter((p) => p.punishment?.id !== punishment.id));
     } catch (err) {
       notify('penalty', 'Punishment skip failed', err?.message || 'Please retry.');
@@ -1047,7 +1308,7 @@ export default function Dashboard() {
     );
   }
 
-  const activeQuests = quests.filter((q) => q.status === 'active');
+  const activeQuests = quests.filter((q) => isQuestInProgressStatus(q.status));
   const activeWeeklyQuest = activeQuests.find((q) => q.type === 'weekly') || null;
   const weeklyProgressCurrent = Math.max(0, Number(activeWeeklyQuest?.progress_current || 0));
   const weeklyProgressTarget = Math.max(1, Number(activeWeeklyQuest?.progress_target || 1));
@@ -1122,7 +1383,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      <PunishmentBanner count={pendingPunishments.length} onResolve={() => {}} />
+      <PunishmentBanner count={pendingPunishments.length} onResolve={() => navigate(createPageUrl('Punishments'))} />
       <PunishmentModal
         pendingPunishments={pendingPunishments}
         hardcoreMode={!!systemState?.hardcore_mode}
@@ -1148,39 +1409,81 @@ export default function Dashboard() {
                 {format(now, 'EEE, MMM d').toUpperCase()} · {format(now, 'hh:mm:ss a')}
               </p>
             </div>
-            <Button onClick={() => navigate(createPageUrl('Profile'))}>PROFILE</Button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate(createPageUrl('Relics'))}
+                className="px-2 py-1 rounded-md text-xs font-black tracking-widest border flex items-center gap-1"
+                style={{
+                  borderColor: relicBalance > 0 ? 'rgba(34,211,238,0.45)' : 'rgba(71,85,105,0.55)',
+                  color: relicBalance > 0 ? '#67E8F9' : '#94A3B8',
+                  background: relicBalance > 0 ? 'rgba(14,116,144,0.2)' : 'rgba(30,41,59,0.35)',
+                }}
+              >
+                <Gem className="w-3.5 h-3.5" />
+                RELIC {relicBalance}
+              </button>
+              <Button onClick={() => navigate(createPageUrl('Profile'))}>PROFILE</Button>
+            </div>
           </div>
         </HoloPanel>
 
         <HoloPanel>
-          <div className="flex gap-4 items-center">
-            <RPGHumanoidAvatar level={level} levelUp={levelUpPulse} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline gap-2">
-                <p className="text-5xl font-black text-white leading-none">{level}</p>
-                <p className="text-cyan-300 text-sm font-black">LV.</p>
-              </div>
-              <p className="text-cyan-400/80 text-xs tracking-widest mt-1">UNRANKED · TIER 0</p>
-              <div className="mt-3">
-                <RPGXPBar totalXp={profile?.total_xp || 0} levelUp={levelUpPulse} />
-              </div>
-              <div className="mt-2 min-h-5">
-                <XPDeltaPulse value={xpDelta} visible={xpDelta !== 0} />
-              </div>
-              <div className="grid grid-cols-3 mt-3 gap-2 text-center">
-                <div>
-                  <p className="text-cyan-400 text-2xl font-black">{activeQuests.length}</p>
-                  <p className="text-slate-500 text-[10px] tracking-widest">QUESTS</p>
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] items-start">
+            <div className="flex gap-4 items-center">
+              <RPGHumanoidAvatar
+                level={level}
+                totalXp={totalXp}
+                streak={streakDays}
+                shadowDebt={shadowDebt}
+                stability={dungeonStability}
+                relicCount={relicBalance}
+                levelUp={levelUpPulse}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <p className="text-5xl font-black text-white leading-none">{level}</p>
+                  <p className="text-cyan-300 text-sm font-black">LV.</p>
                 </div>
-                <div>
-                  <p className="text-orange-400 text-2xl font-black">{streakDays}D</p>
-                  <p className="text-slate-500 text-[10px] tracking-widest">STREAK</p>
+                <p className="text-cyan-400/80 text-xs tracking-widest mt-1">{rankTitle.toUpperCase()} · TIER {avatarTier}</p>
+                <div className="mt-3">
+                  <RPGXPBar totalXp={profile?.total_xp || 0} levelUp={levelUpPulse} />
                 </div>
-                <div>
-                  <p className="text-yellow-400 text-2xl font-black">{profile?.stat_points || 0}</p>
-                  <p className="text-slate-500 text-[10px] tracking-widest">STAT PTS</p>
+                <div className="mt-2 min-h-5">
+                  <XPDeltaPulse value={xpDelta} visible={xpDelta !== 0} />
+                </div>
+                <div className="grid grid-cols-3 mt-3 gap-2 text-center">
+                  <div>
+                    <p className="text-cyan-400 text-2xl font-black">{activeQuests.length}</p>
+                    <p className="text-slate-500 text-[10px] tracking-widest">QUESTS</p>
+                  </div>
+                  <div>
+                    <p className="text-orange-400 text-2xl font-black">{streakDays}D</p>
+                    <p className="text-slate-500 text-[10px] tracking-widest">STREAK</p>
+                  </div>
+                  <div>
+                    <p className="text-yellow-400 text-2xl font-black">{profile?.stat_points || 0}</p>
+                    <p className="text-slate-500 text-[10px] tracking-widest">STAT PTS</p>
+                  </div>
                 </div>
               </div>
+            </div>
+            <div className="rounded-xl p-3 border border-cyan-500/20 bg-slate-900/45">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-cyan-400 text-xs uppercase tracking-widest font-bold flex items-center gap-2">
+                  <Shield className="w-3.5 h-3.5" /> CORE STAT PANEL
+                </p>
+                <span className="px-2 py-1 rounded border border-yellow-700 text-yellow-300 text-xs font-bold">
+                  {profile?.stat_points || 0} PTS
+                </span>
+              </div>
+              <StatGrid
+                profile={profile}
+                level={level}
+                statPoints={profile?.stat_points || 0}
+                onAllocate={() => {}}
+                expandable
+              />
             </div>
           </div>
         </HoloPanel>
@@ -1235,22 +1538,6 @@ export default function Dashboard() {
               <p className="text-[10px] text-slate-400 mt-1">{xpProgressPct}%</p>
             </div>
           </div>
-        </HoloPanel>
-
-        <HoloPanel>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-cyan-400 text-xs uppercase tracking-widest font-bold flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5" /> CORE STAT PANEL
-            </p>
-            <span className="px-2 py-1 rounded border border-yellow-700 text-yellow-300 text-xs font-bold">{profile?.stat_points || 0} PTS</span>
-          </div>
-          <StatGrid
-            profile={profile}
-            level={level}
-            statPoints={profile?.stat_points || 0}
-            onAllocate={() => {}}
-            expandable
-          />
         </HoloPanel>
 
         <HoloPanel>
@@ -1421,7 +1708,7 @@ export default function Dashboard() {
         </div>
         <div className="space-y-3">
           {activeQuests.slice(0, 2).map((quest, i) => (
-            <QuestCard key={quest.id} quest={quest} index={i} onComplete={handleQuestComplete} onFail={handleQuestFail} />
+            <QuestCard key={quest.id} quest={quest} index={i} onComplete={handleQuestComplete} onFail={handleQuestFail} nowMs={now.getTime()} />
           ))}
         </div>
       </div>

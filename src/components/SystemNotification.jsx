@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { speakWithFemaleVoice } from '@/lib/voice';
 
 /**
  * SystemNotification — floating "SYSTEM MESSAGE" toast stack
@@ -134,6 +135,13 @@ export function useSystemNotifications() {
     // Play notification sound
     if (soundEnabledRef.current) {
       playNotificationSound(type);
+      const spokenText = sub ? `${message}. ${sub}` : message;
+      speakWithFemaleVoice(spokenText, {
+        rate: 0.98,
+        pitch: 1.2,
+        volume: 1,
+        cancel: true,
+      });
     }
     
     setTimeout(() => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { speakWithFemaleVoice } from '@/lib/voice';
 
 const SESSION_KEY = 'Nithya_greeted';
 
@@ -24,74 +25,24 @@ export default function VoiceGreeting({ name, isFirstTime, voiceEnabled, onGlowP
 
     const speak = () => {
       try {
-        window.speechSynthesis.cancel();
-
         const firstName = name.split(' ')[0];
         const greeting = isFirstTime
           ? `Welcome to Nithya, ${firstName}.`
           : `Welcome back to Nithya, ${firstName}.`;
-
-        const utter = new SpeechSynthesisUtterance(greeting);
-        utter.rate = 0.9;
-        utter.pitch = 1.3;
-        utter.volume = 1;
-
-        // Prefer Indian English first, then female-sounding English voices
-        const voices = window.speechSynthesis.getVoices();
-        const preferredIndianFemale = voices.find((v) => {
-          const voiceName = v.name.toLowerCase();
-          return v.lang.toLowerCase().startsWith('en-in') && (
-            voiceName.includes('female') ||
-            voiceName.includes('woman') ||
-            voiceName.includes('girl') ||
-            voiceName.includes('samantha') ||
-            voiceName.includes('victoria') ||
-            voiceName.includes('zira') ||
-            voiceName.includes('karen') ||
-            voiceName.includes('moira') ||
-            voiceName.includes('susan') ||
-            voiceName.includes('ava') ||
-            voiceName.includes('aria') ||
-            voiceName.includes('jenny') ||
-            voiceName.includes('nancy')
-          );
+        if (onGlowPulse) onGlowPulse(true);
+        speakWithFemaleVoice(greeting, {
+          rate: 0.9,
+          pitch: 1.28,
+          volume: 1,
+          cancel: true,
         });
-        const preferredIndian = voices.find((v) => v.lang.toLowerCase().startsWith('en-in'));
-        const preferredEnglishFemale = voices.find((v) => {
-          const voiceName = v.name.toLowerCase();
-          return v.lang.startsWith('en') && (
-            voiceName.includes('female') ||
-            voiceName.includes('woman') ||
-            voiceName.includes('girl') ||
-            voiceName.includes('samantha') ||
-            voiceName.includes('victoria') ||
-            voiceName.includes('zira') ||
-            voiceName.includes('karen') ||
-            voiceName.includes('moira') ||
-            voiceName.includes('susan') ||
-            voiceName.includes('ava') ||
-            voiceName.includes('aria') ||
-            voiceName.includes('jenny') ||
-            voiceName.includes('nancy')
-          );
-        });
-        const preferred = preferredIndianFemale || preferredIndian || preferredEnglishFemale || voices.find((v) => v.lang.startsWith('en')) || null;
-        if (preferred) utter.voice = preferred;
-
-        utter.onstart = () => {
-          if (onGlowPulse) onGlowPulse(true);
-        };
-        utter.onend = () => {
+        setTimeout(() => {
           if (onGlowPulse) onGlowPulse(false);
           sessionStorage.setItem(SESSION_KEY, '1');
-        };
-        utter.onerror = () => {
-          if (onGlowPulse) onGlowPulse(false);
-        };
-
-        window.speechSynthesis.speak(utter);
+        }, 1800);
       } catch (_) {
         // Fail silently
+        if (onGlowPulse) onGlowPulse(false);
       }
     };
 
