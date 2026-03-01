@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { createPageUrl } from '../utils';
 import LogoMark from '../../logo/logo.svg';
+import { toastError } from '@/lib/toast';
 import './LandingIntro.css';
 
 const generateUserCode = () => {
@@ -17,7 +18,14 @@ const generateUserCode = () => {
   return `HNTR-${suffix}`;
 };
 
-const IntroHero = memo(function IntroHero({ onBeginJourney, onSignIn }) {
+/**
+ * @typedef IntroHeroProps
+ * @property {() => void} onBeginJourney
+ * @property {() => void} onSignIn
+ */
+
+/** @param {IntroHeroProps} props */
+function IntroHero({ onBeginJourney, onSignIn }) {
   return (
     <div className="intro-page">
       <motion.div
@@ -75,7 +83,7 @@ const IntroHero = memo(function IntroHero({ onBeginJourney, onSignIn }) {
       </main>
     </div>
   );
-});
+}
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -201,7 +209,7 @@ export default function Landing() {
 
       navigate(createPageUrl('Dashboard'), { replace: true });
     } catch (err) {
-      alert(`Error: ${normalizeErrorMessage(err)} Please try again.`);
+      toastError(`${normalizeErrorMessage(err)} Please try again.`, { ttl: 5200 });
     } finally {
       setLoading(false);
     }

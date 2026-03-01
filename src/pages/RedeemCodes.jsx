@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Ticket } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { createPageUrl } from '../utils';
 import { Button } from '@/components/ui/button';
 import SystemBackground from '@/components/SystemBackground';
 import HoloPanel from '@/components/HoloPanel';
 import { fetchRelicBalance, mapRedeemCodeError, redeemRelicCode, RELIC_MAX_BALANCE } from '@/lib/relics';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 
 export default function RedeemCodes() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, authReady } = useAuthedPageUser();
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -29,18 +29,12 @@ export default function RedeemCodes() {
   };
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser(authUser);
-      await loadBalance(authUser.id);
+    if (!authReady || !user?.id) return;
+    void (async () => {
+      await loadBalance(user.id);
       setLoading(false);
-    };
-    void init();
-  }, [navigate]);
+    })();
+  }, [authReady, user?.id]);
 
   useEffect(() => {
     if (!pulse) return undefined;

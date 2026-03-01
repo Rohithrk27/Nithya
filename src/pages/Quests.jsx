@@ -12,6 +12,9 @@ import { computeLevel } from '../components/gameEngine';
 import { activateUserQuest, resolveExpiredQuests } from '@/lib/gameState';
 import { insertQuestCompat } from '@/lib/questSystem';
 import { applyProgressionSnapshot, awardXpRpc } from '@/lib/progression';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
+import { toastError } from '@/lib/toast';
+import { applyShadowArmyXpBonus, getStreakDays } from '@/lib/shadowArmy';
 
 const ACTIVE_QUEST_STATUSES = new Set([
   'active',
@@ -295,7 +298,7 @@ const toQuestTemplatePayload = (template) => ({
 
 export default function Quests() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, authReady } = useAuthedPageUser();
   const [profile, setProfile] = useState(null);
   const [questTemplates, setQuestTemplates] = useState([]);
   const [userQuestRows, setUserQuestRows] = useState([]);
@@ -396,30 +399,9 @@ export default function Quests() {
   }, [ensureQuestPoolRows, navigate]);
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        setLoading(false);
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser(authUser);
-      await loadData(authUser.id);
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        setLoading(false);
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser(session.user);
-      await loadData(session.user.id);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [loadData, navigate]);
+    if (!authReady || !user?.id) return;
+    void loadData(user.id);
+  }, [authReady, loadData, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -578,16 +560,23 @@ export default function Quests() {
     if (!currentProfile?.id) return;
     const xpGain = Number(quest?.xp_reward || 0);
     if (!Number.isFinite(xpGain) || xpGain <= 0) return;
+    const boosted = applyShadowArmyXpBonus(xpGain, getStreakDays(currentProfile));
+    const metadata = {
+      quest_id: quest.id,
+      quest_type: normalizeQuestType(quest.type || 'daily'),
+    };
+    if (boosted.bonusXp > 0) {
+      metadata.shadow_army_bonus_xp = boosted.bonusXp;
+      metadata.shadow_army_bonus_pct = boosted.bonusPct;
+      metadata.shadow_army_count = boosted.shadowArmyCount;
+    }
 
     const snapshot = await awardXpRpc({
       userId: currentProfile.id,
-      xpAmount: xpGain,
+      xpAmount: boosted.totalXp,
       source: 'quest_complete',
       eventId: `quest:${quest.id}:${todayKey}`,
-      metadata: {
-        quest_id: quest.id,
-        quest_type: normalizeQuestType(quest.type || 'daily'),
-      },
+      metadata,
     });
 
     const { nextProfile } = applyProgressionSnapshot(currentProfile, null, snapshot);
@@ -687,7 +676,7 @@ export default function Quests() {
       notifyQuestChange(user.id);
     } catch (err) {
       await loadData(user.id);
-      alert(err?.message || 'Failed to accept quest.');
+      toastError(err?.message || 'Failed to accept quest.');
     } finally {
       setAcceptingQuestKey('');
       setActionLoading(false);
@@ -726,7 +715,7 @@ export default function Quests() {
       notifyQuestChange(user.id);
     } catch (err) {
       await loadData(user.id);
-      alert(err?.message || 'Failed to complete quest.');
+      toastError(err?.message || 'Failed to complete quest.');
     } finally {
       setActionLoading(false);
     }
@@ -762,7 +751,7 @@ export default function Quests() {
       notifyQuestChange(user.id);
     } catch (err) {
       await loadData(user.id);
-      alert(err?.message || 'Failed to fail quest.');
+      toastError(err?.message || 'Failed to fail quest.');
     } finally {
       setActionLoading(false);
     }

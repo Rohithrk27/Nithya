@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { createPageUrl } from '../utils';
 import { useNavigate } from 'react-router-dom';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 
 import { ArrowLeft, TrendingUp, Flame, Star, BarChart2, Calendar } from 'lucide-react';
 import { format, subDays, eachDayOfInterval } from 'date-fns';
@@ -9,6 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, L
 
 export default function Analytics() {
   const navigate = useNavigate();
+  const { user, authReady } = useAuthedPageUser();
   const [loading, setLoading] = useState(true);
   const [habits, setHabits] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -18,25 +20,9 @@ export default function Analytics() {
   const rowDate = (row) => (row?.date || row?.logged_at || row?.completed_at || row?.created_at || '').toString().slice(0, 10);
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      await loadData(authUser.id);
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      await loadData(session.user.id);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+    if (!authReady || !user?.id) return;
+    void loadData(user.id);
+  }, [authReady, user?.id]);
 
   const loadData = async (userId) => {
     if (!userId) return;

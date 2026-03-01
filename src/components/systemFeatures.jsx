@@ -38,10 +38,26 @@ export const RANK_REVEAL_LEVELS_SET = new Set(RANK_REVEAL_LEVELS);
 
 // ─── ACHIEVEMENTS ────────────────────────────────────────────────────────────
 
+const achievementStreak = (profile) => Math.max(
+  0,
+  Number(profile?.daily_streak ?? profile?.global_streak ?? 0) || 0
+);
+
+const dungeonCompletions = (profile) => Math.max(
+  0,
+  Number(
+    profile?.dungeon_completed_count
+    ?? profile?.dungeons_completed
+    ?? profile?.dungeon_completed
+    ?? profile?.dungeon_achievements?.completed
+    ?? 0
+  ) || 0
+);
+
 export const ACHIEVEMENT_DEFS = [
-  { key: 'streak_7',    title: 'Relentless',      description: '7-day global streak',          icon: '🔥', category: 'streak',  check: (p) => (p.global_streak || 0) >= 7 },
-  { key: 'streak_30',   title: 'Iron Will',        description: '30-day global streak',         icon: '⚡', category: 'streak',  check: (p) => (p.global_streak || 0) >= 30 },
-  { key: 'streak_100',  title: 'The Relentless',   description: '100-day streak',               icon: '💎', category: 'streak',  check: (p) => (p.global_streak || 0) >= 100 },
+  { key: 'streak_7',    title: 'Relentless',      description: '7-day global streak',          icon: '🔥', category: 'streak',  check: (p) => achievementStreak(p) >= 7 },
+  { key: 'streak_30',   title: 'Iron Will',        description: '30-day global streak',         icon: '⚡', category: 'streak',  check: (p) => achievementStreak(p) >= 30 },
+  { key: 'streak_100',  title: 'The Relentless',   description: '100-day streak',               icon: '💎', category: 'streak',  check: (p) => achievementStreak(p) >= 100 },
   { key: 'quests_10',   title: 'Quest Taker',      description: '10 quests completed',          icon: '⚔️', category: 'quests',  check: (p) => (p.quests_completed || 0) >= 10 },
   { key: 'quests_50',   title: 'Unyielding',       description: '50 quests completed',          icon: '🗡️', category: 'quests',  check: (p) => (p.quests_completed || 0) >= 50 },
   { key: 'quests_200',  title: 'The Unyielding',   description: '200 quests completed',         icon: '👑', category: 'quests',  check: (p) => (p.quests_completed || 0) >= 200 },
@@ -50,7 +66,7 @@ export const ACHIEVEMENT_DEFS = [
   { key: 'level_100',   title: 'Awakened',         description: 'Reached Level 100',            icon: '✨', category: 'level',   check: (p, l) => l >= 100 },
   { key: 'level_500',   title: 'System Architect', description: 'Reached Level 500',            icon: '🏛️', category: 'level',   check: (p, l) => l >= 500 },
   { key: 'stat_100',    title: 'Iron Body',        description: 'Total stats exceed 100',       icon: '💪', category: 'stats',   check: (p, l) => { const s = computeAllStats(p, l); return STAT_KEYS.reduce((a, k) => a + (s[k]||0), 0) >= 100; } },
-  { key: 'dungeon_1',   title: 'Dungeon Walker',   description: 'Completed first Dungeon Mode', icon: '🏰', category: 'dungeon', check: () => false },
+  { key: 'dungeon_1',   title: 'Dungeon Walker',   description: 'Completed first Dungeon Mode', icon: '🏰', category: 'dungeon', check: (p) => dungeonCompletions(p) >= 1 },
 ];
 
 export function checkNewAchievements(profile, level, existingKeys) {

@@ -2,6 +2,19 @@ import { supabase } from '@/lib/supabase';
 
 const firstRow = (data) => (Array.isArray(data) ? (data[0] || null) : (data || null));
 export const RELIC_MAX_BALANCE = 20;
+const RELIC_AWARD_SOFT_FAILURES = [
+  'weekly streak requirement not met',
+  'weekly 120% target requirement not met',
+  'shadow debt is not cleared',
+  'dungeon interruption-free completion not verified',
+  'group bet still active',
+  'relic cap reached',
+];
+
+const toSafeMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  return metadata;
+};
 
 export async function fetchRelicInventory(userId) {
   if (!userId) return [];
@@ -39,6 +52,53 @@ export async function fetchActiveRelicEffects(userId) {
     .order('expires_at', { ascending: true });
   if (error) throw error;
   return Array.isArray(data) ? data : [];
+}
+
+export async function awardRelicRpc({
+  userId,
+  source,
+  eventId = null,
+  metadata = {},
+}) {
+  if (!userId || !source) throw new Error('Missing relic award inputs');
+  const { data, error } = await supabase.rpc('award_relic', {
+    p_user_id: userId,
+    p_source: source,
+    p_event_id: eventId || null,
+    p_metadata: toSafeMetadata(metadata),
+  });
+  if (error) throw error;
+  return firstRow(data);
+}
+
+export function isRelicAwardSoftFailure(error) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  if (!msg) return false;
+  return RELIC_AWARD_SOFT_FAILURES.some((needle) => msg.includes(needle));
+}
+
+export async function maybeAwardRelic(params) {
+  try {
+    const row = await awardRelicRpc(params);
+    return {
+      awarded: Boolean(row?.success),
+      reason: row?.reason || null,
+      relicId: row?.relic_id || null,
+      relicCount: Number(row?.relic_count || 0),
+      row,
+    };
+  } catch (error) {
+    if (isRelicAwardSoftFailure(error)) {
+      return {
+        awarded: false,
+        reason: 'not_eligible',
+        relicId: null,
+        relicCount: 0,
+        row: null,
+      };
+    }
+    throw error;
+  }
 }
 
 export async function redeemRelicAction({

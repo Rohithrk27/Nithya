@@ -10,10 +10,12 @@ import SystemBackground from '@/components/SystemBackground';
 import { computeLevel, STAT_KEYS } from '@/components/gameEngine';
 import {
   fetchFriendsState,
+  normalizeUserCode,
   respondFriendRequestRpc,
   searchProfileByUserCode,
   sendFriendRequestRpc,
 } from '@/lib/social';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 
 const SCORE_WEIGHTS = {
   level: 12,
@@ -41,7 +43,13 @@ const formatHunterCode = (profile) => {
   return `@${profile.user_code}`;
 };
 
-function LeaderboardTable({ rows, currentUserId }) {
+const derivePublicUsernameFromProfile = (profile) => {
+  const base = (profile?.user_code || '').toString().trim().toLowerCase();
+  if (!base) return '';
+  return base.replace(/[^a-z0-9_]+/g, '-').replace(/^-+|-+$/g, '');
+};
+
+function LeaderboardTable({ rows, currentUserId, usernameByUserId, onOpenProfile }) {
   if (!rows.length) {
     return (
       <div className="text-center py-8 text-sm" style={{ color: '#64748B' }}>
@@ -56,13 +64,25 @@ function LeaderboardTable({ rows, currentUserId }) {
         const level = computeLevel(row.total_xp || 0);
         const mine = row.id === currentUserId;
         const placeColor = idx === 0 ? '#FBBF24' : idx === 1 ? '#94A3B8' : idx === 2 ? '#FB923C' : '#64748B';
+        const username = usernameByUserId[row.id] || derivePublicUsernameFromProfile(row);
+        const canOpen = Boolean(username);
         return (
           <div
             key={row.id}
             className="rounded-xl p-3 flex items-center gap-3"
+            role={canOpen ? 'button' : undefined}
+            tabIndex={canOpen ? 0 : undefined}
+            onClick={canOpen ? () => onOpenProfile(username) : undefined}
+            onKeyDown={canOpen ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onOpenProfile(username);
+              }
+            } : undefined}
             style={{
               background: mine ? 'rgba(56,189,248,0.12)' : 'rgba(15,32,39,0.6)',
               border: `1px solid ${mine ? 'rgba(56,189,248,0.5)' : 'rgba(56,189,248,0.15)'}`,
+              cursor: canOpen ? 'pointer' : 'default',
             }}
           >
             <div className="w-8 text-center font-black" style={{ color: placeColor }}>
@@ -87,9 +107,10 @@ function LeaderboardTable({ rows, currentUserId }) {
 
 export default function Leaderboard() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, authReady } = useAuthedPageUser();
   const [currentProfile, setCurrentProfile] = useState(null);
   const [profileDirectory, setProfileDirectory] = useState({});
+  const [usernameByUserId, setUsernameByUserId] = useState({});
   const [globalRows, setGlobalRows] = useState([]);
   const [friendRows, setFriendRows] = useState([]);
   const [incomingRequests, setIncomingRequests] = useState([]);
@@ -127,6 +148,7 @@ export default function Leaderboard() {
       for (const profile of allProfiles) {
         directorySeed[profile.id] = profile;
       }
+      const seedIds = new Set(allProfiles.map((p) => p.id).filter(Boolean));
 
       try {
         const friendState = await fetchFriendsState(userId);
@@ -148,6 +170,7 @@ export default function Leaderboard() {
 
         for (const [id, p] of Object.entries(friendState.profilesById || {})) {
           if (!directorySeed[id]) directorySeed[id] = p;
+          seedIds.add(id);
         }
         setProfileDirectory({ ...directorySeed });
 
@@ -160,6 +183,7 @@ export default function Leaderboard() {
         if (!friendsError) {
           for (const fp of friendsProfiles || []) {
             directorySeed[fp.id] = fp;
+            seedIds.add(fp.id);
           }
           setProfileDirectory({ ...directorySeed });
           setFriendRows(hydrateRows(friendsProfiles));
@@ -171,33 +195,36 @@ export default function Leaderboard() {
         setFriendRows([]);
         setProfileDirectory(directorySeed);
       }
+
+      try {
+        const ids = Array.from(seedIds).filter(Boolean);
+        if (!ids.length) {
+          setUsernameByUserId({});
+        } else {
+          const { data: publicProfiles, error: publicProfilesError } = await supabase
+            .from('public_profiles')
+            .select('user_id,username')
+            .in('user_id', ids);
+          if (publicProfilesError) throw publicProfilesError;
+
+          const usernames = {};
+          for (const row of publicProfiles || []) {
+            if (row?.user_id && row?.username) usernames[row.user_id] = row.username;
+          }
+          setUsernameByUserId(usernames);
+        }
+      } catch (_) {
+        setUsernameByUserId({});
+      }
     } finally {
       setLoading(false);
     }
   }, [hydrateRows]);
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser(authUser);
-      await loadData(authUser.id);
-    };
-    void init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser(session.user);
-      await loadData(session.user.id);
-    });
-    return () => subscription.unsubscribe();
-  }, [loadData, navigate]);
+    if (!authReady || !user?.id) return;
+    void loadData(user.id);
+  }, [authReady, loadData, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -215,8 +242,12 @@ export default function Leaderboard() {
     if (!user?.id || !searchUserCode.trim()) return;
     setStatusText('');
 
-    const targetCode = searchUserCode.trim().toUpperCase();
-    const myCode = currentProfile?.user_code?.toUpperCase();
+    const targetCode = normalizeUserCode(searchUserCode);
+    const myCode = normalizeUserCode(currentProfile?.user_code);
+    if (!targetCode) {
+      setStatusText('Enter a valid User ID.');
+      return;
+    }
     if (myCode && targetCode === myCode) {
       setStatusText('You cannot add yourself.');
       return;
@@ -282,6 +313,11 @@ export default function Leaderboard() {
     { id: 'requests', label: `REQUESTS (${incomingRequests.length})` },
   ]), [incomingRequests.length]);
 
+  const openPublicProfile = useCallback((username) => {
+    if (!username) return;
+    navigate(`/profile/${encodeURIComponent(username)}`);
+  }, [navigate]);
+
   if (loading) {
     return (
       <SystemBackground>
@@ -340,7 +376,12 @@ export default function Leaderboard() {
             <p className="text-xs font-bold tracking-widest mb-3 flex items-center gap-2" style={{ color: '#FBBF24' }}>
               <Trophy className="w-3.5 h-3.5" /> GLOBAL HUNTERS
             </p>
-            <LeaderboardTable rows={globalRows} currentUserId={user?.id} />
+            <LeaderboardTable
+              rows={globalRows}
+              currentUserId={user?.id}
+              usernameByUserId={usernameByUserId}
+              onOpenProfile={openPublicProfile}
+            />
           </HoloPanel>
         )}
 
@@ -352,7 +393,12 @@ export default function Leaderboard() {
             {!friendsFeatureEnabled ? (
               <p className="text-sm" style={{ color: '#64748B' }}>Friends feature requires `friends` RPC migration setup in Supabase.</p>
             ) : (
-              <LeaderboardTable rows={friendRows} currentUserId={user?.id} />
+              <LeaderboardTable
+                rows={friendRows}
+                currentUserId={user?.id}
+                usernameByUserId={usernameByUserId}
+                onOpenProfile={openPublicProfile}
+              />
             )}
           </HoloPanel>
         )}

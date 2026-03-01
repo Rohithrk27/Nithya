@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { format, addDays } from 'date-fns';
-import { ArrowLeft, Flame, Trophy, Skull, X, History, Users, Link2, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Flame, Trophy, Skull, X, History, Users, Link2, PlayCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,10 +12,16 @@ import { DUNGEON_CHALLENGES, HIGH_DIFFICULTY_PUNISHMENTS, getRandomHardPunishmen
 import { computeLevel, bonusXP } from '../components/gameEngine';
 import { applyProgressionSnapshot, awardXpRpc, penaltyXpRpc } from '@/lib/progression';
 import { fetchActiveDungeonRun, getDungeonProgress } from '@/lib/gameState';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
+import { toastError, toastInfo } from '@/lib/toast';
+import { applyShadowArmyXpBonus, getStreakDays } from '@/lib/shadowArmy';
+import { maybeAwardRelic } from '@/lib/relics';
+import ConfirmActionModal from '@/components/ConfirmActionModal';
 import XPDeltaPulse from '@/components/XPDeltaPulse';
 import {
   claimDungeonPartyXp,
   createDungeonParty,
+  deleteDungeonParty,
   fetchFriendActiveDungeons,
   fetchOwnedParty,
   fetchPartyForMember,
@@ -24,6 +30,7 @@ import {
   joinDungeonParty,
   joinDungeonPartyByCode,
   registerDungeonPartyFailure,
+  setDungeonPartyConfig,
   setDungeonPartyVisibility,
   startDungeonParty,
   subscribeToPartyRealtime,
@@ -37,7 +44,7 @@ const DURATION_OPTIONS = [1, 3, 5, 7, 10, 14];
 
 export default function Dungeon() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, authReady } = useAuthedPageUser();
   const [profile, setProfile] = useState(null);
   const [activeDungeon, setActiveDungeon] = useState(null);
   const [dungeonHistory, setDungeonHistory] = useState([]);
@@ -59,34 +66,24 @@ export default function Dungeon() {
   const [friendRuns, setFriendRuns] = useState([]);
   const [partyBusy, setPartyBusy] = useState(false);
   const [joinCode, setJoinCode] = useState('');
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [showDeletePartyConfirm, setShowDeletePartyConfirm] = useState(false);
   const [partyForm, setPartyForm] = useState({
     title: '',
     visibility: 'friends',
     maxMembers: 4,
+    challengeTitle: '',
+    challengeDescription: '',
+    punishmentMode: 'random',
+    customPunishmentText: '',
+    rewardXpPool: 600,
+    failXpPenalty: 60,
   });
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser({ id: authUser.id, email: authUser.email });
-      await loadData(authUser.id);
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser({ id: session.user.id, email: session.user.email });
-      await loadData(session.user.id);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+    if (!authReady || !user?.id) return;
+    void loadData(user.id);
+  }, [authReady, user?.id]);
 
   useEffect(() => {
     if (!xpDelta) return undefined;
@@ -115,14 +112,6 @@ export default function Dungeon() {
       ]);
       setPartyMembers(members || []);
       setPartyRewards(rewards || []);
-      if (!partyForm.title && currentParty.title) {
-        setPartyForm((prev) => ({
-          ...prev,
-          title: currentParty.title,
-          visibility: currentParty.visibility || prev.visibility,
-          maxMembers: currentParty.max_members || prev.maxMembers,
-        }));
-      }
     } else {
       setPartyMembers([]);
       setPartyRewards([]);
@@ -158,6 +147,22 @@ export default function Dungeon() {
     });
     return unsubscribe;
   }, [party?.id, user?.id]);
+
+  useEffect(() => {
+    if (!party?.id) return;
+    setPartyForm((prev) => ({
+      ...prev,
+      title: party.title || prev.title || '',
+      visibility: party.visibility || prev.visibility || 'friends',
+      maxMembers: party.max_members || prev.maxMembers || 4,
+      challengeTitle: party.challenge_title || prev.challengeTitle || '',
+      challengeDescription: party.challenge_description || prev.challengeDescription || '',
+      punishmentMode: party.punishment_mode || prev.punishmentMode || 'random',
+      customPunishmentText: party.custom_punishment_text || prev.customPunishmentText || '',
+      rewardXpPool: party.reward_xp_pool ?? prev.rewardXpPool ?? 600,
+      failXpPenalty: party.fail_xp_penalty ?? prev.failXpPenalty ?? 60,
+    }));
+  }, [party?.id]);
 
   const loadData = async (userId) => {
     if (!userId) return;
@@ -196,7 +201,7 @@ export default function Dungeon() {
       const existingRun = await fetchActiveDungeonRun(user.id);
       if (existingRun?.id) {
         setActiveDungeon(existingRun);
-        alert('A dungeon is already active. Finish it before entering another one.');
+        toastInfo('A dungeon is already active. Finish it before entering another one.');
         return;
       }
 
@@ -229,7 +234,7 @@ export default function Dungeon() {
       setShowHistory(false);
       setCleared(false);
     } catch (err) {
-      alert(err?.message || 'Failed to start dungeon.');
+      toastError(err?.message || 'Failed to start dungeon.');
     } finally {
       setStarting(false);
     }
@@ -265,12 +270,49 @@ export default function Dungeon() {
         visibility: partyForm.visibility,
         maxMembers: Number(partyForm.maxMembers || 4),
       });
+      let configError = null;
+      try {
+        await setDungeonPartyConfig({
+          userId: user.id,
+          partyId,
+          challengeTitle: partyForm.challengeTitle || partyForm.title || 'Collaborative Dungeon',
+          challengeDescription: partyForm.challengeDescription || 'Complete party objectives together',
+          punishmentMode: partyForm.punishmentMode || 'random',
+          customPunishmentText: partyForm.customPunishmentText || '',
+          rewardXpPool: Number(partyForm.rewardXpPool || 600),
+          failXpPenalty: Number(partyForm.failXpPenalty || 0),
+        });
+      } catch (err) {
+        configError = err;
+      }
       await loadPartyState(user.id);
       setEntryMode('collab');
+      if (configError) {
+        toastError(configError?.message || 'Party created but setup configuration failed.');
+      }
     } catch (err) {
-      alert(err?.message || 'Failed to create party.');
+      toastError(err?.message || 'Failed to create party.');
     } finally {
       setPartyBusy(false);
+    }
+  };
+
+  const savePartySetup = async ({ targetPartyId = party?.id, strict = false } = {}) => {
+    if (!user?.id || !targetPartyId) return;
+    try {
+      await setDungeonPartyConfig({
+        userId: user.id,
+        partyId: targetPartyId,
+        challengeTitle: partyForm.challengeTitle || partyForm.title || 'Collaborative Dungeon',
+        challengeDescription: partyForm.challengeDescription || 'Complete party objectives together',
+        punishmentMode: partyForm.punishmentMode || 'random',
+        customPunishmentText: partyForm.customPunishmentText || '',
+        rewardXpPool: Number(partyForm.rewardXpPool || 600),
+        failXpPenalty: Number(partyForm.failXpPenalty || 0),
+      });
+    } catch (err) {
+      if (strict) throw err;
+      toastError(err?.message || 'Failed to save party setup.');
     }
   };
 
@@ -286,7 +328,7 @@ export default function Dungeon() {
       await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to join party.');
+      toastError(err?.message || 'Failed to join party.');
     } finally {
       setPartyBusy(false);
     }
@@ -300,7 +342,7 @@ export default function Dungeon() {
       await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to join friend party.');
+      toastError(err?.message || 'Failed to join friend party.');
     } finally {
       setPartyBusy(false);
     }
@@ -310,6 +352,7 @@ export default function Dungeon() {
     if (!user?.id || !party?.id || partyBusy) return;
     setPartyBusy(true);
     try {
+      await savePartySetup({ targetPartyId: party.id, strict: true });
       await startDungeonParty({
         userId: user.id,
         partyId: party.id,
@@ -318,7 +361,7 @@ export default function Dungeon() {
       });
       await loadData(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to start party dungeon.');
+      toastError(err?.message || 'Failed to start party dungeon.');
     } finally {
       setPartyBusy(false);
     }
@@ -332,11 +375,11 @@ export default function Dungeon() {
         userId: user.id,
         partyId: party.id,
         progressDelta: delta,
-        xpPool: 600,
+        xpPool: party?.reward_xp_pool ?? null,
       });
       await loadPartyState(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to update party progress.');
+      toastError(err?.message || 'Failed to update party progress.');
     } finally {
       setPartyBusy(false);
     }
@@ -355,7 +398,7 @@ export default function Dungeon() {
       await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to apply party failure penalty.');
+      toastError(err?.message || 'Failed to apply party failure penalty.');
     } finally {
       setPartyBusy(false);
     }
@@ -374,7 +417,7 @@ export default function Dungeon() {
       await loadPartyState(user.id);
       await loadData(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to claim party reward.');
+      toastError(err?.message || 'Failed to claim party reward.');
     } finally {
       setPartyBusy(false);
     }
@@ -388,12 +431,19 @@ export default function Dungeon() {
       const baseXp = bonusXP('dungeon_clear', lvl);
       const xpMultiplier = Number(activeDungeon.xp_bonus_multiplier || 1.5);
       const xp = Math.max(0, Math.floor(baseXp * xpMultiplier));
+      const boosted = applyShadowArmyXpBonus(xp, getStreakDays(profile));
+      const metadata = { dungeon_run_id: activeDungeon.id, xp_multiplier: xpMultiplier };
+      if (boosted.bonusXp > 0) {
+        metadata.shadow_army_bonus_xp = boosted.bonusXp;
+        metadata.shadow_army_bonus_pct = boosted.bonusPct;
+        metadata.shadow_army_count = boosted.shadowArmyCount;
+      }
       const snapshot = await awardXpRpc({
         userId: user.id,
-        xpAmount: xp,
+        xpAmount: boosted.totalXp,
         source: 'dungeon_clear',
         eventId: `dungeon:${activeDungeon.id}:clear`,
-        metadata: { dungeon_run_id: activeDungeon.id, xp_multiplier: xpMultiplier },
+        metadata,
       });
       const { nextProfile } = applyProgressionSnapshot(profile, null, snapshot);
       const progress = getDungeonProgress(activeDungeon);
@@ -403,7 +453,7 @@ export default function Dungeon() {
         .update({
           status: 'completed',
           end_date: today,
-          xp_reward: xp,
+          xp_reward: boosted.totalXp,
           xp_penalty: 0,
           completed_days: progress.elapsedDays,
           stability: Math.max(0, Number(activeDungeon.stability ?? 100)),
@@ -412,13 +462,28 @@ export default function Dungeon() {
         .eq('user_id', user.id);
       if (runError) throw runError;
 
+      let relicAward = null;
+      try {
+        relicAward = await maybeAwardRelic({
+          userId: user.id,
+          source: 'dungeon_zero_interruptions',
+          eventId: activeDungeon.id,
+          metadata: { dungeon_run_id: activeDungeon.id },
+        });
+      } catch (_) {
+        relicAward = null;
+      }
+
       setProfile(nextProfile);
       setXpDelta((nextProfile?.total_xp || 0) - (profile?.total_xp || 0));
       setActiveDungeon(null);
       setCleared(true);
+      if (relicAward?.awarded) {
+        toastInfo('Relic earned: Dungeon Zero Interruptions');
+      }
       await loadData(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to complete dungeon.');
+      toastError(err?.message || 'Failed to complete dungeon.');
     }
   };
 
@@ -468,17 +533,44 @@ export default function Dungeon() {
 
       if (activeDungeon.punishment_mode === 'random') {
         const punishment = getRandomHardPunishment(lvl, profile.stat_discipline || 0);
-        alert(`DUNGEON FAILED\n\n−${xpPenalty} XP\n\nFailure Punishment:\n${punishment.text}`);
+        toastError(`Dungeon failed: -${xpPenalty} XP. Failure punishment: ${punishment.text}`, { ttl: 8000 });
       }
       await loadData(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to fail dungeon.');
+      toastError(err?.message || 'Failed to fail dungeon.');
     }
   };
 
-  const quitDungeon = async () => {
+  const requestQuitDungeon = () => {
+    setShowQuitConfirm(true);
+  };
+
+  const requestDeleteParty = () => {
+    if (!isPartyHost || !party?.id || party.status !== 'waiting' || partyBusy) return;
+    setShowDeletePartyConfirm(true);
+  };
+
+  const confirmDeleteParty = async () => {
+    if (!user?.id || !party?.id || !isPartyHost) return;
+    setPartyBusy(true);
+    try {
+      await deleteDungeonParty({
+        userId: user.id,
+        partyId: party.id,
+      });
+      toastInfo('Hosted collab party deleted.');
+      await loadPartyState(user.id);
+      await loadData(user.id);
+    } catch (err) {
+      toastError(err?.message || 'Failed to delete hosted collab party.');
+    } finally {
+      setPartyBusy(false);
+      setShowDeletePartyConfirm(false);
+    }
+  };
+
+  const confirmQuitDungeon = async () => {
     if (!activeDungeon || !profile || !user?.id) return;
-    if (!confirm('Are you sure you want to quit this dungeon? No XP will be awarded.')) return;
 
     try {
       const progress = getDungeonProgress(activeDungeon);
@@ -493,10 +585,12 @@ export default function Dungeon() {
         .eq('user_id', user.id);
       if (error) throw error;
       setActiveDungeon(null);
-      alert('Dungeon quit. You can start a new dungeon anytime.');
+      toastInfo('Dungeon quit. You can start a new dungeon anytime.');
       await loadData(user.id);
     } catch (err) {
-      alert(err?.message || 'Failed to quit dungeon.');
+      toastError(err?.message || 'Failed to quit dungeon.');
+    } finally {
+      setShowQuitConfirm(false);
     }
   };
 
@@ -510,6 +604,7 @@ export default function Dungeon() {
   const xpMult = activeDungeon?.xp_bonus_multiplier || 1.5;
   const isCollabRun = activeDungeon?.mode === 'collab';
   const isPartyHost = !!(user?.id && party?.host_user_id === user.id);
+  const canEditPartySetup = !party || (isPartyHost && party.status === 'waiting');
   const memberCount = (partyMembers || []).filter((m) => ['joined', 'completed'].includes(m.status)).length;
   const myPartyReward = (partyRewards || []).find((r) => r.user_id === user?.id) || null;
   const myPartyMember = (partyMembers || []).find((m) => m.user_id === user?.id) || null;
@@ -541,6 +636,26 @@ export default function Dungeon() {
         ? 'linear-gradient(135deg, #1a0505 0%, #2d0f0f 40%, #1a1a2e 100%)'
         : 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)',
     }}>
+      <ConfirmActionModal
+        open={showQuitConfirm}
+        title="Quit dungeon?"
+        message="No XP will be awarded if you quit this run."
+        confirmText="Quit Dungeon"
+        cancelText="Stay"
+        danger
+        onCancel={() => setShowQuitConfirm(false)}
+        onConfirm={confirmQuitDungeon}
+      />
+      <ConfirmActionModal
+        open={showDeletePartyConfirm}
+        title="Delete hosted collab party?"
+        message="This removes the waiting party and invite code for all members."
+        confirmText="Delete Party"
+        cancelText="Cancel"
+        danger
+        onCancel={() => setShowDeletePartyConfirm(false)}
+        onConfirm={confirmDeleteParty}
+      />
       {isDungeonMode && (
         <div style={{
           position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
@@ -736,7 +851,7 @@ export default function Dungeon() {
                 style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.4)', color: '#34D399' }}>
                 <Trophy className="w-4 h-4 mr-2" /> {isCollabRun ? 'CONTRIBUTE' : 'MARK CLEARED'}
               </Button>
-              <Button onClick={quitDungeon} variant="ghost" className="font-black tracking-widest px-4"
+              <Button onClick={requestQuitDungeon} variant="ghost" className="font-black tracking-widest px-4"
                 style={{ border: '1px solid rgba(248,113,113,0.3)', color: '#F87171' }}>
                 <X className="w-4 h-4" />
               </Button>
@@ -918,7 +1033,7 @@ export default function Dungeon() {
                     <Users className="w-3.5 h-3.5" /> COLLAB PARTY
                   </p>
 
-                  {!party && (
+                  {(!party || isPartyHost) && (
                     <>
                       <div className="grid grid-cols-12 gap-2">
                         <Input
@@ -926,11 +1041,13 @@ export default function Dungeon() {
                           value={partyForm.title}
                           onChange={(e) => setPartyForm((prev) => ({ ...prev, title: e.target.value }))}
                           placeholder="Party title"
+                          disabled={!canEditPartySetup}
                         />
                         <select
                           className="col-span-3 rounded-md bg-slate-900/70 border border-slate-700 text-slate-100 text-xs px-2"
                           value={partyForm.visibility}
                           onChange={(e) => setPartyForm((prev) => ({ ...prev, visibility: e.target.value }))}
+                          disabled={!canEditPartySetup}
                         >
                           <option value="friends">Friends</option>
                           <option value="public">Public</option>
@@ -943,23 +1060,92 @@ export default function Dungeon() {
                           max={16}
                           value={partyForm.maxMembers}
                           onChange={(e) => setPartyForm((prev) => ({ ...prev, maxMembers: e.target.value }))}
+                          disabled={!canEditPartySetup}
                         />
                       </div>
-                      <Button onClick={createParty} disabled={partyBusy} className="w-full">
-                        <PlayCircle className="w-4 h-4 mr-2" /> {partyBusy ? 'Creating...' : 'Create Party'}
-                      </Button>
 
-                      <div className="grid grid-cols-12 gap-2">
+                      <div className="space-y-2">
                         <Input
-                          className="col-span-9"
-                          value={joinCode}
-                          onChange={(e) => setJoinCode(e.target.value)}
-                          placeholder="Join with invite code"
+                          value={partyForm.challengeTitle}
+                          onChange={(e) => setPartyForm((prev) => ({ ...prev, challengeTitle: e.target.value }))}
+                          placeholder="Challenge title"
+                          disabled={!canEditPartySetup}
                         />
-                        <Button className="col-span-3" onClick={joinPartyByCode} disabled={partyBusy || !joinCode.trim()}>
-                          Join
-                        </Button>
+                        <Input
+                          value={partyForm.challengeDescription}
+                          onChange={(e) => setPartyForm((prev) => ({ ...prev, challengeDescription: e.target.value }))}
+                          placeholder="Challenge requirements"
+                          disabled={!canEditPartySetup}
+                        />
+                        <div className="grid grid-cols-12 gap-2">
+                          <select
+                            className="col-span-4 rounded-md bg-slate-900/70 border border-slate-700 text-slate-100 text-xs px-2"
+                            value={partyForm.punishmentMode}
+                            onChange={(e) => setPartyForm((prev) => ({ ...prev, punishmentMode: e.target.value }))}
+                            disabled={!canEditPartySetup}
+                          >
+                            <option value="random">Random Punishment</option>
+                            <option value="custom">Custom Punishment</option>
+                          </select>
+                          <Input
+                            className="col-span-4"
+                            type="number"
+                            min={0}
+                            value={partyForm.rewardXpPool}
+                            onChange={(e) => setPartyForm((prev) => ({ ...prev, rewardXpPool: e.target.value }))}
+                            placeholder="Reward XP pool"
+                            disabled={!canEditPartySetup}
+                          />
+                          <Input
+                            className="col-span-4"
+                            type="number"
+                            min={0}
+                            value={partyForm.failXpPenalty}
+                            onChange={(e) => setPartyForm((prev) => ({ ...prev, failXpPenalty: e.target.value }))}
+                            placeholder="Fail XP penalty"
+                            disabled={!canEditPartySetup}
+                          />
+                        </div>
+                        {partyForm.punishmentMode === 'custom' && (
+                          <Input
+                            value={partyForm.customPunishmentText}
+                            onChange={(e) => setPartyForm((prev) => ({ ...prev, customPunishmentText: e.target.value }))}
+                            placeholder="Custom punishment text"
+                            disabled={!canEditPartySetup}
+                          />
+                        )}
                       </div>
+
+                      {!party && (
+                        <Button onClick={createParty} disabled={partyBusy} className="w-full">
+                          <PlayCircle className="w-4 h-4 mr-2" /> {partyBusy ? 'Creating...' : 'Create Party'}
+                        </Button>
+                      )}
+
+                      {party && isPartyHost && party.status === 'waiting' && (
+                        <Button
+                          variant="outline"
+                          onClick={() => savePartySetup({ targetPartyId: party.id, strict: false })}
+                          disabled={partyBusy}
+                          className="w-full"
+                        >
+                          Save Party Setup
+                        </Button>
+                      )}
+
+                      {!party && (
+                        <div className="grid grid-cols-12 gap-2">
+                          <Input
+                            className="col-span-9"
+                            value={joinCode}
+                            onChange={(e) => setJoinCode(e.target.value)}
+                            placeholder="Join with invite code"
+                          />
+                          <Button className="col-span-3" onClick={joinPartyByCode} disabled={partyBusy || !joinCode.trim()}>
+                            Join
+                          </Button>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -971,6 +1157,19 @@ export default function Dungeon() {
                           Status {party.status?.toUpperCase()} · Visibility {(party.visibility || 'friends').toUpperCase()} · Members {memberCount}/{party.max_members || 4}
                         </p>
                         <p className="text-xs text-cyan-300 mt-1">Invite Code: {party.invite_code || '...'}</p>
+                        <p className="text-xs text-slate-300 mt-2">
+                          Challenge: {party.challenge_title || party.title || 'Collaborative Dungeon'}
+                        </p>
+                        {party.challenge_description && (
+                          <p className="text-xs text-slate-400 mt-1">{party.challenge_description}</p>
+                        )}
+                        <p className="text-xs text-slate-400 mt-1">
+                          Punishment: {(party.punishment_mode || 'random').toUpperCase()}
+                          {(party.punishment_mode === 'custom' && party.custom_punishment_text) ? ` · ${party.custom_punishment_text}` : ''}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Reward Pool: {Math.max(0, Number(party.reward_xp_pool ?? 600))} XP · Fail Penalty: -{Math.max(0, Number(party.fail_xp_penalty ?? 0))} XP
+                        </p>
                       </div>
                       <div className="space-y-1 max-h-40 overflow-y-auto">
                         {partyMembers.map((member) => (
@@ -981,9 +1180,21 @@ export default function Dungeon() {
                         ))}
                       </div>
                       {isPartyHost && party.status === 'waiting' && (
-                        <Button onClick={startPartyDungeon} disabled={partyBusy} className="w-full">
-                          {partyBusy ? 'Starting...' : 'Start Party Dungeon'}
-                        </Button>
+                        <div className="grid grid-cols-12 gap-2">
+                          <Button onClick={startPartyDungeon} disabled={partyBusy} className="w-full col-span-8">
+                            {partyBusy ? 'Starting...' : 'Start Party Dungeon'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={requestDeleteParty}
+                            disabled={partyBusy}
+                            className="w-full col-span-4"
+                            style={{ border: '1px solid rgba(248,113,113,0.35)', color: '#F87171' }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            {partyBusy ? '...' : 'Delete'}
+                          </Button>
+                        </div>
                       )}
                       {myPartyReward && !myPartyReward.claimed && (
                         <Button variant="outline" onClick={claimPartyReward} disabled={partyBusy} className="w-full">

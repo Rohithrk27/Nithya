@@ -91,7 +91,7 @@ export function pickDailyQuestTemplates(userId, dateKey, count = 3) {
   return picked;
 }
 
-export async function ensureDailyQuests(userId, dateKey, quests = []) {
+export async function ensureDailyQuests(userId, dateKey, quests = [], _userQuestRows = []) {
   if (!userId || !dateKey) return false;
   const templates = pickDailyQuestTemplates(userId, dateKey, 3);
   if (!templates.length) return false;

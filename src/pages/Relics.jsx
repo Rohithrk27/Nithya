@@ -6,6 +6,7 @@ import { createPageUrl } from '../utils';
 import { Button } from '@/components/ui/button';
 import SystemBackground from '@/components/SystemBackground';
 import HoloPanel from '@/components/HoloPanel';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 import {
   fetchActiveRelicEffects,
   fetchRelicBalance,
@@ -41,7 +42,7 @@ const isRelicAvailable = (relic, nowMs) => {
 
 export default function Relics() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, authReady } = useAuthedPageUser();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -100,17 +101,9 @@ export default function Relics() {
   };
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser(authUser);
-      await loadData(authUser.id);
-    };
-    void init();
-  }, [navigate]);
+    if (!authReady || !user?.id) return;
+    void loadData(user.id);
+  }, [authReady, user?.id]);
 
   useEffect(() => {
     const timerId = setInterval(() => setNowMs(Date.now()), 1000);

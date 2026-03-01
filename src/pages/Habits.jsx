@@ -6,6 +6,8 @@ import { ArrowLeft, Plus, Trash2, Edit3, Check, X, ChevronDown, ChevronUp } from
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
+import { toastError, toastSuccess } from '@/lib/toast';
 import SystemBackground from '../components/SystemBackground';
 import HoloPanel from '../components/HoloPanel';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,7 +33,7 @@ const DEFAULT_FORM = {
 
 export default function Habits() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, authReady } = useAuthedPageUser();
   const [habits, setHabits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -44,27 +46,9 @@ export default function Habits() {
   const [subtaskBusyId, setSubtaskBusyId] = useState('');
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser({ id: authUser.id, email: authUser.email });
-      await loadData(authUser.id);
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      setUser({ id: session.user.id, email: session.user.email });
-      await loadData(session.user.id);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+    if (!authReady || !user?.id) return;
+    void loadData(user.id);
+  }, [authReady, user?.id]);
 
   const loadData = async (userId) => {
     if (!userId) return;
@@ -196,8 +180,10 @@ export default function Habits() {
         )),
       }));
       if (snapshot?.habit_completed && nextComplete) {
-        alert('All subtasks completed. Habit streak updated and XP granted.');
+        toastSuccess('All subtasks completed. Habit streak updated and XP granted.');
       }
+    } catch (err) {
+      toastError(err?.message || 'Failed to update subtask.');
     } finally {
       setSubtaskBusyId('');
     }

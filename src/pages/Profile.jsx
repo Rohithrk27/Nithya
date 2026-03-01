@@ -20,6 +20,7 @@ import {
 } from '@/lib/publicProfiles';
 import { fetchRelicBalance } from '@/lib/relics';
 import { fetchActiveDungeonRun } from '@/lib/gameState';
+import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 
 const LOGO_URL = "";
 const EMPTY_FORM = {
@@ -32,6 +33,7 @@ const EMPTY_FORM = {
 
 export default function Profile() {
   const navigate = useNavigate();
+  const { user, authReady } = useAuthedPageUser();
   const [profile, setProfile] = useState(null);
   const [systemState, setSystemState] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -49,25 +51,9 @@ export default function Profile() {
   const shareCaptureRef = useRef(null);
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      await loadProfile(authUser.id);
-    };
-    init();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session?.user) {
-        navigate(createPageUrl('Landing'));
-        return;
-      }
-      await loadProfile(session.user.id);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+    if (!authReady || !user?.id) return;
+    void loadProfile(user.id);
+  }, [authReady, user?.id]);
 
   const syncPublicShare = async (userId, shouldRefresh = true) => {
     if (!userId) return null;
@@ -198,7 +184,7 @@ export default function Profile() {
 
   const level = useMemo(() => computeLevel(profile?.total_xp || 0), [profile]);
   const tier = useMemo(() => getAvatarTier(level), [level]);
-  const rankTitle = useMemo(() => getRankTitle(level), [level]);
+  const rankTitle = useMemo(() => String(getRankTitle(level)), [level]);
   const finalStats = useMemo(() => profile ? computeAllStats(profile, level) : {}, [profile, level]);
   const liveBMI = form.weight_kg && form.height_cm
     ? Number(form.weight_kg) / Math.pow(Number(form.height_cm) / 100, 2)
@@ -506,7 +492,7 @@ export default function Profile() {
               <div className="flex items-start gap-2 min-w-0">
                 <div className="min-w-0">
                   <p className="text-xs font-black tracking-widest" style={{ color: hardcoreMode ? '#38BDF8' : '#475569' }}>HARDCORE MODE</p>
-                  <p className="text-xs break-words" style={{ color: '#334155' }}>10s hold-to-confirm · stronger penalties · stat decay</p>
+                  <p className="text-xs break-words" style={{ color: '#334155' }}>10s hold-to-confirm · stronger penalties · consistency loss on refusals</p>
                 </div>
               </div>
               <button onClick={() => setHardcoreMode(h => !h)}

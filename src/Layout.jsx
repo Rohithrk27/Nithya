@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { createPageUrl } from './utils';
 import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, Gem, LogIn, LogOut, Trophy, Menu, X, ShieldAlert, Ticket } from 'lucide-react';
+import ConfirmActionModal from '@/components/ConfirmActionModal';
 
 const LOGO_URL = '/logo/logo.svg';
 const LOGO_FALLBACK_URL = '/logo/logo.png';
@@ -51,6 +52,7 @@ export default function Layout({ children, currentPageName }) {
   const [logoBroken, setLogoBroken] = useState(false);
   const [headerBroken, setHeaderBroken] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const mobileQuickItems = useMemo(
     () => MOBILE_NAV.filter((item) => item.page !== 'Profile'),
     []
@@ -70,10 +72,9 @@ export default function Layout({ children, currentPageName }) {
   }, [mobileMenuOpen]);
 
   const confirmAndLogout = async () => {
-    const ok = window.confirm('Are you sure you want to sign out?');
-    if (!ok) return;
     setMobileMenuOpen(false);
     await logout();
+    setShowLogoutConfirm(false);
   };
 
   useEffect(() => {
@@ -85,6 +86,16 @@ export default function Layout({ children, currentPageName }) {
 
   return (
     <div className="min-h-screen flex flex-col overflow-x-hidden" style={{ background: 'transparent' }}>
+      <ConfirmActionModal
+        open={showLogoutConfirm}
+        title="Sign out?"
+        message="You will need to sign in again to continue."
+        confirmText="Sign Out"
+        cancelText="Stay"
+        danger
+        onCancel={() => setShowLogoutConfirm(false)}
+        onConfirm={() => void confirmAndLogout()}
+      />
       <div className={`w-full flex-1 ${showNav ? 'pb-16 md:pb-0 md:pl-16' : ''}`}>
         {/* Header with app title */}
         <header className={`w-full sticky top-0 z-40 app-topbar ${isScrolled ? 'app-topbar--scrolled' : ''}`}>
@@ -252,7 +263,7 @@ export default function Layout({ children, currentPageName }) {
                   {isAuthenticated ? (
                     <button
                       type="button"
-                      onClick={() => void confirmAndLogout()}
+                      onClick={() => setShowLogoutConfirm(true)}
                       className="w-full rounded-xl px-3 py-2.5 flex items-center justify-between"
                       style={{
                         border: '1px solid rgba(239,68,68,0.35)',
@@ -360,7 +371,7 @@ export default function Layout({ children, currentPageName }) {
             {isAuthenticated ? (
               <button
                 title="Sign Out"
-                onClick={() => void confirmAndLogout()}
+                onClick={() => setShowLogoutConfirm(true)}
                 className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110"
                 style={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.35)' }}
               >

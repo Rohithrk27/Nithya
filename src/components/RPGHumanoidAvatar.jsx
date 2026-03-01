@@ -127,7 +127,20 @@ function AvatarSVG({ tier, breathing, glowing }) {
   );
 }
 
-export default function RPGHumanoidAvatar({ level = 0, levelUp = false }) {
+export default function RPGHumanoidAvatar({
+  level = 0,
+  totalXp = 0,
+  streak = 0,
+  shadowDebt = 0,
+  stability = 100,
+  relicCount = 0,
+  levelUp = false,
+}) {
+  void totalXp;
+  void streak;
+  void shadowDebt;
+  void stability;
+  void relicCount;
   const tier = useMemo(() => getAvatarTier(level), [level]);
   const cfg = TIER_CONFIG[tier];
 
