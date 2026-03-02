@@ -22,13 +22,23 @@ import {
 
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
 const PUNISHMENT_DIFFS = ['low', 'medium', 'high', 'extreme'];
+const PUNISHMENT_TYPES = ['xp_deduction', 'streak_reset', 'relic_loss'];
 const DIFF_COLORS = { easy: '#34D399', medium: '#FBBF24', hard: '#F87171' };
 const PDIFF_COLORS = { low: '#FBBF24', medium: '#FB923C', high: '#F87171', extreme: '#38BDF8' };
 
 const DEFAULT_FORM = {
   title: '', frequency: 'daily', xp_value: 50,
-  difficulty: 'medium', punishment_text: '',
+  description: '', difficulty: 'medium', punishment_text: '',
   punishment_difficulty: 'medium', punishment_xp_penalty_pct: 10,
+  punishment_type: 'xp_deduction', punishment_value: 30, deadline_at: '',
+};
+
+const toDateTimeLocalValue = (value) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  parsed.setMinutes(parsed.getMinutes() - parsed.getTimezoneOffset());
+  return parsed.toISOString().slice(0, 16);
 };
 
 export default function Habits() {
@@ -84,10 +94,14 @@ export default function Habits() {
       title: habit.title || '',
       frequency: habit.frequency || 'daily',
       xp_value: habit.xp_value || 50,
+      description: habit.description || '',
       difficulty: habit.difficulty || 'medium',
       punishment_text: habit.punishment_text || '',
       punishment_difficulty: habit.punishment_difficulty || 'medium',
       punishment_xp_penalty_pct: habit.punishment_xp_penalty_pct ?? 10,
+      punishment_type: habit.punishment_type || 'xp_deduction',
+      punishment_value: Number(habit.punishment_value ?? 30),
+      deadline_at: toDateTimeLocalValue(habit.deadline_at),
     });
     setEditingId(habit.id);
     setShowForm(true);
@@ -100,6 +114,8 @@ export default function Habits() {
       ...form,
       xp_value: Number(form.xp_value) || 50,
       punishment_xp_penalty_pct: Number(form.punishment_xp_penalty_pct) || 10,
+      punishment_value: Math.max(0, Number(form.punishment_value || 0)),
+      deadline_at: form.deadline_at ? new Date(form.deadline_at).toISOString() : null,
       user_id: user.id,
     };
     if (editingId) {
@@ -263,6 +279,13 @@ export default function Habits() {
                       style={{ background: 'rgba(10,25,33,0.8)', border: '1px solid rgba(56,189,248,0.2)', color: '#F1F5F9' }} />
                   </div>
 
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-black tracking-widest" style={{ color: '#64748B' }}>DESCRIPTION</Label>
+                    <Input value={form.description} onChange={e => f('description', e.target.value)}
+                      placeholder="What exactly should be done?"
+                      style={{ background: 'rgba(10,25,33,0.8)', border: '1px solid rgba(56,189,248,0.2)', color: '#F1F5F9' }} />
+                  </div>
+
                   {/* XP + Difficulty */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
@@ -289,6 +312,16 @@ export default function Habits() {
                     </div>
                   </div>
 
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-black tracking-widest" style={{ color: '#64748B' }}>DEADLINE (OPTIONAL)</Label>
+                    <Input
+                      type="datetime-local"
+                      value={form.deadline_at}
+                      onChange={(e) => f('deadline_at', e.target.value)}
+                      style={{ background: 'rgba(10,25,33,0.8)', border: '1px solid rgba(56,189,248,0.2)', color: '#F1F5F9' }}
+                    />
+                  </div>
+
                   {/* Punishment section */}
                   <div className="rounded-xl p-4 space-y-3"
                     style={{ background: 'rgba(248,113,113,0.04)', border: '1px solid rgba(248,113,113,0.15)' }}>
@@ -299,6 +332,31 @@ export default function Habits() {
                       <Input value={form.punishment_text} onChange={e => f('punishment_text', e.target.value)}
                         placeholder="e.g. 50 pushups, cold shower..."
                         style={{ background: 'rgba(10,25,33,0.8)', border: '1px solid rgba(248,113,113,0.2)', color: '#F1F5F9' }} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-black tracking-widest" style={{ color: '#64748B' }}>PUNISHMENT TYPE</Label>
+                        <select
+                          value={form.punishment_type}
+                          onChange={(e) => f('punishment_type', e.target.value)}
+                          className="w-full rounded-md bg-slate-900/80 border border-red-500/20 text-slate-100 text-sm px-3 py-2"
+                        >
+                          {PUNISHMENT_TYPES.map((type) => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-black tracking-widest" style={{ color: '#64748B' }}>PUNISHMENT VALUE</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={form.punishment_value}
+                          onChange={(e) => f('punishment_value', e.target.value)}
+                          style={{ background: 'rgba(10,25,33,0.8)', border: '1px solid rgba(248,113,113,0.2)', color: '#F1F5F9' }}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-1.5">
@@ -412,8 +470,21 @@ export default function Habits() {
                           <div className="rounded-lg p-3" style={{ background: `${pc}0a`, border: `1px solid ${pc}22` }}>
                             <p className="text-xs font-black tracking-widest mb-1" style={{ color: pc }}>PUNISHMENT</p>
                             <p className="text-xs text-white">{habit.punishment_text || 'None set'}</p>
+                            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+                              Type: <span style={{ color: '#FCA5A5' }}>{habit.punishment_type || 'xp_deduction'}</span>
+                              {' · '}
+                              Value: <span style={{ color: '#FCA5A5' }}>{Math.max(0, Number(habit.punishment_value || 0))}</span>
+                            </p>
                             <p className="text-xs mt-1" style={{ color: '#475569' }}>
                               Refusal penalty: <span style={{ color: '#F87171' }}>{habit.punishment_xp_penalty_pct || 10}% XP</span>
+                            </p>
+                          </div>
+
+                          <div className="rounded-lg p-3" style={{ background: 'rgba(34,211,238,0.05)', border: '1px solid rgba(34,211,238,0.2)' }}>
+                            <p className="text-xs font-black tracking-widest mb-1" style={{ color: '#67E8F9' }}>DETAILS</p>
+                            <p className="text-xs text-slate-200">{habit.description || 'No description set.'}</p>
+                            <p className="text-xs mt-1" style={{ color: '#94A3B8' }}>
+                              Deadline: {habit.deadline_at ? new Date(habit.deadline_at).toLocaleString() : 'No deadline'}
                             </p>
                           </div>
 

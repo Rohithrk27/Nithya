@@ -17,6 +17,13 @@ const isMissingVisibilityRpcError = (error) => {
   );
 };
 
+const isAmbiguousVisibilityError = (error) => {
+  const text = String(error?.message || error || '').toLowerCase();
+  return text.includes('column reference')
+    && text.includes('visibility')
+    && text.includes('ambiguous');
+};
+
 const isAmbiguousStartedAtError = (error) => {
   const text = String(error?.message || error || '').toLowerCase();
   return text.includes('column reference')
@@ -78,6 +85,9 @@ export async function setDungeonPartyVisibility({
   });
   if (error) {
     if (isMissingVisibilityRpcError(error)) return null;
+    if (isAmbiguousVisibilityError(error)) {
+      throw new Error('Database migration required: run sql/2026-03-15_party_visibility_ambiguity_fix.sql');
+    }
     throw error;
   }
   return firstRow(data);

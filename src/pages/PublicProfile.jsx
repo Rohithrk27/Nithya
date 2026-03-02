@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import { ArrowLeft, Flame, Trophy } from 'lucide-react';
 import { fetchPublicProfileByUsername } from '@/lib/publicProfiles';
@@ -17,6 +17,7 @@ const STAT_LABELS = [
 
 export default function PublicProfile() {
   const { username } = useParams();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,6 +63,7 @@ export default function PublicProfile() {
   const dungeonAchievements = (profile?.dungeon_achievements && typeof profile.dungeon_achievements === 'object')
     ? profile.dungeon_achievements
     : {};
+  const displayName = (profile?.name || profile?.username || 'Unknown Hunter');
 
   if (loading) {
     return (
@@ -89,9 +91,19 @@ export default function PublicProfile() {
     <div className="min-h-screen" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
       <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <Link to="/" className="inline-flex items-center gap-2 text-cyan-300 text-sm font-bold">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.history.length > 1) {
+                navigate(-1);
+                return;
+              }
+              navigate('/');
+            }}
+            className="inline-flex items-center gap-2 text-cyan-300 text-sm font-bold"
+          >
             <ArrowLeft className="w-4 h-4" /> Back
-          </Link>
+          </button>
           <p className="text-xs tracking-widest font-black text-cyan-300">PUBLIC PROFILE</p>
         </div>
 
@@ -102,11 +114,12 @@ export default function PublicProfile() {
                 <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-cyan-300 font-black text-xl">
-                  {(profile.username || '?').slice(0, 1).toUpperCase()}
+                  {(displayName || '?').slice(0, 1).toUpperCase()}
                 </div>
               )}
             </div>
             <div>
+              <p className="text-base md:text-lg font-bold text-cyan-100">{displayName}</p>
               <p className="text-lg md:text-xl font-black text-white">@{profile.username}</p>
               <p className="text-sm text-cyan-300">Level {level} · {totalXp.toLocaleString()} XP</p>
             </div>

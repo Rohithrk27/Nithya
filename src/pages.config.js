@@ -57,6 +57,8 @@ const Dungeon = lazy(() => import('./pages/Dungeon'));
 const Landing = lazy(() => import('./pages/Landing'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Profile = lazy(() => import('./pages/Profile'));
+const Community = lazy(() => import('./pages/Community'));
+const PaymentVerification = lazy(() => import('./pages/PaymentVerification'));
 const Quests = lazy(() => import('./pages/Quests'));
 const RedeemCodes = lazy(() => import('./pages/RedeemCodes'));
 const Relics = lazy(() => import('./pages/Relics'));
@@ -73,6 +75,8 @@ export const PAGES = {
     "Landing": Landing,
     "Leaderboard": Leaderboard,
     "Profile": Profile,
+    "Community": Community,
+    "PaymentVerification": PaymentVerification,
     "Quests": Quests,
     "RedeemCodes": RedeemCodes,
     "Relics": Relics,

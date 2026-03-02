@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { logActivityEvent } from '@/lib/activity';
 
 const firstRow = (data) => (Array.isArray(data) ? (data[0] || null) : (data || null));
 const toSafeInt = (value, fallback = 0) => {
@@ -36,7 +37,18 @@ export async function awardXpRpc({
     p_metadata: toSafeMetadata(metadata),
   });
   if (error) throw error;
-  return firstRow(data);
+  const row = firstRow(data);
+  void logActivityEvent({
+    userId,
+    type: 'xp_reward',
+    metadata: {
+      source: source || 'manual',
+      xp_amount: safeXp,
+      event_id: eventId || null,
+      ...(metadata || {}),
+    },
+  });
+  return row;
 }
 
 export async function penaltyXpRpc({
@@ -60,7 +72,19 @@ export async function penaltyXpRpc({
   };
 
   const deductRes = await supabase.rpc('deduct_xp', payload);
-  if (!deductRes.error) return firstRow(deductRes.data);
+  if (!deductRes.error) {
+    void logActivityEvent({
+      userId,
+      type: 'xp_penalty',
+      metadata: {
+        source: source || 'penalty',
+        xp_amount: safeXp,
+        event_id: eventId || null,
+        ...(metadata || {}),
+      },
+    });
+    return firstRow(deductRes.data);
+  }
 
   const legacyRes = await supabase.rpc('penalty_xp', {
     p_user_id: userId,
@@ -71,6 +95,16 @@ export async function penaltyXpRpc({
     p_metadata: toSafeMetadata(metadata),
   });
   if (legacyRes.error) throw legacyRes.error;
+  void logActivityEvent({
+    userId,
+    type: 'xp_penalty',
+    metadata: {
+      source: source || 'penalty',
+      xp_amount: safeXp,
+      event_id: eventId || null,
+      ...(metadata || {}),
+    },
+  });
   return firstRow(legacyRes.data);
 }
 

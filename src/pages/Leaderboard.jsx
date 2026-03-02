@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '../utils';
-import { ArrowLeft, Trophy, Users, UserPlus, RefreshCcw, Check, X } from 'lucide-react';
+import { ArrowLeft, Trophy, Users, UserPlus, RefreshCcw, Check, X, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import HoloPanel from '@/components/HoloPanel';
@@ -39,8 +39,11 @@ const formatHunterName = (profile, fallback = 'Unknown Hunter') => {
 };
 
 const formatHunterCode = (profile) => {
-  if (!profile?.user_code) return 'No User ID';
-  return `@${profile.user_code}`;
+  if (profile?.user_code) return `@${profile.user_code}`;
+  if (profile?.id) {
+    return `ID ${String(profile.id)}`;
+  }
+  return 'ID unavailable';
 };
 
 const derivePublicUsernameFromProfile = (profile) => {
@@ -49,7 +52,7 @@ const derivePublicUsernameFromProfile = (profile) => {
   return base.replace(/[^a-z0-9_]+/g, '-').replace(/^-+|-+$/g, '');
 };
 
-function LeaderboardTable({ rows, currentUserId, usernameByUserId, onOpenProfile }) {
+function LeaderboardTable({ rows, currentUserId, usernameByUserId, profileById, onOpenProfile }) {
   if (!rows.length) {
     return (
       <div className="text-center py-8 text-sm" style={{ color: '#64748B' }}>
@@ -61,10 +64,11 @@ function LeaderboardTable({ rows, currentUserId, usernameByUserId, onOpenProfile
   return (
     <div className="space-y-2">
       {rows.map((row, idx) => {
-        const level = computeLevel(row.total_xp || 0);
+        const level = Number(row?.level_override ?? computeLevel(row.total_xp || 0));
         const mine = row.id === currentUserId;
         const placeColor = idx === 0 ? '#FBBF24' : idx === 1 ? '#94A3B8' : idx === 2 ? '#FB923C' : '#64748B';
-        const username = usernameByUserId[row.id] || derivePublicUsernameFromProfile(row);
+        const canonical = profileById?.[row.id] || row;
+        const username = usernameByUserId[row.id] || derivePublicUsernameFromProfile(canonical);
         const canOpen = Boolean(username);
         return (
           <div
@@ -89,9 +93,9 @@ function LeaderboardTable({ rows, currentUserId, usernameByUserId, onOpenProfile
               #{idx + 1}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-white truncate">{formatHunterName(row)}</p>
-              <p className="text-xs" style={{ color: '#64748B' }}>
-                {formatHunterCode(row)} · Lv. {level} · {(row.total_xp || 0).toLocaleString()} XP
+              <p className="font-bold text-white truncate">{formatHunterName(canonical)}</p>
+              <p className="text-xs break-all" style={{ color: '#64748B' }}>
+                {formatHunterCode(canonical)} · Lv. {level} · {(row.total_xp || 0).toLocaleString()} XP
               </p>
             </div>
             <div className="text-right">
@@ -112,6 +116,7 @@ export default function Leaderboard() {
   const [profileDirectory, setProfileDirectory] = useState({});
   const [usernameByUserId, setUsernameByUserId] = useState({});
   const [globalRows, setGlobalRows] = useState([]);
+  const [weeklyRows, setWeeklyRows] = useState([]);
   const [friendRows, setFriendRows] = useState([]);
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [sentRequests, setSentRequests] = useState([]);
@@ -141,6 +146,20 @@ export default function Leaderboard() {
 
       const allProfiles = globalProfiles || [];
       setGlobalRows(hydrateRows(allProfiles));
+      const { data: weeklyData, error: weeklyError } = await supabase.rpc('get_weekly_leaderboard', { p_limit: 100 });
+      if (weeklyError) {
+        setWeeklyRows([]);
+      } else {
+        const normalizedWeekly = (weeklyData || []).map((row) => ({
+          id: row.user_id,
+          name: row.name,
+          total_xp: Number(row.total_weekly_xp || 0),
+          score: Number(row.total_weekly_xp || 0),
+          level_override: Number(row.level || 0),
+          week_rank: Number(row.rank_position || 0),
+        }));
+        setWeeklyRows(normalizedWeekly);
+      }
       const me = allProfiles.find((p) => p.id === userId) || null;
       setCurrentProfile(me);
 
@@ -149,6 +168,17 @@ export default function Leaderboard() {
         directorySeed[profile.id] = profile;
       }
       const seedIds = new Set(allProfiles.map((p) => p.id).filter(Boolean));
+      for (const weeklyRow of weeklyData || []) {
+        if (!weeklyRow?.user_id) continue;
+        seedIds.add(weeklyRow.user_id);
+        if (!directorySeed[weeklyRow.user_id]) {
+          directorySeed[weeklyRow.user_id] = {
+            id: weeklyRow.user_id,
+            name: weeklyRow.name,
+            total_xp: 0,
+          };
+        }
+      }
 
       try {
         const friendState = await fetchFriendsState(userId);
@@ -194,6 +224,27 @@ export default function Leaderboard() {
         setSentRequests([]);
         setFriendRows([]);
         setProfileDirectory(directorySeed);
+      }
+
+      try {
+        const idsForIdentity = Array.from(seedIds).filter(Boolean);
+        if (idsForIdentity.length > 0) {
+          const { data: identityProfiles, error: identityError } = await supabase
+            .from('profiles')
+            .select('id,name,user_code,email,total_xp')
+            .in('id', idsForIdentity);
+          if (!identityError) {
+            for (const entry of identityProfiles || []) {
+              directorySeed[entry.id] = {
+                ...(directorySeed[entry.id] || {}),
+                ...entry,
+              };
+            }
+            setProfileDirectory({ ...directorySeed });
+          }
+        }
+      } catch (_) {
+        // Best-effort identity enrichment for weekly/global ID display.
       }
 
       try {
@@ -309,9 +360,18 @@ export default function Leaderboard() {
 
   const tabs = useMemo(() => ([
     { id: 'global', label: 'GLOBAL' },
+    { id: 'weekly', label: 'WEEKLY' },
     { id: 'friends', label: 'FRIENDS' },
     { id: 'requests', label: `REQUESTS (${incomingRequests.length})` },
   ]), [incomingRequests.length]);
+
+  const handleBack = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate(createPageUrl('Dashboard'));
+  }, [navigate]);
 
   const openPublicProfile = useCallback((username) => {
     if (!username) return;
@@ -335,7 +395,7 @@ export default function Leaderboard() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => navigate(createPageUrl('Dashboard'))}
+                onClick={handleBack}
                 className="w-9 h-9 rounded-lg flex items-center justify-center"
                 style={{ background: 'rgba(10,25,33,0.8)', border: '1px solid rgba(56,189,248,0.2)' }}
               >
@@ -380,6 +440,22 @@ export default function Leaderboard() {
               rows={globalRows}
               currentUserId={user?.id}
               usernameByUserId={usernameByUserId}
+              profileById={profileDirectory}
+              onOpenProfile={openPublicProfile}
+            />
+          </HoloPanel>
+        )}
+
+        {activeTab === 'weekly' && (
+          <HoloPanel>
+            <p className="text-xs font-bold tracking-widest mb-3 flex items-center gap-2" style={{ color: '#F97316' }}>
+              <CalendarDays className="w-3.5 h-3.5" /> WEEKLY XP LEADERBOARD
+            </p>
+            <LeaderboardTable
+              rows={weeklyRows}
+              currentUserId={user?.id}
+              usernameByUserId={usernameByUserId}
+              profileById={profileDirectory}
               onOpenProfile={openPublicProfile}
             />
           </HoloPanel>
@@ -397,6 +473,7 @@ export default function Leaderboard() {
                 rows={friendRows}
                 currentUserId={user?.id}
                 usernameByUserId={usernameByUserId}
+                profileById={profileDirectory}
                 onOpenProfile={openPublicProfile}
               />
             )}

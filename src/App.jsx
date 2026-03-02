@@ -12,6 +12,7 @@ import AppErrorBoundary from '@/components/AppErrorBoundary';
 
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -77,6 +78,14 @@ const AuthenticatedApp = () => {
             element={
               <LayoutWrapper currentPageName="PublicProfile">
                 <PublicProfile />
+              </LayoutWrapper>
+            }
+          />
+          <Route
+            path="/admin-dashboard"
+            element={
+              <LayoutWrapper currentPageName="AdminDashboard">
+                <AdminDashboard />
               </LayoutWrapper>
             }
           />
@@ -152,6 +161,14 @@ const AuthenticatedApp = () => {
             element={
               <LayoutWrapper currentPageName="PublicProfile">
                 <PublicProfile />
+              </LayoutWrapper>
+            }
+          />
+          <Route
+            path="/admin-dashboard"
+            element={
+              <LayoutWrapper currentPageName="AdminDashboard">
+                <AdminDashboard />
               </LayoutWrapper>
             }
           />

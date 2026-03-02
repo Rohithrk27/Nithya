@@ -15,6 +15,7 @@ import { applyProgressionSnapshot, awardXpRpc } from '@/lib/progression';
 import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 import { toastError } from '@/lib/toast';
 import { applyShadowArmyXpBonus, getStreakDays } from '@/lib/shadowArmy';
+import { grantRelicBatchRpc } from '@/lib/relics';
 
 const ACTIVE_QUEST_STATUSES = new Set([
   'active',
@@ -230,6 +231,17 @@ const isDateInCurrentWeek = (dateText, nowDate) => {
   return parsed >= weekStart && parsed < weekEnd;
 };
 
+const toCountdown = (ms) => {
+  const safeMs = Math.max(0, Number(ms || 0));
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${String(hours).padStart(2, '0')}h`;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 const sortTemplates = (rows) => [...(rows || [])].sort((a, b) => String(a?.title || '').localeCompare(String(b?.title || '')));
 const getQuestDisplayType = (type) => TYPE_STYLE[normalizeQuestType(type)] || TYPE_STYLE.daily;
 
@@ -288,6 +300,10 @@ const toQuestTemplatePayload = (template) => ({
   description: template.description,
   type: normalizeQuestType(template.type || 'daily'),
   xp_reward: Number(template.xp_reward || 0),
+  relic_reward: Math.max(0, Number(template.relic_reward || 0)),
+  deadline_at: template.deadline_at || null,
+  punishment_type: template.punishment_type || 'xp_deduction',
+  punishment_value: Math.max(0, Number(template.punishment_value || 0)),
   stat_reward: template.stat_reward || null,
   stat_reward_amount: Number(template.stat_reward_amount || 1),
   min_level_required: Number(template.min_level_required || 0),
@@ -357,11 +373,11 @@ export default function Quests() {
     setLoadError('');
 
     try {
-      try {
-        await resolveExpiredQuests({ userId, source: 'quest_timeout', decayFactor: 0.5 });
-      } catch (_) {
-        // Keep backwards compatibility when RPC is unavailable.
-      }
+      await Promise.allSettled([
+        resolveExpiredQuests({ userId, source: 'quest_timeout', decayFactor: 0.5 }),
+        supabase.rpc('apply_overdue_punishments', { p_user_id: userId }),
+        supabase.rpc('run_daily_reset', { p_user_id: userId }),
+      ]);
 
       let [profileRes, questsRes, userQuestsRes, xpLogsRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', userId).limit(1),
@@ -436,6 +452,10 @@ export default function Quests() {
       const uq = userQuestMap.get(questRow.id) || null;
       const resolved = resolveQuestStatus(uq);
       const type = resolveQuestType(questRow, uq);
+      const effectiveDeadline = uq?.deadline_at || uq?.expires_at || questRow?.deadline_at || questRow?.expires_at || null;
+      const deadlineMs = effectiveDeadline ? new Date(effectiveDeadline).getTime() : Number.NaN;
+      const remainingMs = Number.isFinite(deadlineMs) ? Math.max(0, deadlineMs - nowMs) : 0;
+      const timerUrgency = remainingMs <= (2 * 60 * 60 * 1000) ? 'high' : (remainingMs <= (8 * 60 * 60 * 1000) ? 'medium' : 'low');
       return {
         ...questRow,
         type,
@@ -444,15 +464,23 @@ export default function Quests() {
         user_quest_id: uq?.id || null,
         quest_type: uq?.quest_type || type,
         started_at: uq?.started_at || null,
-        expires_at: uq?.expires_at || null,
+        deadline_at: effectiveDeadline,
+        expires_at: effectiveDeadline,
+        expires_date: effectiveDeadline ? String(effectiveDeadline).slice(0, 10) : (questRow?.expires_date || null),
         failed: Boolean(uq?.failed),
         penalty_applied: Boolean(uq?.penalty_applied),
         xp_reward: Number(uq?.xp_reward ?? questRow?.xp_reward ?? 0),
+        relic_reward: Math.max(0, Number(uq?.relic_reward ?? questRow?.relic_reward ?? 0)),
+        punishment_type: uq?.punishment_type || questRow?.punishment_type || 'xp_deduction',
+        punishment_value: Math.max(0, Number(uq?.punishment_value ?? questRow?.punishment_value ?? 0)),
         progress_current: Number(uq?.progress_current ?? questRow?.progress_current ?? 0),
         progress_target: Number(uq?.progress_target ?? questRow?.progress_target ?? 100),
+        remaining_ms: remainingMs,
+        remaining_label: toCountdown(remainingMs),
+        timer_urgency: timerUrgency,
       };
     })
-  ), [questTemplates, userQuestMap]);
+  ), [nowMs, questTemplates, userQuestMap]);
 
   const activeQuests = useMemo(() => (
     mergedQuests
@@ -596,6 +624,22 @@ export default function Quests() {
     profileRef.current = mergedProfile;
     setProfile(mergedProfile);
     setXpDelta((mergedProfile.total_xp || 0) - (currentProfile.total_xp || 0));
+
+    const relicReward = Math.max(0, Number(quest?.relic_reward || 0));
+    if (relicReward > 0) {
+      try {
+        await grantRelicBatchRpc({
+          userId: currentProfile.id,
+          count: relicReward,
+          source: 'quest_complete',
+          eventId: `quest_relic:${quest.id}:${todayKey}`,
+          rarity: 'rare',
+          metadata: { quest_id: quest.id, quest_type: normalizeQuestType(quest.type || 'daily') },
+        });
+      } catch (_) {
+        // Relic reward is best-effort; XP reward remains authoritative.
+      }
+    }
   }, [todayKey]);
   const updateUserQuestOutcome = useCallback(async ({ questId, status, completedDate }) => {
     if (!user?.id || !questId) return null;
@@ -654,8 +698,12 @@ export default function Quests() {
         status: 'active',
         quest_type: questType,
         started_at: startedAt,
-        expires_at: null,
+        deadline_at: template?.deadline_at || null,
+        expires_at: template?.deadline_at || null,
         xp_reward: Number(template?.xp_reward || 0),
+        relic_reward: Math.max(0, Number(template?.relic_reward || 0)),
+        punishment_type: template?.punishment_type || 'xp_deduction',
+        punishment_value: Math.max(0, Number(template?.punishment_value || 0)),
         failed: false,
         penalty_applied: false,
         created_at: startedAt,
@@ -699,6 +747,9 @@ export default function Quests() {
         penalty_applied: false,
         quest_type: normalizeQuestType(quest.type || 'daily'),
         xp_reward: Number(quest.xp_reward || 0),
+        relic_reward: Math.max(0, Number(quest.relic_reward || 0)),
+        punishment_type: quest.punishment_type || 'xp_deduction',
+        punishment_value: Math.max(0, Number(quest.punishment_value || 0)),
       });
 
       const persisted = await updateUserQuestOutcome({
@@ -736,6 +787,9 @@ export default function Quests() {
         penalty_applied: false,
         quest_type: normalizeQuestType(quest.type || 'daily'),
         xp_reward: Number(quest.xp_reward || 0),
+        relic_reward: Math.max(0, Number(quest.relic_reward || 0)),
+        punishment_type: quest.punishment_type || 'xp_deduction',
+        punishment_value: Math.max(0, Number(quest.punishment_value || 0)),
       });
 
       const persisted = await updateUserQuestOutcome({
@@ -988,9 +1042,24 @@ export default function Quests() {
                               <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>{template.description}</p>
                               <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1.5">
                                 <span className="text-xs font-bold" style={{ color: '#FBBF24' }}>+{Number(template.xp_reward || 0)} XP</span>
+                                {Number(template.relic_reward || 0) > 0 && (
+                                  <span className="text-xs font-bold" style={{ color: '#A78BFA' }}>
+                                    +{Number(template.relic_reward || 0)} relic
+                                  </span>
+                                )}
                                 {template.stat_reward && (
                                   <span className="text-xs" style={{ color: display.color }}>
                                     {String(template.stat_reward).toUpperCase()} +{Number(template.stat_reward_amount || 1)}
+                                  </span>
+                                )}
+                                {template.deadline_at && (
+                                  <span className="text-xs" style={{ color: '#FCA5A5' }}>
+                                    Deadline {new Date(template.deadline_at).toLocaleString()}
+                                  </span>
+                                )}
+                                {(template.punishment_type || template.punishment_value) && (
+                                  <span className="text-xs" style={{ color: '#F87171' }}>
+                                    Punish: {template.punishment_type || 'xp_deduction'} {Math.max(0, Number(template.punishment_value || 0))}
                                   </span>
                                 )}
                                 {availability.locked && (

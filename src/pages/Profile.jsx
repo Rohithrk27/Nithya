@@ -10,6 +10,7 @@ import BMIMeter from '../components/BMIMeter';
 import HabitReminderSetup from '../components/HabitReminderSetup';
 import RPGHumanoidAvatar, { getAvatarTier } from '../components/RPGHumanoidAvatar';
 import StatGrid from '../components/StatGrid';
+import DonationModal from '@/components/DonationModal';
 import { computeLevel, getRankTitle } from '../components/gameEngine';
 import {
   fetchOwnPublicProfile,
@@ -47,6 +48,7 @@ export default function Profile() {
   const [shareMessage, setShareMessage] = useState('');
   const [relicBalance, setRelicBalance] = useState(0);
   const [avatarStability, setAvatarStability] = useState(100);
+  const [donationOpen, setDonationOpen] = useState(false);
   const shareCaptureRef = useRef(null);
 
   useEffect(() => {
@@ -320,6 +322,7 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen overflow-x-hidden" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
+      <DonationModal open={donationOpen} onClose={() => setDonationOpen(false)} />
       <div className="max-w-xl mx-auto p-4 md:p-6 space-y-5 overflow-x-hidden">
         <div
           aria-hidden
@@ -469,6 +472,18 @@ export default function Profile() {
                 <p className="text-xs" style={{ color: '#64748B' }}>{shareMessage}</p>
               )}
             </div>
+          </div>
+        ))}
+
+        {section('SUPPORT', (
+          <div className="rounded-xl p-3 space-y-3"
+            style={{ background: 'rgba(15,32,39,0.6)', border: '1px solid rgba(56,189,248,0.12)' }}>
+            <p className="text-xs text-slate-300">
+              Support ongoing development and maintenance with a UPI donation.
+            </p>
+            <Button onClick={() => setDonationOpen(true)} className="w-full sm:w-auto">
+              Donate with UPI
+            </Button>
           </div>
         ))}
 

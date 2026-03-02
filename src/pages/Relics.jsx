@@ -34,6 +34,15 @@ const sourceLabel = (source) => ({
   redeem_code: 'Redeem Code',
 }[source] || source || 'Unknown');
 
+const RARITY_STYLE = {
+  common: { color: '#94A3B8', bg: 'rgba(100,116,139,0.2)' },
+  rare: { color: '#60A5FA', bg: 'rgba(59,130,246,0.18)' },
+  epic: { color: '#A78BFA', bg: 'rgba(139,92,246,0.2)' },
+  legendary: { color: '#F59E0B', bg: 'rgba(245,158,11,0.2)' },
+};
+
+const getRelicRarity = (relic) => String(relic?.rarity || relic?.metadata?.rarity || 'rare').toLowerCase();
+
 const isRelicAvailable = (relic, nowMs) => {
   if (!relic || relic.used) return false;
   const remaining = relicExpiryMs(relic, nowMs);
@@ -233,6 +242,8 @@ export default function Relics() {
               {availableRelics.map((relic) => {
                 const remainingMs = relicExpiryMs(relic, nowMs);
                 const urgent = Number.isFinite(remainingMs) && remainingMs <= 24 * 3600 * 1000;
+                const rarity = getRelicRarity(relic);
+                const rarityStyle = RARITY_STYLE[rarity] || RARITY_STYLE.rare;
                 return (
                   <div
                     key={relic.id}
@@ -244,9 +255,15 @@ export default function Relics() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-white font-bold text-sm flex items-center gap-2">
+                        <p className="text-white font-bold text-sm flex items-center gap-2 flex-wrap">
                           <Gem className="w-4 h-4 text-cyan-300" />
                           {sourceLabel(relic.source)}
+                          <span
+                            className="text-[10px] font-black tracking-widest px-1.5 py-0.5 rounded border uppercase"
+                            style={{ color: rarityStyle.color, borderColor: `${rarityStyle.color}66`, background: rarityStyle.bg }}
+                          >
+                            {rarity}
+                          </span>
                         </p>
                         <p className="text-xs text-slate-400">Earned: {new Date(relic.earned_at).toLocaleString()}</p>
                         <p className="text-xs" style={{ color: urgent ? '#FCA5A5' : '#67E8F9' }}>
@@ -276,7 +293,19 @@ export default function Relics() {
                   className="rounded-lg p-2 border"
                   style={{ borderColor: 'rgba(71,85,105,0.45)', background: 'rgba(15,23,42,0.35)' }}
                 >
-                  <p className="text-sm text-white font-semibold">{sourceLabel(relic.source)}</p>
+                  <p className="text-sm text-white font-semibold flex items-center gap-2 flex-wrap">
+                    {sourceLabel(relic.source)}
+                    <span
+                      className="text-[10px] font-black tracking-widest px-1.5 py-0.5 rounded border uppercase"
+                      style={{
+                        color: (RARITY_STYLE[getRelicRarity(relic)] || RARITY_STYLE.rare).color,
+                        borderColor: `${(RARITY_STYLE[getRelicRarity(relic)] || RARITY_STYLE.rare).color}66`,
+                        background: (RARITY_STYLE[getRelicRarity(relic)] || RARITY_STYLE.rare).bg,
+                      }}
+                    >
+                      {getRelicRarity(relic)}
+                    </span>
+                  </p>
                   <p className="text-xs text-slate-400">
                     {relic.used ? `Used for ${String(relic.used_for || 'unknown').replace(/_/g, ' ')} at ${new Date(relic.used_at || relic.earned_at).toLocaleString()}` : 'Expired'}
                   </p>

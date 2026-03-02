@@ -35,14 +35,25 @@ export async function fetchOwnPublicProfile(userId) {
 export async function fetchPublicProfileByUsername(username) {
   const normalized = (username || '').toString().trim().toLowerCase();
   if (!normalized) return null;
-  const { data, error } = await supabase
+  const preferred = await supabase
     .from('public_profiles')
-    .select('username,avatar_url,level,total_xp,stat_distribution,dungeon_achievements,streak_count,is_public')
+    .select('user_id,username,name,user_code,avatar_url,level,total_xp,stat_distribution,dungeon_achievements,streak_count,is_public')
     .eq('username', normalized)
     .eq('is_public', true)
     .maybeSingle();
-  if (error) throw error;
-  return data || null;
+  if (!preferred.error) return preferred.data || null;
+
+  const msg = String(preferred.error?.message || '').toLowerCase();
+  if (!msg.includes('name')) throw preferred.error;
+
+  const fallback = await supabase
+    .from('public_profiles')
+    .select('user_id,username,user_code,avatar_url,level,total_xp,stat_distribution,dungeon_achievements,streak_count,is_public')
+    .eq('username', normalized)
+    .eq('is_public', true)
+    .maybeSingle();
+  if (fallback.error) throw fallback.error;
+  return fallback.data || null;
 }
 
 export function getPublicProfileShareUrl(username) {

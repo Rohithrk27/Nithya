@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { adminLogin } from '@/lib/admin';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -97,6 +98,25 @@ export default function Login() {
 
     try {
       if (mode === 'login') {
+        const identifier = email.trim();
+        if (identifier.toLowerCase() === 'admin') {
+          try {
+            await adminLogin({
+              username: identifier,
+              password,
+              userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+            });
+            setMessage('Admin login successful. Redirecting...');
+            setMessageType('success');
+            navigate('/admin-dashboard', { replace: true });
+            return;
+          } catch (adminErr) {
+            setMessage(normalizeErrorMessage(adminErr));
+            setMessageType('error');
+            return;
+          }
+        }
+
         const { error } = await login(email, password);
         
         if (error) {
@@ -196,13 +216,15 @@ export default function Login() {
     return (
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="email" className="text-[#94A3B8]">Email</Label>
+          <Label htmlFor="email" className="text-[#94A3B8]">
+            {mode === 'login' ? 'Email or Username' : 'Email'}
+          </Label>
           <Input
             id="email"
-            type="email"
+            type={mode === 'login' ? 'text' : 'email'}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder={mode === 'login' ? 'you@example.com or admin' : 'you@example.com'}
             required
             className="mt-1 h-12 bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
           />

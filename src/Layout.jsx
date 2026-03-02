@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { createPageUrl } from './utils';
-import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, Gem, LogIn, LogOut, Trophy, Menu, X, ShieldAlert, Ticket } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, Gem, LogIn, LogOut, Trophy, Menu, X, ShieldAlert, Ticket, MessageSquare } from 'lucide-react';
 import ConfirmActionModal from '@/components/ConfirmActionModal';
 
 const LOGO_URL = '/logo/logo.svg';
@@ -31,6 +31,7 @@ const NAV_ITEMS = [
   { label: 'Archive', page: 'Archive', icon: Archive },
   { label: 'Dungeon', page: 'Dungeon', icon: Flame },
   { label: 'Punishments', page: 'Punishments', icon: ShieldAlert },
+  { label: 'Community', page: 'Community', icon: MessageSquare },
   { label: 'Profile', page: 'Profile', icon: User },
 ];
 
@@ -41,9 +42,10 @@ const MOBILE_EXTRA_NAV = [
   { label: 'Archive', page: 'Archive', icon: Archive },
   { label: 'Dungeon', page: 'Dungeon', icon: Flame },
   { label: 'Punishments', page: 'Punishments', icon: ShieldAlert },
+  { label: 'Community', page: 'Community', icon: MessageSquare },
 ];
 
-const NO_NAV_PAGES = ['Landing', 'PublicProfile'];
+const NO_NAV_PAGES = ['Landing', 'PublicProfile', 'AdminDashboard'];
 
 export default function Layout({ children, currentPageName }) {
   const showNav = !NO_NAV_PAGES.includes(currentPageName);

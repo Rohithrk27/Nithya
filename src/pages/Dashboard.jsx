@@ -9,7 +9,7 @@ import QuestCard from '../components/QuestCard';
 import StatGrid from '../components/StatGrid';
 import { Button } from '@/components/ui/button';
 import { computeLevel, getAvatarTier, getRankTitle, levelProgressPct, punishmentRefusalPenalty, xpBetweenLevels, xpIntoCurrentLevel } from '../components/gameEngine';
-import { Circle, CheckCircle2, Gem, Shield, Zap } from 'lucide-react';
+import { ChevronDown, ChevronUp, Circle, CheckCircle2, Gem, Shield, Zap } from 'lucide-react';
 import RPGHumanoidAvatar from '../components/RPGHumanoidAvatar';
 import RPGXPBar from '../components/RPGXPBar';
 import VoiceGreeting from '../components/VoiceGreeting';
@@ -120,6 +120,27 @@ const questStatusPriority = (status) => {
 const toEpoch = (value) => {
   const parsed = value ? new Date(value) : null;
   return parsed && !Number.isNaN(parsed.getTime()) ? parsed.getTime() : 0;
+};
+
+const toCountdownLabel = (ms) => {
+  const safeMs = Math.max(0, Number(ms || 0));
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) {
+    return `${days}d ${String(hours).padStart(2, '0')}h`;
+  }
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
+const formatTaskPunishmentRule = (task) => {
+  const type = String(task?.punishment_type || '').trim().toLowerCase();
+  const value = Math.max(0, Number(task?.punishment_value || 0));
+  if (type === 'streak_reset') return 'Streak reset';
+  if (type === 'relic_loss') return `Relic loss x${Math.max(1, value || 1)}`;
+  return `XP deduction ${value || 0}`;
 };
 
 const pickBestUserQuestRow = (current, next) => {
@@ -292,6 +313,8 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState('');
   const [now, setNow] = useState(new Date());
   const [xpDelta, setXpDelta] = useState(0);
+  const [announcements, setAnnouncements] = useState([]);
+  const [habitSectionExpanded, setHabitSectionExpanded] = useState(false);
   const { notifications, notify } = useSystemNotifications();
   const prevLevelRef = useRef(0);
   const levelPulseTimeoutRef = useRef(null);
@@ -367,12 +390,22 @@ export default function Dashboard() {
     setLoadError('');
     setLoading(true);
     try {
+      const overdueRes = await supabase.rpc('apply_overdue_punishments', { p_user_id: userId });
+      if (!overdueRes?.error) {
+        const overdueRow = Array.isArray(overdueRes.data) ? (overdueRes.data[0] || null) : (overdueRes.data || null);
+        const applied = Math.max(0, Number(overdueRow?.penalties_applied || 0));
+        if (applied > 0) {
+          notify('penalty', 'Deadline missed', `${applied} punishment${applied > 1 ? 's' : ''} applied automatically`);
+        }
+      }
+
       await Promise.allSettled([
         resolveExpiredQuests({ userId, source: 'quest_timeout', decayFactor: 0.5 }),
         resolveExpiredPunishments({ userId, source: 'punishment_timeout' }),
+        supabase.rpc('run_daily_reset', { p_user_id: userId }),
       ]);
 
-      let [profileRes, statsRes, habitsRes, logsRes, questsRes, userQuestsRes, dailyRes, punishmentsRes, activeDungeonRun, relicBalanceSnapshot] = await Promise.all([
+      let [profileRes, statsRes, habitsRes, logsRes, questsRes, userQuestsRes, dailyRes, punishmentsRes, announcementsRes, activeDungeonRun, relicBalanceSnapshot] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', userId).limit(1),
         supabase.from('stats').select('*').eq('user_id', userId).limit(1),
         supabase.from('habits').select('*').eq('user_id', userId),
@@ -381,6 +414,7 @@ export default function Dashboard() {
         supabase.from('user_quests').select('*').eq('user_id', userId),
         supabase.from('daily_challenges').select('*').eq('user_id', userId),
         supabase.from('punishments').select('*').eq('user_id', userId),
+        supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(6),
         fetchActiveDungeonRun(userId),
         Promise.resolve(fetchRelicBalance(userId)).catch(() => 0),
       ]);
@@ -393,6 +427,7 @@ export default function Dashboard() {
       if (userQuestsRes.error) throw userQuestsRes.error;
       if (dailyRes.error) throw dailyRes.error;
       if (punishmentsRes.error) throw punishmentsRes.error;
+      if (announcementsRes.error) throw announcementsRes.error;
 
       let p = profileRes.data?.[0];
       if (!p) {
@@ -421,6 +456,7 @@ export default function Dashboard() {
       setProfile(p);
       setRelicBalance(Math.max(0, Number(relicBalanceSnapshot || 0)));
       setActiveDungeon(activeDungeonRun || null);
+      setAnnouncements(announcementsRes.data || []);
       const baseSystemState = statsRes.data?.[0] || { voice_enabled: true };
       setSystemState({
         strict_strikes: 0,
@@ -494,17 +530,35 @@ export default function Dashboard() {
       const merged = (questsRes.data || []).map((q) => {
         const userQuest = userQuestMap.get(q.id) || null;
         const inferredType = inferQuestType(q, userQuest);
+        const effectiveDeadline = (
+          userQuest?.deadline_at
+          || userQuest?.expires_at
+          || q?.deadline_at
+          || q?.expires_at
+          || null
+        );
+        const deadlineMs = effectiveDeadline ? new Date(effectiveDeadline).getTime() : Number.NaN;
+        const remainingMs = Number.isFinite(deadlineMs) ? Math.max(0, deadlineMs - Date.now()) : 0;
+        const timerUrgency = remainingMs <= (2 * 60 * 60 * 1000) ? 'high' : (remainingMs <= (8 * 60 * 60 * 1000) ? 'medium' : 'low');
         return {
           ...q,
           type: inferredType,
           started_at: userQuest?.started_at || null,
-          expires_at: userQuest?.expires_at || q?.expires_at || null,
+          deadline_at: effectiveDeadline,
+          expires_at: effectiveDeadline,
+          expires_date: effectiveDeadline ? String(effectiveDeadline).slice(0, 10) : (q?.expires_date || null),
           failed: !!userQuest?.failed,
           penalty_applied: !!userQuest?.penalty_applied,
           quest_type: userQuest?.quest_type || inferredType,
           xp_reward: Number(userQuest?.xp_reward ?? q?.xp_reward ?? 0),
+          relic_reward: Math.max(0, Number(userQuest?.relic_reward ?? q?.relic_reward ?? 0)),
+          punishment_type: userQuest?.punishment_type || q?.punishment_type || 'xp_deduction',
+          punishment_value: Math.max(0, Number(userQuest?.punishment_value ?? q?.punishment_value ?? 0)),
           progress_current: Math.max(0, Number(userQuest?.progress_current ?? q?.progress_current ?? 0)),
           progress_target: Math.max(1, Number(userQuest?.progress_target ?? q?.progress_target ?? 1)),
+          remaining_ms: remainingMs,
+          remaining_label: toCountdownLabel(remainingMs),
+          timer_urgency: timerUrgency,
           ...resolveQuestStatus(userQuest),
         };
       });
@@ -624,6 +678,33 @@ export default function Dashboard() {
     window.addEventListener('nithya:quests-updated', handleQuestUpdate);
     return () => window.removeEventListener('nithya:quests-updated', handleQuestUpdate);
   }, [loadData, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let busy = false;
+    const tickOverdue = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const { data, error } = await supabase.rpc('apply_overdue_punishments', { p_user_id: user.id });
+        if (error) return;
+        const row = Array.isArray(data) ? (data[0] || null) : (data || null);
+        const applied = Math.max(0, Number(row?.penalties_applied || 0));
+        if (applied > 0) {
+          notify('penalty', 'Deadline missed', `${applied} punishment${applied > 1 ? 's' : ''} applied automatically`);
+          await loadData(user.id);
+        }
+      } finally {
+        busy = false;
+      }
+    };
+
+    void tickOverdue();
+    const intervalId = setInterval(() => {
+      void tickOverdue();
+    }, 60000);
+    return () => clearInterval(intervalId);
+  }, [loadData, notify, user?.id]);
 
   useEffect(() => {
     const intervalId = setInterval(() => setNow(new Date()), 1000);
@@ -1426,6 +1507,60 @@ export default function Dashboard() {
   const interruptActionable = !!interruptRecord?.id
     && !systemState?.interruptions_paused
     && ['active', 'paused', 'penalized'].includes(interruptStatus || '');
+  const nowMs = now.getTime();
+  const activeAnnouncements = (announcements || []).filter((item) => {
+    if (!item?.active) return false;
+    if (!item?.expires_at) return true;
+    const expiry = new Date(item.expires_at);
+    if (Number.isNaN(expiry.getTime())) return true;
+    return expiry.getTime() > nowMs;
+  });
+  const habitDetailRows = habits.map((habit) => {
+    const habitCompletedRows = historyLogs.filter((row) => row.habit_id === habit.id && row.status === 'completed');
+    const todayDone = logs.some((row) => row.habit_id === habit.id && row.status === 'completed');
+    const lastCompletedRaw = habitCompletedRows.reduce((latest, row) => {
+      const candidate = toEpoch(row?.completed_at || row?.logged_at || row?.created_at);
+      return candidate > latest ? candidate : latest;
+    }, 0);
+    const completionDayNums = Array.from(new Set(
+      habitCompletedRows
+        .map((row) => rowDate(row))
+        .filter(Boolean)
+        .map((dateText) => Math.floor(new Date(`${dateText}T00:00:00`).getTime() / 86400000))
+        .filter((value) => Number.isFinite(value))
+    )).sort((a, b) => b - a);
+
+    let streak = 0;
+    if (completionDayNums.length > 0) {
+      let expected = completionDayNums[0];
+      for (const day of completionDayNums) {
+        if (day === expected) {
+          streak += 1;
+          expected -= 1;
+          continue;
+        }
+        if (day < expected) break;
+      }
+    }
+
+    const deadlineRaw = habit?.deadline_at || null;
+    const deadlineMs = deadlineRaw ? new Date(deadlineRaw).getTime() : Number.NaN;
+    const hasDeadline = Number.isFinite(deadlineMs);
+    const timerMs = hasDeadline ? Math.max(0, deadlineMs - nowMs) : 0;
+    const timerActive = hasDeadline && deadlineMs > nowMs && !todayDone;
+    const timerExpired = hasDeadline && deadlineMs <= nowMs && !todayDone;
+
+    return {
+      ...habit,
+      todayDone,
+      streak,
+      lastCompletedDate: lastCompletedRaw ? format(new Date(lastCompletedRaw), 'yyyy-MM-dd') : null,
+      punishmentRule: formatTaskPunishmentRule(habit),
+      timerActive,
+      timerExpired,
+      timerLabel: timerActive ? toCountdownLabel(timerMs) : (timerExpired ? 'Expired' : (todayDone ? 'Completed' : 'No timer')),
+    };
+  });
 
   return (
     <SystemBackground>
@@ -1514,6 +1649,20 @@ export default function Dashboard() {
             </div>
           </div>
         </HoloPanel>
+
+        {activeAnnouncements.length > 0 && (
+          <HoloPanel>
+            <p className="text-cyan-300 text-xs tracking-widest font-bold mb-2">ANNOUNCEMENTS</p>
+            <div className="space-y-2">
+              {activeAnnouncements.slice(0, 3).map((item) => (
+                <div key={item.id} className="rounded-lg p-3 border border-cyan-500/25 bg-cyan-950/20">
+                  <p className="text-sm font-bold text-cyan-100">{item.title || 'Announcement'}</p>
+                  <p className="text-xs text-slate-300 mt-1 whitespace-pre-wrap break-words">{item.message}</p>
+                </div>
+              ))}
+            </div>
+          </HoloPanel>
+        )}
 
         <HoloPanel>
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] items-start">
@@ -1750,26 +1899,70 @@ export default function Dashboard() {
         )}
 
         <HoloPanel>
-          <p className="text-cyan-400 text-xs mb-2 tracking-widest font-bold">TODAY'S HABITS</p>
-          <div className="space-y-2">
-            {habits.map((habit) => {
-              const done = logs.find((l) => l.habit_id === habit.id && l.status === 'completed');
-              const color = difficultyColor(habit.difficulty);
-              return (
-                <div key={habit.id} className="w-full flex items-start sm:items-center gap-3 p-3 rounded-xl border border-slate-700 bg-slate-900/40">
-                  <button onClick={() => toggleHabit(habit)} className="text-slate-400">
-                    {done ? <CheckCircle2 className="w-5 h-5 text-cyan-400" /> : <Circle className="w-5 h-5" />}
-                  </button>
-                  <div className="flex-1">
-                    <p className="text-white font-semibold">{habit.title}</p>
-                    <p className="text-yellow-300 text-sm font-bold">+{habit.xp_value || 0} XP</p>
+          <button
+            type="button"
+            onClick={() => setHabitSectionExpanded((prev) => !prev)}
+            className="w-full text-left"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-cyan-400 text-xs tracking-widest font-bold">TODAY'S HABITS</p>
+              <div className="flex items-center gap-2">
+                <p className="text-emerald-200 text-xs font-bold">{completedHabitsToday}/{totalHabitsToday}</p>
+                {habitSectionExpanded ? (
+                  <ChevronUp className="w-3.5 h-3.5 text-cyan-300" />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5 text-cyan-300" />
+                )}
+              </div>
+            </div>
+          </button>
+
+          <div
+            className="overflow-hidden"
+            style={{
+              maxHeight: habitSectionExpanded ? '70vh' : '0px',
+              opacity: habitSectionExpanded ? 1 : 0,
+              marginTop: habitSectionExpanded ? '0.5rem' : '0px',
+              transition: 'max-height 360ms ease, opacity 220ms ease, margin-top 220ms ease',
+            }}
+          >
+            <div className="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
+              {habitDetailRows.length === 0 ? (
+                <p className="text-xs text-slate-500 py-2">No habits configured.</p>
+              ) : habitDetailRows.map((habit) => {
+                const color = difficultyColor(habit.difficulty);
+                return (
+                  <div key={habit.id} className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+                    <div className="flex items-start gap-3">
+                      <button onClick={() => toggleHabit(habit)} className="text-slate-400 mt-0.5">
+                        {habit.todayDone ? <CheckCircle2 className="w-5 h-5 text-cyan-400" /> : <Circle className="w-5 h-5" />}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-white font-semibold break-words">{habit.title}</p>
+                          <span className="px-2 py-1 rounded text-xs font-black shrink-0" style={{ color, border: `1px solid ${color}66`, background: `${color}22` }}>
+                            {(habit.difficulty || 'medium').toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1 break-words">{habit.description || 'No description set.'}</p>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 text-[11px]">
+                          <p className="text-yellow-300">XP Reward: <span className="text-yellow-100">+{Number(habit.xp_value || 0)}</span></p>
+                          <p className="text-orange-300">Current Streak: <span className="text-orange-100">{habit.streak}d</span></p>
+                          <p className="text-cyan-300">Last Completed: <span className="text-cyan-100">{habit.lastCompletedDate || 'Never'}</span></p>
+                          <p className={`${habit.timerExpired ? 'text-red-300' : 'text-emerald-300'}`}>
+                            Timer: <span className={habit.timerExpired ? 'text-red-100' : 'text-emerald-100'}>{habit.timerLabel}</span>
+                          </p>
+                        </div>
+                        <p className="text-[11px] text-red-300 mt-1.5">
+                          Punishment: <span className="text-red-100">{habit.punishmentRule}</span>
+                          {habit.punishment_text ? ` | ${habit.punishment_text}` : ''}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <span className="px-2 py-1 rounded text-xs font-black shrink-0" style={{ color, border: `1px solid ${color}66`, background: `${color}22` }}>
-                    {(habit.difficulty || 'medium').toUpperCase()}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </HoloPanel>
 

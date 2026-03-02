@@ -130,6 +130,27 @@ export async function redeemRelicCode({ userId, code }) {
   return firstRow(data);
 }
 
+export async function grantRelicBatchRpc({
+  userId,
+  count = 1,
+  source = 'reward',
+  eventId = null,
+  rarity = 'rare',
+  metadata = {},
+}) {
+  if (!userId) throw new Error('Missing user id');
+  const { data, error } = await supabase.rpc('grant_relic_batch', {
+    p_user_id: userId,
+    p_count: Math.max(0, Number(count || 0)),
+    p_source: source || 'reward',
+    p_event_id: eventId || null,
+    p_rarity: rarity || 'rare',
+    p_metadata: toSafeMetadata(metadata),
+  });
+  if (error) throw error;
+  return firstRow(data);
+}
+
 export function relicExpiryMs(relic, now = Date.now()) {
   const raw = relic?.expires_at;
   if (!raw) return Number.POSITIVE_INFINITY;
