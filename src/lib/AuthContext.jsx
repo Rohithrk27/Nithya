@@ -1,7 +1,22 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { supabase } from './supabase';
 
 const AuthContext = createContext(null);
+
+const firstRow = (data) => (Array.isArray(data) ? (data[0] || null) : (data || null));
+
+const normalizeProfileStatus = (row, userId) => {
+  const role = String(row?.role || 'user').trim().toLowerCase() || 'user';
+  const suspendedUntil = row?.suspended_until || null;
+  const isSuspended = !!row?.is_suspended && (!suspendedUntil || new Date(suspendedUntil).getTime() > Date.now());
+  return {
+    id: userId || null,
+    role,
+    is_suspended: isSuspended,
+    suspension_reason: row?.suspension_reason || null,
+    suspended_until: suspendedUntil,
+  };
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -9,49 +24,84 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false);
+  const [profile, setProfile] = useState(null);
+
+  const loadProfileStatus = useCallback(async (authUser) => {
+    if (!authUser?.id) {
+      setProfile(null);
+      return null;
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('resolve_own_profile_status');
+      if (!error) {
+        const row = normalizeProfileStatus(firstRow(data), authUser.id);
+        setProfile(row);
+        return row;
+      }
+    } catch (_) {
+      // Fall through to direct profile lookup.
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, role, is_suspended, suspension_reason, suspended_until')
+        .eq('id', authUser.id)
+        .maybeSingle();
+      if (error) throw error;
+      const row = normalizeProfileStatus(data || null, authUser.id);
+      setProfile(row);
+      return row;
+    } catch (_) {
+      const fallback = normalizeProfileStatus(null, authUser.id);
+      setProfile(fallback);
+      return fallback;
+    }
+  }, []);
+
+  const applySession = useCallback(async (session) => {
+    const authUser = session?.user || null;
+    if (!authUser) {
+      setUser(null);
+      setProfile(null);
+      setIsAuthenticated(false);
+      setEmailConfirmationPending(false);
+      setIsLoadingAuth(false);
+      return;
+    }
+    setUser(authUser);
+    setIsAuthenticated(true);
+    setEmailConfirmationPending(false);
+    await loadProfileStatus(authUser);
+    setIsLoadingAuth(false);
+  }, [loadProfileStatus]);
 
   useEffect(() => {
     const loadUser = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        const authUser = session?.user || null;
-        if (authUser) {
-          setUser(authUser);
-          setIsAuthenticated(true);
-        }
+        await applySession(session || null);
       } catch (error) {
         setAuthError(error?.message || 'Unable to load auth session');
-      } finally {
         setIsLoadingAuth(false);
       }
     };
 
     loadUser();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        setIsAuthenticated(true);
-        setEmailConfirmationPending(false);
-      } else {
-        setUser(null);
-        setIsAuthenticated(false);
-      }
-      setIsLoadingAuth(false);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      await applySession(session || null);
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [applySession]);
 
   const login = async (email, password) => {
     setAuthError(null);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setAuthError(error.message);
@@ -63,24 +113,19 @@ export const AuthProvider = ({ children }) => {
 
   const signup = async (email, password) => {
     setAuthError(null);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password
-    });
+    const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
       setAuthError(error.message);
       return { error };
     }
 
-    // Check if email confirmation is required
     if (data?.user?.identities?.length === 0) {
       setEmailConfirmationPending(false);
       return { error: 'User already exists' };
     }
 
     if (!data.session) {
-      // Email confirmation required
       setEmailConfirmationPending(true);
     }
 
@@ -91,9 +136,7 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo,
-      },
+      options: { redirectTo },
     });
 
     if (error) {
@@ -111,6 +154,7 @@ export const AuthProvider = ({ children }) => {
       setAuthError(error.message);
     }
     setUser(null);
+    setProfile(null);
     setIsAuthenticated(false);
     setEmailConfirmationPending(false);
   };
@@ -137,10 +181,25 @@ export const AuthProvider = ({ children }) => {
     return { data: { message: 'Password reset email sent' } };
   };
 
+  const refreshProfileStatus = async () => {
+    if (!user?.id) return null;
+    return loadProfileStatus(user);
+  };
+
+  const profileRole = profile?.role || 'user';
+  const isSuspended = !!profile?.is_suspended;
+  const suspensionReason = profile?.suspension_reason || null;
+  const suspendedUntil = profile?.suspended_until || null;
+
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated, 
+    <AuthContext.Provider value={{
+      user,
+      profile,
+      profileRole,
+      isSuspended,
+      suspensionReason,
+      suspendedUntil,
+      isAuthenticated,
       isLoadingAuth,
       authError,
       emailConfirmationPending,
@@ -151,7 +210,9 @@ export const AuthProvider = ({ children }) => {
       navigateToLogin,
       checkEmailConfirmation,
       resetPassword,
-    }}>
+      refreshProfileStatus,
+    }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -50,6 +50,17 @@ export async function adminValidateSession(sessionToken = getAdminSessionToken()
   return firstRow(data) || { is_valid: false };
 }
 
+export async function adminIssueSessionFromProfile({ userAgent = '' } = {}) {
+  const { data, error } = await supabase.rpc('admin_issue_session_from_profile', {
+    p_user_agent: userAgent || null,
+  });
+  if (error) throw error;
+  const row = firstRow(data);
+  const token = row?.session_token || '';
+  if (token) setAdminSessionToken(token);
+  return row;
+}
+
 export async function adminLogout(sessionToken = getAdminSessionToken()) {
   if (!sessionToken) {
     clearAdminSessionToken();
@@ -62,19 +73,66 @@ export async function adminLogout(sessionToken = getAdminSessionToken()) {
 }
 
 export async function adminListUsers({ sessionToken = getAdminSessionToken(), limit = 200 } = {}) {
-  const { data, error } = await supabase.rpc('admin_list_users', {
+  const safeLimit = Math.max(1, Math.min(1000, Number(limit || 200)));
+  const detailed = await supabase.rpc('admin_list_users_detailed', {
     p_session_token: sessionToken,
-    p_limit: Math.max(1, Math.min(1000, Number(limit || 200))),
+    p_limit: safeLimit,
   });
-  if (error) throw error;
-  return data || [];
+  if (!detailed.error) {
+    return detailed.data || [];
+  }
+
+  const fallback = await supabase.rpc('admin_list_users', {
+    p_session_token: sessionToken,
+    p_limit: safeLimit,
+  });
+  if (fallback.error) throw fallback.error;
+  return fallback.data || [];
 }
 
-export async function adminSetUserSuspension({ sessionToken = getAdminSessionToken(), userId, suspended }) {
+export async function adminSetUserSuspension({
+  sessionToken = getAdminSessionToken(),
+  userId,
+  suspended,
+  reason = null,
+  suspendedUntil = null,
+  revokeAuthSessions = true,
+}) {
   const { data, error } = await supabase.rpc('admin_set_user_suspension', {
     p_session_token: sessionToken,
     p_user_id: userId,
     p_suspended: !!suspended,
+    p_reason: reason || null,
+    p_suspended_until: suspendedUntil || null,
+    p_revoke_auth_sessions: revokeAuthSessions !== false,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
+export async function adminResetUserXp({ sessionToken = getAdminSessionToken(), userId }) {
+  const { data, error } = await supabase.rpc('admin_reset_user_xp', {
+    p_session_token: sessionToken,
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
+export async function adminResetUserStreak({ sessionToken = getAdminSessionToken(), userId }) {
+  const { data, error } = await supabase.rpc('admin_reset_user_streak', {
+    p_session_token: sessionToken,
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
+export async function adminSetUserRole({ sessionToken = getAdminSessionToken(), userId, role = 'admin' }) {
+  const { data, error } = await supabase.rpc('admin_set_user_role', {
+    p_session_token: sessionToken,
+    p_user_id: userId,
+    p_role: role || 'admin',
   });
   if (error) throw error;
   return !!data;
@@ -244,6 +302,54 @@ export async function adminUpdatePaymentVerification({
   });
   if (error) throw error;
   return !!data;
+}
+
+export async function adminGetDashboardAnalytics({
+  sessionToken = getAdminSessionToken(),
+  days = 14,
+} = {}) {
+  const { data, error } = await supabase.rpc('admin_get_dashboard_analytics', {
+    p_session_token: sessionToken,
+    p_days: Math.max(7, Math.min(90, Number(days || 14))),
+  });
+  if (error) throw error;
+  return data || {};
+}
+
+export async function adminGetSystemControls({ sessionToken = getAdminSessionToken() } = {}) {
+  const { data, error } = await supabase.rpc('admin_get_system_controls', {
+    p_session_token: sessionToken,
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function adminSetSystemControl({
+  sessionToken = getAdminSessionToken(),
+  key,
+  enabled,
+  payload = {},
+}) {
+  const { data, error } = await supabase.rpc('admin_set_system_control', {
+    p_session_token: sessionToken,
+    p_key: key,
+    p_enabled: !!enabled,
+    p_payload: payload || {},
+  });
+  if (error) throw error;
+  return !!data;
+}
+
+export async function adminTriggerDailyQuestReset({
+  sessionToken = getAdminSessionToken(),
+  targetDate = null,
+} = {}) {
+  const { data, error } = await supabase.rpc('admin_trigger_daily_quest_reset', {
+    p_session_token: sessionToken,
+    p_target_date: targetDate || null,
+  });
+  if (error) throw error;
+  return Number(data || 0);
 }
 
 export async function fetchRelicTypes() {

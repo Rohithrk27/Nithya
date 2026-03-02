@@ -29,15 +29,24 @@ export async function awardXpRpc({
 }) {
   if (!userId) throw new Error('Missing user id for awardXpRpc');
   const safeXp = Math.max(0, toSafeInt(xpAmount, 0));
-  const { data, error } = await supabase.rpc('award_xp', {
+  const primary = await supabase.rpc('award_xp_with_controls', {
     p_user_id: userId,
     p_xp_amount: safeXp,
     p_source: source || 'manual',
     p_event_id: eventId || null,
     p_metadata: toSafeMetadata(metadata),
   });
-  if (error) throw error;
-  const row = firstRow(data);
+  const fallback = primary.error
+    ? await supabase.rpc('award_xp', {
+      p_user_id: userId,
+      p_xp_amount: safeXp,
+      p_source: source || 'manual',
+      p_event_id: eventId || null,
+      p_metadata: toSafeMetadata(metadata),
+    })
+    : primary;
+  if (fallback.error) throw fallback.error;
+  const row = firstRow(fallback.data);
   void logActivityEvent({
     userId,
     type: 'xp_reward',

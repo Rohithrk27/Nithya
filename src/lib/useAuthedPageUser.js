@@ -9,17 +9,21 @@ import { useAuth } from '@/lib/AuthContext';
  */
 export function useAuthedPageUser({ redirectPage = 'Landing' } = {}) {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isLoadingAuth } = useAuth();
+  const { user, isAuthenticated, isLoadingAuth, isSuspended } = useAuth();
   const authReady = !isLoadingAuth;
 
   useEffect(() => {
     if (!authReady) return;
     if (!isAuthenticated || !user?.id) {
       navigate(createPageUrl(redirectPage), { replace: true });
+      return;
     }
-  }, [authReady, isAuthenticated, navigate, redirectPage, user?.id]);
+    if (isSuspended) {
+      navigate('/suspended', { replace: true });
+    }
+  }, [authReady, isAuthenticated, isSuspended, navigate, redirectPage, user?.id]);
 
-  return { user: isAuthenticated ? user : null, authReady };
+  return { user: isAuthenticated ? user : null, authReady, isSuspended };
 }
 
 export default useAuthedPageUser;

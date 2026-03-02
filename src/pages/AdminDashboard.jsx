@@ -17,26 +17,42 @@ import {
   Search,
   Sparkles,
   Receipt,
+  BarChart3,
+  Settings2,
+  History,
+  UserCog,
+  Clock3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import SystemBackground from '@/components/SystemBackground';
 import HoloPanel from '@/components/HoloPanel';
+import ConfirmActionModal from '@/components/ConfirmActionModal';
+import { toastError, toastSuccess } from '@/lib/toast';
+import { useAuth } from '@/lib/AuthContext';
 import {
   adminCreateAnnouncement,
   adminCreateChallenge,
   adminCreateRelicType,
   adminDeleteUser,
+  adminGetDashboardAnalytics,
+  adminGetSystemControls,
   adminGrantRelic,
+  adminIssueSessionFromProfile,
   adminListActivityLogs,
   adminListCommunitySubmissions,
   adminListUsers,
   adminListPaymentVerifications,
   adminLogout,
   adminRemoveRelic,
+  adminResetUserStreak,
+  adminResetUserXp,
   adminReplyCommunitySubmission,
+  adminSetSystemControl,
+  adminSetUserRole,
   adminUpdatePaymentVerification,
+  adminTriggerDailyQuestReset,
   adminSetUserSuspension,
   adminValidateSession,
   fetchRelicTypes,
@@ -46,6 +62,18 @@ import {
 const PUNISHMENT_TYPES = ['xp_deduction', 'streak_reset', 'relic_loss'];
 const RARITIES = ['common', 'rare', 'epic', 'legendary'];
 const PAYMENT_STATUSES = ['pending', 'reviewed', 'verified', 'rejected'];
+const ADMIN_TABS = [
+  { key: 'users', label: 'Users', icon: Users },
+  { key: 'donations', label: 'Donations', icon: Receipt },
+  { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { key: 'system', label: 'System', icon: Settings2 },
+  { key: 'logs', label: 'Logs', icon: History },
+];
+const SUSPEND_DURATIONS = [
+  { key: '24h', label: '24 Hours', hours: 24 },
+  { key: '7d', label: '7 Days', hours: 24 * 7 },
+  { key: '30d', label: '30 Days', hours: 24 * 30 },
+];
 const getErrorMessage = (value, fallback) => value?.message || fallback;
 const asText = (value) => String(value || '').trim();
 const toLower = (value) => asText(value).toLowerCase();
@@ -58,16 +86,21 @@ const formatDateTime = (value) => {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const { isAuthenticated, profileRole } = useAuth();
   const [sessionReady, setSessionReady] = useState(false);
   const [adminName, setAdminName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
+  const [activeTab, setActiveTab] = useState('users');
+  const [pendingAction, setPendingAction] = useState(null);
 
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [paymentRequests, setPaymentRequests] = useState([]);
+  const [analytics, setAnalytics] = useState({});
+  const [systemControls, setSystemControls] = useState([]);
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('pending');
   const [relicTypes, setRelicTypes] = useState([]);
@@ -110,6 +143,7 @@ export default function AdminDashboard() {
   const [removeRelicId, setRemoveRelicId] = useState('');
   const [replyDrafts, setReplyDrafts] = useState({});
   const [paymentDrafts, setPaymentDrafts] = useState({});
+  const [suspendReasonDraft, setSuspendReasonDraft] = useState({});
 
   const sessionToken = useMemo(() => getAdminSessionToken(), []);
   const filteredUsers = useMemo(() => {
@@ -161,12 +195,14 @@ export default function AdminDashboard() {
     setLoading(true);
     setError('');
     try {
-      const [u, l, s, r, pv] = await Promise.allSettled([
+      const [u, l, s, r, pv, an, sc] = await Promise.allSettled([
         adminListUsers({ sessionToken: token, limit: 300 }),
         adminListActivityLogs({ sessionToken: token, limit: 250 }),
         adminListCommunitySubmissions({ sessionToken: token, status: submissionStatusFilter }),
         fetchRelicTypes(),
         adminListPaymentVerifications({ sessionToken: token, status: paymentStatusFilter, limit: 250 }),
+        adminGetDashboardAnalytics({ sessionToken: token, days: 21 }),
+        adminGetSystemControls({ sessionToken: token }),
       ]);
 
       const messages = [];
@@ -206,6 +242,20 @@ export default function AdminDashboard() {
         messages.push(`Payments: ${getErrorMessage(pv.reason, 'failed to load')}`);
       }
 
+      if (an.status === 'fulfilled') {
+        setAnalytics(an.value || {});
+      } else {
+        setAnalytics({});
+        messages.push(`Analytics: ${getErrorMessage(an.reason, 'failed to load')}`);
+      }
+
+      if (sc.status === 'fulfilled') {
+        setSystemControls(sc.value || []);
+      } else {
+        setSystemControls([]);
+        messages.push(`System: ${getErrorMessage(sc.reason, 'failed to load')}`);
+      }
+
       if (messages.length > 0) {
         setError(messages.join(' | '));
       }
@@ -219,7 +269,17 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const init = async () => {
-      const token = getAdminSessionToken();
+      let token = getAdminSessionToken();
+      if (!token && isAuthenticated && profileRole === 'admin') {
+        try {
+          const issued = await adminIssueSessionFromProfile({
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+          });
+          token = issued?.session_token || '';
+        } catch (issueErr) {
+          setError(issueErr?.message || 'Unable to initialize admin session.');
+        }
+      }
       if (!token) {
         navigate('/login', { replace: true });
         return;
@@ -239,7 +299,7 @@ export default function AdminDashboard() {
       }
     };
     void init();
-  }, [navigate, sessionToken]);
+  }, [isAuthenticated, navigate, profileRole, sessionToken]);
 
   useEffect(() => {
     if (!sessionReady) return;
@@ -251,20 +311,56 @@ export default function AdminDashboard() {
     await loadAdminData();
   };
 
+  const showError = (message) => {
+    const text = message || 'Action failed.';
+    setError(text);
+    toastError(text);
+  };
+
+  const showSuccess = (message) => {
+    const text = message || 'Saved.';
+    setInfo(text);
+    toastSuccess(text);
+  };
+
+  const openConfirm = ({ title, message, onConfirm, danger = false, confirmText = 'Confirm' }) => {
+    setPendingAction({
+      title,
+      message,
+      danger,
+      confirmText,
+      onConfirm,
+    });
+  };
+
   const logoutAdmin = async () => {
     await adminLogout(getAdminSessionToken());
     navigate('/login', { replace: true });
   };
 
-  const handleSuspend = async (userId, suspended) => {
+  const handleSuspend = async ({
+    userId,
+    suspended,
+    reason = '',
+    durationHours = null,
+  }) => {
     setError('');
     setInfo('');
     try {
-      await adminSetUserSuspension({ userId, suspended });
-      setInfo(`User ${suspended ? 'suspended' : 'unsuspended'}.`);
+      const suspendedUntil = suspended && durationHours
+        ? new Date(Date.now() + (Number(durationHours) * 60 * 60 * 1000)).toISOString()
+        : null;
+      await adminSetUserSuspension({
+        userId,
+        suspended,
+        reason: reason || null,
+        suspendedUntil,
+        revokeAuthSessions: true,
+      });
+      showSuccess(suspended ? 'User suspended.' : 'User unsuspended.');
       await loadAdminData();
     } catch (err) {
-      setError(err?.message || 'Failed to update suspension.');
+      showError(err?.message || 'Failed to update suspension.');
     }
   };
 
@@ -273,10 +369,40 @@ export default function AdminDashboard() {
     setInfo('');
     try {
       const ok = await adminDeleteUser({ userId });
-      setInfo(ok ? 'User deleted.' : 'User not found.');
+      showSuccess(ok ? 'User deleted.' : 'User not found.');
       await loadAdminData();
     } catch (err) {
-      setError(err?.message || 'Failed to delete user.');
+      showError(err?.message || 'Failed to delete user.');
+    }
+  };
+
+  const handleResetXp = async (userId) => {
+    try {
+      const ok = await adminResetUserXp({ userId });
+      showSuccess(ok ? 'XP reset completed.' : 'User not found.');
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to reset XP.');
+    }
+  };
+
+  const handleResetStreak = async (userId) => {
+    try {
+      const ok = await adminResetUserStreak({ userId });
+      showSuccess(ok ? 'Streak reset completed.' : 'User not found.');
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to reset streak.');
+    }
+  };
+
+  const handlePromoteAdmin = async (userId) => {
+    try {
+      const ok = await adminSetUserRole({ userId, role: 'admin' });
+      showSuccess(ok ? 'User promoted to admin.' : 'User not found.');
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to promote user.');
     }
   };
 
@@ -294,11 +420,11 @@ export default function AdminDashboard() {
         punishmentType: challengeForm.punishmentType,
         punishmentValue: Number(challengeForm.punishmentValue || 0),
       });
-      setInfo(`Challenge created (${row?.quest_id || 'unknown quest id'}).`);
+      showSuccess(`Challenge created (${row?.quest_id || 'unknown quest id'}).`);
       setChallengeForm((prev) => ({ ...prev, title: '', description: '' }));
       await loadAdminData();
     } catch (err) {
-      setError(err?.message || 'Failed to create challenge.');
+      showError(err?.message || 'Failed to create challenge.');
     }
   };
 
@@ -313,11 +439,11 @@ export default function AdminDashboard() {
         rarity: relicTypeForm.rarity,
         effectType: relicTypeForm.effectType,
       });
-      setInfo(`Relic type saved (${id}).`);
+      showSuccess(`Relic type saved (${id}).`);
       setRelicTypeForm({ code: '', name: '', description: '', rarity: 'common', effectType: '' });
       await loadAdminData();
     } catch (err) {
-      setError(err?.message || 'Failed to create relic type.');
+      showError(err?.message || 'Failed to create relic type.');
     }
   };
 
@@ -333,10 +459,10 @@ export default function AdminDashboard() {
         source: grantRelicForm.source || 'admin_grant',
         label: grantRelicForm.label || '',
       });
-      setInfo(`Granted ${count} relic(s).`);
+      showSuccess(`Granted ${count} relic(s).`);
       await loadAdminData();
     } catch (err) {
-      setError(err?.message || 'Failed to grant relic.');
+      showError(err?.message || 'Failed to grant relic.');
     }
   };
 
@@ -346,11 +472,11 @@ export default function AdminDashboard() {
     setInfo('');
     try {
       const ok = await adminRemoveRelic({ relicId: removeRelicId.trim() });
-      setInfo(ok ? 'Relic removed/consumed.' : 'Relic not found.');
+      showSuccess(ok ? 'Relic removed/consumed.' : 'Relic not found.');
       setRemoveRelicId('');
       await loadAdminData();
     } catch (err) {
-      setError(err?.message || 'Failed to remove relic.');
+      showError(err?.message || 'Failed to remove relic.');
     }
   };
 
@@ -363,10 +489,10 @@ export default function AdminDashboard() {
         message: announcementForm.message,
         expiresAt: announcementForm.expiresAt ? new Date(announcementForm.expiresAt).toISOString() : null,
       });
-      setInfo(`Announcement created (${id}).`);
+      showSuccess(`Announcement created (${id}).`);
       setAnnouncementForm({ title: '', message: '', expiresAt: '' });
     } catch (err) {
-      setError(err?.message || 'Failed to create announcement.');
+      showError(err?.message || 'Failed to create announcement.');
     }
   };
 
@@ -380,10 +506,10 @@ export default function AdminDashboard() {
         adminReply: draft.reply || '',
         status: draft.status || submission.status || 'reviewed',
       });
-      setInfo('Submission updated.');
+      showSuccess('Submission updated.');
       await loadAdminData();
     } catch (err) {
-      setError(err?.message || 'Failed to reply/update submission.');
+      showError(err?.message || 'Failed to reply/update submission.');
     }
   };
 
@@ -424,10 +550,39 @@ export default function AdminDashboard() {
         status: draft.status || row.status || 'reviewed',
         adminReply: draft.reply ?? row.admin_reply ?? '',
       });
-      setInfo('Payment verification updated.');
+      showSuccess('Payment verification updated.');
       await loadAdminData();
     } catch (err) {
-      setError(err?.message || 'Failed to update payment verification.');
+      showError(err?.message || 'Failed to update payment verification.');
+    }
+  };
+
+  const controlMap = useMemo(() => {
+    const map = {};
+    (systemControls || []).forEach((row) => {
+      if (!row?.key) return;
+      map[row.key] = !!row.enabled;
+    });
+    return map;
+  }, [systemControls]);
+
+  const toggleSystemControl = async (key, enabled) => {
+    try {
+      await adminSetSystemControl({ key, enabled });
+      showSuccess(`Updated ${key.replace(/_/g, ' ')}.`);
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to update system control.');
+    }
+  };
+
+  const runDailyQuestReset = async () => {
+    try {
+      const count = await adminTriggerDailyQuestReset();
+      showSuccess(`Daily quest reset completed (${count} rows updated).`);
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to run daily quest reset.');
     }
   };
 
@@ -441,6 +596,22 @@ export default function AdminDashboard() {
 
   return (
     <SystemBackground>
+      <ConfirmActionModal
+        open={!!pendingAction}
+        title={pendingAction?.title || 'Confirm'}
+        message={pendingAction?.message || ''}
+        confirmText={pendingAction?.confirmText || 'Confirm'}
+        cancelText="Cancel"
+        danger={!!pendingAction?.danger}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={async () => {
+          const run = pendingAction?.onConfirm;
+          setPendingAction(null);
+          if (typeof run === 'function') {
+            await run();
+          }
+        }}
+      />
       <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-4">
         <HoloPanel>
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -493,6 +664,29 @@ export default function AdminDashboard() {
           <p className="mt-2 text-[11px] text-slate-500">
             Last refresh: {lastRefreshAt ? formatDateTime(lastRefreshAt) : 'Not yet'}
           </p>
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {ADMIN_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className="rounded-lg px-3 py-2 text-left border transition-colors"
+                  style={{
+                    borderColor: active ? 'rgba(56,189,248,0.5)' : 'rgba(51,65,85,0.8)',
+                    background: active ? 'rgba(8,47,73,0.45)' : 'rgba(15,23,42,0.35)',
+                    color: active ? '#67E8F9' : '#94A3B8',
+                  }}
+                >
+                  <p className="text-[11px] font-black tracking-widest flex items-center gap-1.5">
+                    <Icon className="w-3.5 h-3.5" /> {tab.label.toUpperCase()}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
         </HoloPanel>
         <datalist id="admin-user-id-options">
           {users.map((row) => (
@@ -504,6 +698,7 @@ export default function AdminDashboard() {
           ))}
         </datalist>
 
+        {activeTab === 'users' && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <HoloPanel>
             <p className="text-cyan-300 text-xs font-black tracking-widest mb-3 flex items-center gap-2">
@@ -544,6 +739,10 @@ export default function AdminDashboard() {
                     <p className="text-[11px] text-slate-300">
                       Habits: {row.completed_habits || 0} completed / {row.failed_habits || 0} failed
                     </p>
+                    <p className="text-[11px] text-slate-400">
+                      Role: {String(row.role || 'user').toUpperCase()}
+                      {row.is_suspended ? ` · Suspended${row.suspended_until ? ` until ${formatDateTime(row.suspended_until)}` : ' permanently'}` : ''}
+                    </p>
                     <div className="flex gap-2 mt-2 flex-wrap">
                       <Button
                         size="sm"
@@ -562,20 +761,105 @@ export default function AdminDashboard() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleSuspend(row.user_id, !row.is_suspended)}
+                        onClick={() => openConfirm({
+                          title: row.is_suspended ? 'Unsuspend user?' : 'Suspend user permanently?',
+                          message: row.is_suspended
+                            ? 'The user will immediately regain access.'
+                            : 'The user will be blocked until manually unsuspended.',
+                          danger: !row.is_suspended,
+                          confirmText: row.is_suspended ? 'Unsuspend' : 'Suspend',
+                          onConfirm: async () => {
+                            await handleSuspend({
+                              userId: row.user_id,
+                              suspended: !row.is_suspended,
+                              reason: row.is_suspended ? '' : (suspendReasonDraft[row.user_id] || 'Admin suspension'),
+                              durationHours: null,
+                            });
+                          },
+                        })}
                       >
                         <Ban className="w-3.5 h-3.5 mr-1" />
                         {row.is_suspended ? 'Unsuspend' : 'Suspend'}
                       </Button>
+                      {SUSPEND_DURATIONS.map((preset) => (
+                        <Button
+                          key={`${row.user_id}-${preset.key}`}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openConfirm({
+                            title: `Suspend for ${preset.label}?`,
+                            message: 'This will immediately block user actions until the duration ends.',
+                            danger: true,
+                            confirmText: `Suspend ${preset.label}`,
+                            onConfirm: async () => {
+                              await handleSuspend({
+                                userId: row.user_id,
+                                suspended: true,
+                                reason: suspendReasonDraft[row.user_id] || `Suspended for ${preset.label}`,
+                                durationHours: preset.hours,
+                              });
+                            },
+                          })}
+                        >
+                          <Clock3 className="w-3.5 h-3.5 mr-1" /> {preset.label}
+                        </Button>
+                      ))}
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleDeleteUser(row.user_id)}
+                        onClick={() => openConfirm({
+                          title: 'Reset XP?',
+                          message: 'This will set total XP, level, and stat points to zero.',
+                          danger: true,
+                          onConfirm: async () => handleResetXp(row.user_id),
+                        })}
+                      >
+                        Reset XP
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openConfirm({
+                          title: 'Reset streak?',
+                          message: 'This will clear daily streak progress.',
+                          danger: true,
+                          onConfirm: async () => handleResetStreak(row.user_id),
+                        })}
+                      >
+                        Reset Streak
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openConfirm({
+                          title: 'Promote to admin?',
+                          message: 'This user will receive admin role privileges.',
+                          onConfirm: async () => handlePromoteAdmin(row.user_id),
+                        })}
+                      >
+                        <UserCog className="w-3.5 h-3.5 mr-1" /> Promote
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openConfirm({
+                          title: 'Delete user?',
+                          message: 'This action is destructive and cannot be undone.',
+                          danger: true,
+                          confirmText: 'Delete',
+                          onConfirm: async () => handleDeleteUser(row.user_id),
+                        })}
                         style={{ borderColor: 'rgba(248,113,113,0.45)', color: '#F87171' }}
                       >
                         <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
                       </Button>
                     </div>
+                    <Input
+                      value={suspendReasonDraft[row.user_id] || ''}
+                      onChange={(e) => setSuspendReasonDraft((prev) => ({ ...prev, [row.user_id]: e.target.value }))}
+                      placeholder="Suspension reason (optional)"
+                      className="mt-2 bg-slate-900/70 border-slate-700 text-white"
+                    />
                   </div>
                 ))}
               </div>
@@ -665,8 +949,11 @@ export default function AdminDashboard() {
             </div>
           </HoloPanel>
         </div>
+        )}
 
+        {(activeTab === 'users' || activeTab === 'system') && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {activeTab === 'users' && (
           <HoloPanel>
             <p className="text-cyan-300 text-xs font-black tracking-widest mb-3 flex items-center gap-2">
               <Gem className="w-3.5 h-3.5" /> RELIC SYSTEM
@@ -785,11 +1072,38 @@ export default function AdminDashboard() {
               <Button variant="outline" onClick={handleRemoveRelic} className="w-full">Remove Relic</Button>
             </div>
           </HoloPanel>
+          )}
 
+          {activeTab === 'system' && (
           <HoloPanel>
             <p className="text-cyan-300 text-xs font-black tracking-widest mb-3 flex items-center gap-2">
               <Megaphone className="w-3.5 h-3.5" /> ANNOUNCEMENTS
             </p>
+            <div className="space-y-2 mb-4 rounded-lg border border-slate-700/70 p-3 bg-slate-900/30">
+              <p className="text-[11px] tracking-widest text-slate-400 font-bold">SYSTEM CONTROLS</p>
+              {[
+                ['announcements_enabled', 'Global announcements'],
+                ['maintenance_mode', 'Maintenance mode'],
+                ['double_xp_mode', 'Double XP mode'],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleSystemControl(key, !controlMap[key])}
+                  className="w-full rounded-md border border-slate-700 px-3 py-2 text-left"
+                  style={{
+                    background: controlMap[key] ? 'rgba(6,78,59,0.35)' : 'rgba(30,41,59,0.45)',
+                    color: controlMap[key] ? '#6EE7B7' : '#94A3B8',
+                  }}
+                >
+                  <span className="text-xs font-bold tracking-wider">{label.toUpperCase()}</span>
+                  <span className="text-[10px] ml-2">{controlMap[key] ? 'ON' : 'OFF'}</span>
+                </button>
+              ))}
+              <Button variant="outline" onClick={runDailyQuestReset} className="w-full">
+                <Clock3 className="w-4 h-4 mr-2" /> Daily Quest Reset
+              </Button>
+            </div>
             <div className="space-y-2">
               <Input
                 placeholder="Announcement title"
@@ -814,8 +1128,71 @@ export default function AdminDashboard() {
               </Button>
             </div>
           </HoloPanel>
+          )}
         </div>
+        )}
 
+        {activeTab === 'analytics' && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <HoloPanel>
+            <p className="text-cyan-300 text-xs font-black tracking-widest mb-3 flex items-center gap-2">
+              <BarChart3 className="w-3.5 h-3.5" /> PLATFORM ANALYTICS
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ['Total Users', analytics?.total_users || 0],
+                ['Active Today', analytics?.active_today || 0],
+                ['Total Donations', `INR ${Number(analytics?.total_donations || 0).toFixed(2)}`],
+                ['Total XP Distributed', Number(analytics?.total_xp_distributed || 0).toLocaleString()],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg p-2 border border-slate-700/70 bg-slate-900/35">
+                  <p className="text-[10px] tracking-widest text-slate-400 uppercase">{label}</p>
+                  <p className="text-base font-black text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 rounded-lg p-3 border border-slate-700/70 bg-slate-900/30">
+              <p className="text-[10px] tracking-widest text-slate-400 uppercase mb-1">Most Active User (7d)</p>
+              <p className="text-sm font-bold text-white">
+                {analytics?.most_active_user?.name || 'N/A'}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {analytics?.most_active_user?.user_id || '-'} · {Number(analytics?.most_active_user?.event_count || 0)} events
+              </p>
+            </div>
+          </HoloPanel>
+
+          <HoloPanel>
+            <p className="text-cyan-300 text-xs font-black tracking-widest mb-3">DAILY ACTIVITY</p>
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              {(analytics?.daily_activity || []).map((row) => {
+                const count = Number(row?.count || 0);
+                const max = Math.max(1, ...((analytics?.daily_activity || []).map((r) => Number(r?.count || 0))));
+                const width = Math.max(4, Math.round((count / max) * 100));
+                return (
+                  <div key={String(row?.date)} className="rounded-lg p-2 border border-slate-700/60 bg-slate-900/35">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>{String(row?.date || '-')}</span>
+                      <span>{count}</span>
+                    </div>
+                    <div className="h-2 mt-1 rounded bg-slate-800/80 overflow-hidden">
+                      <div
+                        className="h-full rounded"
+                        style={{ width: `${width}%`, background: 'linear-gradient(90deg, #0EA5E9, #22D3EE)' }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {(!analytics?.daily_activity || analytics.daily_activity.length === 0) && (
+                <p className="text-sm text-slate-500">No activity data available.</p>
+              )}
+            </div>
+          </HoloPanel>
+        </div>
+        )}
+
+        {activeTab === 'logs' && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           <HoloPanel>
             <div className="flex items-center justify-between gap-2 mb-3">
@@ -917,7 +1294,9 @@ export default function AdminDashboard() {
             </div>
           </HoloPanel>
         </div>
+        )}
 
+        {activeTab === 'donations' && (
         <div className="grid grid-cols-1 gap-4">
           <HoloPanel>
             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
@@ -1009,7 +1388,9 @@ export default function AdminDashboard() {
             </div>
           </HoloPanel>
         </div>
+        )}
 
+        {activeTab === 'logs' && (
         <HoloPanel>
           <p className="text-cyan-300 text-xs font-black tracking-widest mb-2 flex items-center gap-2">
             <Shield className="w-3.5 h-3.5" /> ADMIN AUDIT TRAIL
@@ -1018,6 +1399,7 @@ export default function AdminDashboard() {
             All admin actions are written to `admin_audit_logs` and mirrored into `activity_logs` as `admin_action` when the activity mirror is available.
           </p>
         </HoloPanel>
+        )}
       </div>
     </SystemBackground>
   );

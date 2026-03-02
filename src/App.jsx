@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { pagesConfig } from './pages.config'
 import { createPageUrl } from '@/utils'
-import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -13,6 +13,7 @@ import AppErrorBoundary from '@/components/AppErrorBoundary';
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const Suspended = lazy(() => import('./pages/Suspended'));
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -29,10 +30,13 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   : <>{children}</>;
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, authError, isAuthenticated, navigateToLogin } = useAuth();
+  const { isLoadingAuth, authError, isAuthenticated, navigateToLogin, isSuspended, profileRole } = useAuth();
+  const location = useLocation();
   const loginPath = createPageUrl('Login');
   const landingPath = createPageUrl('Landing');
   const dashboardPath = createPageUrl('Dashboard');
+  const isSuspendedRoute = location.pathname === '/suspended';
+  const isAdminRoute = location.pathname === '/admin-dashboard';
 
   // Show loading spinner while checking auth
   if (isLoadingAuth) {
@@ -89,6 +93,7 @@ const AuthenticatedApp = () => {
               </LayoutWrapper>
             }
           />
+          <Route path="/suspended" element={<Navigate to={loginPath} replace />} />
           <Route path="*" element={<Navigate to={landingPath} replace />} />
         </Routes>
       </Suspense>
@@ -104,6 +109,18 @@ const AuthenticatedApp = () => {
       navigateToLogin();
       return null;
     }
+  }
+
+  if (isSuspended && !isSuspendedRoute) {
+    return <Navigate to="/suspended" replace />;
+  }
+
+  if (!isSuspended && isSuspendedRoute) {
+    return <Navigate to={dashboardPath} replace />;
+  }
+
+  if (isAdminRoute && profileRole !== 'admin') {
+    return <Navigate to={dashboardPath} replace />;
   }
 
   // Render the main app
@@ -169,6 +186,14 @@ const AuthenticatedApp = () => {
             element={
               <LayoutWrapper currentPageName="AdminDashboard">
                 <AdminDashboard />
+              </LayoutWrapper>
+            }
+          />
+          <Route
+            path="/suspended"
+            element={
+              <LayoutWrapper currentPageName="Suspended">
+                <Suspended />
               </LayoutWrapper>
             }
           />
