@@ -22,6 +22,93 @@
   background:
     radial-gradient(circle at 50% 16%, rgba(34, 211, 238, 0.14), transparent 46%),
     radial-gradient(circle at 50% 82%, rgba(56, 189, 248, 0.1), transparent 52%);
+  pointer-events: none;
+}
+
+.intro-bg-grid {
+  position: absolute;
+  inset: -16%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.24;
+  background-image:
+    linear-gradient(rgba(56, 189, 248, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.14) 1px, transparent 1px);
+  background-size: 62px 62px;
+  mask-image: radial-gradient(circle at 50% 42%, rgba(0, 0, 0, 0.95), transparent 76%);
+  animation: introGridDrift 26s linear infinite;
+}
+
+.intro-bg-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.intro-particle {
+  position: absolute;
+  width: clamp(96px, 14vw, 210px);
+  aspect-ratio: 1 / 1;
+  border-radius: 999px;
+  filter: blur(1px);
+  opacity: 0.2;
+  background: radial-gradient(circle at 35% 32%, rgba(34, 211, 238, 0.85), rgba(56, 189, 248, 0.06) 68%, transparent 78%);
+}
+
+.intro-particle--1 {
+  top: 14%;
+  left: 8%;
+  animation: introParticleFloatA 13s ease-in-out infinite;
+}
+
+.intro-particle--2 {
+  top: 18%;
+  right: 10%;
+  animation: introParticleFloatB 15s ease-in-out infinite;
+}
+
+.intro-particle--3 {
+  bottom: 22%;
+  left: 16%;
+  animation: introParticleFloatB 12s ease-in-out infinite reverse;
+}
+
+.intro-particle--4 {
+  bottom: 18%;
+  right: 14%;
+  animation: introParticleFloatA 14s ease-in-out infinite reverse;
+}
+
+.intro-bg-streaks {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.intro-streak {
+  position: absolute;
+  width: min(520px, 76vw);
+  height: 2px;
+  opacity: 0.22;
+  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.95), transparent);
+  filter: blur(0.4px);
+}
+
+.intro-streak--1 {
+  top: 20%;
+  left: -40%;
+  transform: rotate(10deg);
+  animation: introStreakRunA 11s linear infinite;
+}
+
+.intro-streak--2 {
+  bottom: 27%;
+  right: -40%;
+  transform: rotate(-8deg);
+  animation: introStreakRunB 12.5s linear infinite;
 }
 
 .intro-hero {
@@ -108,6 +195,21 @@
   text-transform: uppercase;
   color: #7dd3fc;
   font-weight: 700;
+}
+
+.intro-motto {
+  margin: 0;
+  padding: 0.34rem 0.88rem;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: linear-gradient(90deg, rgba(8, 47, 73, 0.7), rgba(12, 74, 110, 0.36));
+  color: #e0f2fe;
+  font-size: clamp(0.76rem, 1.16vw, 0.86rem);
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.26);
+  animation: introMottoPulse 4.8s ease-in-out infinite;
 }
 
 .intro-header-text {
@@ -309,6 +411,36 @@
   50% { transform: scaleY(1.04) translateY(-2px); opacity: 0.34; }
 }
 
+@keyframes introMottoPulse {
+  0%, 100% { box-shadow: 0 8px 24px rgba(2, 132, 199, 0.26); transform: translateY(0); }
+  50% { box-shadow: 0 10px 30px rgba(34, 211, 238, 0.34); transform: translateY(-1px); }
+}
+
+@keyframes introGridDrift {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-62px, -62px, 0); }
+}
+
+@keyframes introParticleFloatA {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.2; }
+  50% { transform: translate3d(18px, -16px, 0) scale(1.07); opacity: 0.34; }
+}
+
+@keyframes introParticleFloatB {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.16; }
+  50% { transform: translate3d(-18px, 14px, 0) scale(1.09); opacity: 0.3; }
+}
+
+@keyframes introStreakRunA {
+  0% { transform: translateX(0) rotate(10deg); }
+  100% { transform: translateX(180%) rotate(10deg); }
+}
+
+@keyframes introStreakRunB {
+  0% { transform: translateX(0) rotate(-8deg); }
+  100% { transform: translateX(-180%) rotate(-8deg); }
+}
+
 @media (max-width: 767px) {
   .intro-hero {
     padding-top: 1.6rem;
@@ -321,6 +453,12 @@
 
   .intro-main-content {
     gap: 0.65rem;
+  }
+
+  .intro-motto {
+    padding: 0.3rem 0.64rem;
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
   }
 
   .intro-header-text {
@@ -383,9 +521,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .intro-bg-fade,
+  .intro-bg-grid,
+  .intro-particle,
+  .intro-streak,
   .intro-logo-wave,
   .intro-avatar-silhouette,
-  .intro-logo-svg {
+  .intro-logo-svg,
+  .intro-motto {
     animation: none;
   }
 }

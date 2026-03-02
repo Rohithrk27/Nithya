@@ -34,6 +34,17 @@ function IntroHero({ onBeginJourney, onSignIn }) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.75, ease: 'easeOut' }}
       />
+      <div className="intro-bg-grid" aria-hidden="true" />
+      <div className="intro-bg-particles" aria-hidden="true">
+        <span className="intro-particle intro-particle--1" />
+        <span className="intro-particle intro-particle--2" />
+        <span className="intro-particle intro-particle--3" />
+        <span className="intro-particle intro-particle--4" />
+      </div>
+      <div className="intro-bg-streaks" aria-hidden="true">
+        <span className="intro-streak intro-streak--1" />
+        <span className="intro-streak intro-streak--2" />
+      </div>
 
       <main className="intro-hero" role="main">
         <div className="intro-main-content">
@@ -57,6 +68,15 @@ function IntroHero({ onBeginJourney, onSignIn }) {
             transition={{ delay: 0.35, duration: 0.55, ease: 'easeOut' }}
           >
             NITHYA
+          </motion.p>
+
+          <motion.p
+            className="intro-motto"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.58, ease: 'easeOut' }}
+          >
+            Discipline. Evolve. Conquer.
           </motion.p>
 
           <motion.h1
