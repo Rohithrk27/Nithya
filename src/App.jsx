@@ -9,6 +9,8 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
@@ -249,6 +251,8 @@ function App() {
             <AuthenticatedApp />
           </Router>
           <Toaster />
+          <Analytics />
+          <SpeedInsights />
         </QueryClientProvider>
       </AuthProvider>
     </AppErrorBoundary>
