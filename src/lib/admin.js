@@ -75,6 +75,15 @@ export const setAdminSessionToken = (token) => {
 export const clearAdminSessionToken = () => setAdminSessionToken('');
 
 const firstRow = (data) => (Array.isArray(data) ? (data[0] || null) : (data || null));
+const normalizeRole = (value) => String(value || '').trim().toLowerCase();
+const isAdminUserRow = (row) => {
+  if (!row || typeof row !== 'object') return false;
+  if (row.is_admin === true) return true;
+  const role = normalizeRole(row.role || row.profile_role);
+  return role === 'admin';
+};
+// Centralized filter so admin accounts never show in admin user-management lists.
+const stripAdminUsers = (rows) => (Array.isArray(rows) ? rows.filter((row) => !isAdminUserRow(row)) : []);
 
 export async function adminLogin({ username, password, userAgent = '' }) {
   const { data, error } = await supabase.rpc('admin_login', {
@@ -127,7 +136,7 @@ export async function adminListUsers({ sessionToken = getAdminSessionToken(), li
     p_limit: safeLimit,
   });
   if (!detailed.error) {
-    return detailed.data || [];
+    return stripAdminUsers(detailed.data);
   }
 
   const fallback = await supabase.rpc('admin_list_users', {
@@ -135,7 +144,7 @@ export async function adminListUsers({ sessionToken = getAdminSessionToken(), li
     p_limit: safeLimit,
   });
   if (fallback.error) throw fallback.error;
-  return fallback.data || [];
+  return stripAdminUsers(fallback.data);
 }
 
 export async function adminSetUserSuspension({

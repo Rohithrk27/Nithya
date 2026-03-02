@@ -38,8 +38,10 @@ const AuthenticatedApp = () => {
   const loginPath = createPageUrl('Login');
   const landingPath = createPageUrl('Landing');
   const dashboardPath = createPageUrl('Dashboard');
+  const adminDashboardPath = '/admin-dashboard';
+  const defaultAuthenticatedPath = profileRole === 'admin' ? adminDashboardPath : dashboardPath;
   const isSuspendedRoute = location.pathname === '/suspended';
-  const isAdminRoute = location.pathname === '/admin-dashboard';
+  const isAdminRoute = location.pathname === adminDashboardPath;
   const isMaintenanceRoute = location.pathname === '/maintenance';
 
   // Show loading spinner while checking auth
@@ -137,7 +139,7 @@ const AuthenticatedApp = () => {
   }
 
   if (!isSuspended && isSuspendedRoute) {
-    return <Navigate to={dashboardPath} replace />;
+    return <Navigate to={defaultAuthenticatedPath} replace />;
   }
 
   if (maintenanceMode && profileRole !== 'admin' && !isMaintenanceRoute) {
@@ -145,11 +147,15 @@ const AuthenticatedApp = () => {
   }
 
   if ((!maintenanceMode || profileRole === 'admin') && isMaintenanceRoute) {
-    return <Navigate to={dashboardPath} replace />;
+    return <Navigate to={defaultAuthenticatedPath} replace />;
   }
 
   if (isAdminRoute && profileRole !== 'admin') {
     return <Navigate to={dashboardPath} replace />;
+  }
+
+  if (profileRole === 'admin' && !isAdminRoute && !isSuspendedRoute && !isMaintenanceRoute) {
+    return <Navigate to={adminDashboardPath} replace />;
   }
 
   // Render the main app
