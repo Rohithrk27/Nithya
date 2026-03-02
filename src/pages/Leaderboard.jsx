@@ -25,7 +25,15 @@ const SCORE_WEIGHTS = {
 
 function computeLeaderboardScore(profile) {
   const level = computeLevel(profile?.total_xp || 0);
-  const statSum = STAT_KEYS.reduce((sum, k) => sum + (profile?.[`stat_${k}`] || 0), 0);
+  const statDistribution = (profile?.stat_distribution && typeof profile.stat_distribution === 'object')
+    ? profile.stat_distribution
+    : {};
+  const statSum = STAT_KEYS.reduce((sum, k) => {
+    const distValue = Number(statDistribution?.[k]);
+    if (Number.isFinite(distValue)) return sum + distValue;
+    const legacyValue = Number(profile?.[`stat_${k}`]);
+    return sum + (Number.isFinite(legacyValue) ? legacyValue : 0);
+  }, 0);
   return Math.floor(
     level * SCORE_WEIGHTS.level +
     (profile?.total_xp || 0) * SCORE_WEIGHTS.xp +
@@ -35,7 +43,7 @@ function computeLeaderboardScore(profile) {
 
 const formatHunterName = (profile, fallback = 'Unknown Hunter') => {
   if (!profile) return fallback;
-  return profile.name || (profile.user_code ? `@${profile.user_code}` : profile.email) || fallback;
+  return profile.name || (profile.user_code ? `@${profile.user_code}` : null) || fallback;
 };
 
 const formatHunterCode = (profile) => {
@@ -138,13 +146,22 @@ export default function Leaderboard() {
     setStatusText('');
     try {
       const { data: globalProfiles, error: globalError } = await supabase
-        .from('profiles')
-        .select('*')
+        .from('public_profiles')
+        .select('user_id,username,name,user_code,level,total_xp,stat_distribution')
         .order('total_xp', { ascending: false })
         .limit(100);
       if (globalError) throw globalError;
 
-      const allProfiles = globalProfiles || [];
+      const allProfiles = (globalProfiles || []).map((row) => ({
+        id: row.user_id,
+        user_id: row.user_id,
+        username: row.username,
+        name: row.name,
+        user_code: row.user_code,
+        level: Number(row.level || 0),
+        total_xp: Number(row.total_xp || 0),
+        stat_distribution: row.stat_distribution || {},
+      }));
       setGlobalRows(hydrateRows(allProfiles));
       const { data: weeklyData, error: weeklyError } = await supabase.rpc('get_weekly_leaderboard', { p_limit: 100 });
       if (weeklyError) {
@@ -206,10 +223,9 @@ export default function Leaderboard() {
 
         const friendIds = Array.from(new Set((friendState.accepted || []).map((r) => r.friend_user_id)));
         const ids = Array.from(new Set([userId, ...friendIds]));
-        const { data: friendsProfiles, error: friendsError } = await supabase
-          .from('profiles')
-          .select('*')
-          .in('id', ids);
+        const { data: friendsProfiles, error: friendsError } = await supabase.rpc('get_profiles_basic', {
+          p_user_ids: ids,
+        });
         if (!friendsError) {
           for (const fp of friendsProfiles || []) {
             directorySeed[fp.id] = fp;
@@ -229,10 +245,9 @@ export default function Leaderboard() {
       try {
         const idsForIdentity = Array.from(seedIds).filter(Boolean);
         if (idsForIdentity.length > 0) {
-          const { data: identityProfiles, error: identityError } = await supabase
-            .from('profiles')
-            .select('id,name,user_code,email,total_xp')
-            .in('id', idsForIdentity);
+          const { data: identityProfiles, error: identityError } = await supabase.rpc('get_profiles_basic', {
+            p_user_ids: idsForIdentity,
+          });
           if (!identityError) {
             for (const entry of identityProfiles || []) {
               directorySeed[entry.id] = {

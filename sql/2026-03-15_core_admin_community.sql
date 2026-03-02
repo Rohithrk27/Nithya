@@ -356,10 +356,6 @@ begin
 end;
 $$;
 
-insert into public.admin_users (username, password_hash, is_active)
-values ('admin', crypt('nithya1811', gen_salt('bf')), true)
-on conflict (username) do nothing;
-
 -- =========================================================
 -- ADMIN AUTH RPC
 -- =========================================================

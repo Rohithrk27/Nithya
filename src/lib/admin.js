@@ -1,24 +1,47 @@
 import { supabase } from '@/lib/supabase';
 
 const ADMIN_SESSION_STORAGE_KEY = 'nithya_admin_session_token';
+let inMemoryAdminSessionToken = '';
+
+const safeSessionStorage = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.sessionStorage;
+  } catch (_) {
+    return null;
+  }
+};
 
 export const getAdminSessionToken = () => {
+  if (inMemoryAdminSessionToken) return inMemoryAdminSessionToken;
   if (typeof window === 'undefined') return '';
   try {
-    return localStorage.getItem(ADMIN_SESSION_STORAGE_KEY) || '';
+    const storage = safeSessionStorage();
+    const current = storage?.getItem(ADMIN_SESSION_STORAGE_KEY) || '';
+    if (current) return current;
+
+    // One-time migration from legacy localStorage token.
+    const legacy = window.localStorage?.getItem(ADMIN_SESSION_STORAGE_KEY) || '';
+    if (!legacy) return '';
+    setAdminSessionToken(legacy);
+    window.localStorage?.removeItem(ADMIN_SESSION_STORAGE_KEY);
+    return legacy;
   } catch (_) {
     return '';
   }
 };
 
 export const setAdminSessionToken = (token) => {
+  inMemoryAdminSessionToken = token || '';
   if (typeof window === 'undefined') return;
   try {
+    const storage = safeSessionStorage();
+    if (!storage) return;
     if (!token) {
-      localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+      storage.removeItem(ADMIN_SESSION_STORAGE_KEY);
       return;
     }
-    localStorage.setItem(ADMIN_SESSION_STORAGE_KEY, token);
+    storage.setItem(ADMIN_SESSION_STORAGE_KEY, token);
   } catch (_) {
     // Ignore storage failures.
   }

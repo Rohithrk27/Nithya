@@ -25,6 +25,22 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false);
   const [profile, setProfile] = useState(null);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+
+  const loadSystemControls = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_system_controls_public');
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      const maintenanceRow = rows.find((row) => row?.key === 'maintenance_mode');
+      const enabled = !!maintenanceRow?.enabled;
+      setMaintenanceMode(enabled);
+      return enabled;
+    } catch (_) {
+      setMaintenanceMode(false);
+      return false;
+    }
+  }, []);
 
   const loadProfileStatus = useCallback(async (authUser) => {
     if (!authUser?.id) {
@@ -67,6 +83,7 @@ export const AuthProvider = ({ children }) => {
       setProfile(null);
       setIsAuthenticated(false);
       setEmailConfirmationPending(false);
+      await loadSystemControls();
       setIsLoadingAuth(false);
       return;
     }
@@ -74,8 +91,9 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(true);
     setEmailConfirmationPending(false);
     await loadProfileStatus(authUser);
+    await loadSystemControls();
     setIsLoadingAuth(false);
-  }, [loadProfileStatus]);
+  }, [loadProfileStatus, loadSystemControls]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -98,6 +116,23 @@ export const AuthProvider = ({ children }) => {
       subscription.unsubscribe();
     };
   }, [applySession]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('system-controls-listener')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'system_controls' },
+        () => {
+          void loadSystemControls();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadSystemControls]);
 
   const login = async (email, password) => {
     setAuthError(null);
@@ -186,6 +221,8 @@ export const AuthProvider = ({ children }) => {
     return loadProfileStatus(user);
   };
 
+  const refreshSystemControls = async () => loadSystemControls();
+
   const profileRole = profile?.role || 'user';
   const isSuspended = !!profile?.is_suspended;
   const suspensionReason = profile?.suspension_reason || null;
@@ -199,6 +236,7 @@ export const AuthProvider = ({ children }) => {
       isSuspended,
       suspensionReason,
       suspendedUntil,
+      maintenanceMode,
       isAuthenticated,
       isLoadingAuth,
       authError,
@@ -211,6 +249,7 @@ export const AuthProvider = ({ children }) => {
       checkEmailConfirmation,
       resetPassword,
       refreshProfileStatus,
+      refreshSystemControls,
     }}
     >
       {children}

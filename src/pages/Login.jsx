@@ -29,6 +29,9 @@ export default function Login() {
   const normalizeErrorMessage = (errorLike) => {
     const raw = typeof errorLike === 'string' ? errorLike : (errorLike?.message || 'Unexpected error occurred.');
     const lower = raw.toLowerCase();
+    if (lower.includes('admin_login_rate_limited')) {
+      return 'Too many admin login attempts. Please wait 15 minutes before trying again.';
+    }
     if (lower.includes('failed to fetch') || lower.includes('network error') || lower.includes('network timeout') || lower.includes('unable to reach supabase')) {
       return 'Network error: unable to reach server. Check internet/VPN/firewall and try again.';
     }

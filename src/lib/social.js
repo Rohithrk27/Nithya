@@ -25,13 +25,11 @@ export const normalizeUserCode = (code) => {
 export async function searchProfileByUserCode(code) {
   const normalized = normalizeUserCode(code);
   if (!normalized) return null;
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id,name,email,user_code,total_xp')
-    .eq('user_code', normalized)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('lookup_profile_by_user_code', {
+    p_user_code: normalized,
+  });
   if (error) throw error;
-  return data || null;
+  return firstRow(data);
 }
 
 export async function sendFriendRequestRpc({ userId, friendUserId }) {
@@ -108,10 +106,9 @@ export async function fetchFriendsState(userId) {
   }
 
   const idsToFetch = Array.from(profileIds);
-  const { data: profiles, error: profileError } = await supabase
-    .from('profiles')
-    .select('id,name,user_code,email,total_xp')
-    .in('id', idsToFetch);
+  const { data: profiles, error: profileError } = await supabase.rpc('get_profiles_basic', {
+    p_user_ids: idsToFetch,
+  });
 
   if (profileError) throw profileError;
 

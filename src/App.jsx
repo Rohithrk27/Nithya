@@ -14,6 +14,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PublicProfile = lazy(() => import('./pages/PublicProfile'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const Suspended = lazy(() => import('./pages/Suspended'));
+const Maintenance = lazy(() => import('./pages/Maintenance'));
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -30,13 +31,14 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   : <>{children}</>;
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, authError, isAuthenticated, navigateToLogin, isSuspended, profileRole } = useAuth();
+  const { isLoadingAuth, authError, isAuthenticated, navigateToLogin, isSuspended, profileRole, maintenanceMode } = useAuth();
   const location = useLocation();
   const loginPath = createPageUrl('Login');
   const landingPath = createPageUrl('Landing');
   const dashboardPath = createPageUrl('Dashboard');
   const isSuspendedRoute = location.pathname === '/suspended';
   const isAdminRoute = location.pathname === '/admin-dashboard';
+  const isMaintenanceRoute = location.pathname === '/maintenance';
 
   // Show loading spinner while checking auth
   if (isLoadingAuth) {
@@ -45,6 +47,15 @@ const AuthenticatedApp = () => {
 
   // Render login route when not authenticated to avoid blank screen
   if (!isAuthenticated) {
+    const maintenanceExempt =
+      location.pathname === loginPath
+      || location.pathname === '/admin-dashboard'
+      || location.pathname === '/maintenance';
+
+    if (maintenanceMode && !maintenanceExempt) {
+      return <Navigate to="/maintenance" replace />;
+    }
+
     return (
       <Suspense fallback={<RouteLoadingFallback />}>
         <Routes>
@@ -93,6 +104,14 @@ const AuthenticatedApp = () => {
               </LayoutWrapper>
             }
           />
+          <Route
+            path="/maintenance"
+            element={
+              <LayoutWrapper currentPageName="Maintenance">
+                <Maintenance />
+              </LayoutWrapper>
+            }
+          />
           <Route path="/suspended" element={<Navigate to={loginPath} replace />} />
           <Route path="*" element={<Navigate to={landingPath} replace />} />
         </Routes>
@@ -116,6 +135,14 @@ const AuthenticatedApp = () => {
   }
 
   if (!isSuspended && isSuspendedRoute) {
+    return <Navigate to={dashboardPath} replace />;
+  }
+
+  if (maintenanceMode && profileRole !== 'admin' && !isMaintenanceRoute) {
+    return <Navigate to="/maintenance" replace />;
+  }
+
+  if ((!maintenanceMode || profileRole === 'admin') && isMaintenanceRoute) {
     return <Navigate to={dashboardPath} replace />;
   }
 
@@ -194,6 +221,14 @@ const AuthenticatedApp = () => {
             element={
               <LayoutWrapper currentPageName="Suspended">
                 <Suspended />
+              </LayoutWrapper>
+            }
+          />
+          <Route
+            path="/maintenance"
+            element={
+              <LayoutWrapper currentPageName="Maintenance">
+                <Maintenance />
               </LayoutWrapper>
             }
           />

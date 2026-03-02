@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/AuthContext';
  */
 export function useAuthedPageUser({ redirectPage = 'Landing' } = {}) {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isLoadingAuth, isSuspended } = useAuth();
+  const { user, isAuthenticated, isLoadingAuth, isSuspended, maintenanceMode, profileRole } = useAuth();
   const authReady = !isLoadingAuth;
 
   useEffect(() => {
@@ -20,10 +20,14 @@ export function useAuthedPageUser({ redirectPage = 'Landing' } = {}) {
     }
     if (isSuspended) {
       navigate('/suspended', { replace: true });
+      return;
     }
-  }, [authReady, isAuthenticated, isSuspended, navigate, redirectPage, user?.id]);
+    if (maintenanceMode && profileRole !== 'admin') {
+      navigate('/maintenance', { replace: true });
+    }
+  }, [authReady, isAuthenticated, isSuspended, maintenanceMode, navigate, profileRole, redirectPage, user?.id]);
 
-  return { user: isAuthenticated ? user : null, authReady, isSuspended };
+  return { user: isAuthenticated ? user : null, authReady, isSuspended, maintenanceMode };
 }
 
 export default useAuthedPageUser;
