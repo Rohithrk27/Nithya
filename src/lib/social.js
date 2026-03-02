@@ -1,6 +1,13 @@
 import { supabase } from '@/lib/supabase';
 
 const firstRow = (data) => (Array.isArray(data) ? (data[0] || null) : (data || null));
+const normalizeBasicProfile = (row) => ({
+  id: row?.id || row?.user_id || null,
+  name: row?.name || null,
+  email: row?.email || null,
+  user_code: row?.user_code || null,
+  total_xp: Number(row?.total_xp || 0),
+});
 
 export const normalizeUserCode = (code) => {
   const raw = (code || '').toString().trim().toUpperCase();
@@ -22,14 +29,62 @@ export const normalizeUserCode = (code) => {
   return raw.replace(/[^A-Z0-9-]/g, '');
 };
 
+export async function fetchProfilesBasic(userIds) {
+  const ids = Array.from(new Set((userIds || []).filter(Boolean)));
+  if (!ids.length) return [];
+
+  const rpcRes = await supabase.rpc('get_profiles_basic', {
+    p_user_ids: ids,
+  });
+  if (!rpcRes.error) {
+    return (rpcRes.data || []).map(normalizeBasicProfile).filter((row) => row.id);
+  }
+
+  const publicRes = await supabase
+    .from('public_profiles')
+    .select('user_id,name,user_code,total_xp')
+    .in('user_id', ids);
+  if (!publicRes.error) {
+    return (publicRes.data || []).map(normalizeBasicProfile).filter((row) => row.id);
+  }
+
+  const legacyRes = await supabase
+    .from('profiles')
+    .select('id,name,email,user_code,total_xp')
+    .in('id', ids);
+  if (legacyRes.error) throw legacyRes.error;
+  return (legacyRes.data || []).map(normalizeBasicProfile).filter((row) => row.id);
+}
+
 export async function searchProfileByUserCode(code) {
   const normalized = normalizeUserCode(code);
   if (!normalized) return null;
-  const { data, error } = await supabase.rpc('lookup_profile_by_user_code', {
+  const rpcRes = await supabase.rpc('lookup_profile_by_user_code', {
     p_user_code: normalized,
   });
+  if (!rpcRes.error) {
+    const row = normalizeBasicProfile(firstRow(rpcRes.data));
+    return row.id ? row : null;
+  }
+
+  const publicRes = await supabase
+    .from('public_profiles')
+    .select('user_id,name,user_code,total_xp')
+    .eq('user_code', normalized)
+    .maybeSingle();
+  if (!publicRes.error && publicRes.data) {
+    const row = normalizeBasicProfile(publicRes.data);
+    return row.id ? row : null;
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,name,email,user_code,total_xp')
+    .eq('user_code', normalized)
+    .maybeSingle();
   if (error) throw error;
-  return firstRow(data);
+  const row = normalizeBasicProfile(firstRow(data));
+  return row.id ? row : null;
 }
 
 export async function sendFriendRequestRpc({ userId, friendUserId }) {
@@ -105,12 +160,8 @@ export async function fetchFriendsState(userId) {
     }
   }
 
-  const idsToFetch = Array.from(profileIds);
-  const { data: profiles, error: profileError } = await supabase.rpc('get_profiles_basic', {
-    p_user_ids: idsToFetch,
-  });
-
-  if (profileError) throw profileError;
+  const idsToFetch = Array.from(profileIds).filter(Boolean);
+  const profiles = await fetchProfilesBasic(idsToFetch);
 
   const profilesById = {};
   for (const profile of profiles || []) profilesById[profile.id] = profile;

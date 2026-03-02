@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 const ADMIN_SESSION_STORAGE_KEY = 'nithya_admin_session_token';
 let inMemoryAdminSessionToken = '';
 
-const safeSessionStorage = () => {
+const getSessionStorage = () => {
   if (typeof window === 'undefined') return null;
   try {
     return window.sessionStorage;
@@ -12,36 +12,61 @@ const safeSessionStorage = () => {
   }
 };
 
-export const getAdminSessionToken = () => {
-  if (inMemoryAdminSessionToken) return inMemoryAdminSessionToken;
-  if (typeof window === 'undefined') return '';
+const getLegacyLocalStorage = () => {
+  if (typeof window === 'undefined') return null;
   try {
-    const storage = safeSessionStorage();
-    const current = storage?.getItem(ADMIN_SESSION_STORAGE_KEY) || '';
-    if (current) return current;
-
-    // One-time migration from legacy localStorage token.
-    const legacy = window.localStorage?.getItem(ADMIN_SESSION_STORAGE_KEY) || '';
-    if (!legacy) return '';
-    setAdminSessionToken(legacy);
-    window.localStorage?.removeItem(ADMIN_SESSION_STORAGE_KEY);
-    return legacy;
+    return window.localStorage;
   } catch (_) {
-    return '';
+    return null;
   }
 };
 
-export const setAdminSessionToken = (token) => {
-  inMemoryAdminSessionToken = token || '';
-  if (typeof window === 'undefined') return;
+export const getAdminSessionToken = () => {
+  if (inMemoryAdminSessionToken) return inMemoryAdminSessionToken;
+
+  const sessionStorageRef = getSessionStorage();
+  const localStorageRef = getLegacyLocalStorage();
+  const sessionToken = sessionStorageRef?.getItem(ADMIN_SESSION_STORAGE_KEY) || '';
+  if (sessionToken) {
+    inMemoryAdminSessionToken = sessionToken;
+    return sessionToken;
+  }
+
+  const legacyToken = localStorageRef?.getItem(ADMIN_SESSION_STORAGE_KEY) || '';
+  if (!legacyToken) return '';
+
   try {
-    const storage = safeSessionStorage();
-    if (!storage) return;
-    if (!token) {
-      storage.removeItem(ADMIN_SESSION_STORAGE_KEY);
-      return;
+    sessionStorageRef?.setItem(ADMIN_SESSION_STORAGE_KEY, legacyToken);
+    localStorageRef?.removeItem(ADMIN_SESSION_STORAGE_KEY);
+  } catch (_) {
+    // Ignore storage migration failures.
+  }
+
+  inMemoryAdminSessionToken = legacyToken;
+  return legacyToken;
+};
+
+export const setAdminSessionToken = (token) => {
+  const nextToken = token || '';
+  inMemoryAdminSessionToken = nextToken;
+
+  const sessionStorageRef = getSessionStorage();
+  const localStorageRef = getLegacyLocalStorage();
+  if (!sessionStorageRef && !localStorageRef) return;
+
+  if (!nextToken) {
+    try {
+      sessionStorageRef?.removeItem(ADMIN_SESSION_STORAGE_KEY);
+      localStorageRef?.removeItem(ADMIN_SESSION_STORAGE_KEY);
+    } catch (_) {
+      // Ignore storage failures.
     }
-    storage.setItem(ADMIN_SESSION_STORAGE_KEY, token);
+    return;
+  }
+
+  try {
+    sessionStorageRef?.setItem(ADMIN_SESSION_STORAGE_KEY, nextToken);
+    localStorageRef?.removeItem(ADMIN_SESSION_STORAGE_KEY);
   } catch (_) {
     // Ignore storage failures.
   }

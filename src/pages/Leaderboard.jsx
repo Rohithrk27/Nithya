@@ -9,6 +9,7 @@ import HoloPanel from '@/components/HoloPanel';
 import SystemBackground from '@/components/SystemBackground';
 import { computeLevel, STAT_KEYS } from '@/components/gameEngine';
 import {
+  fetchProfilesBasic,
   fetchFriendsState,
   normalizeUserCode,
   respondFriendRequestRpc,
@@ -145,24 +146,37 @@ export default function Leaderboard() {
     setLoading(true);
     setStatusText('');
     try {
-      const { data: globalProfiles, error: globalError } = await supabase
-        .from('public_profiles')
-        .select('user_id,username,name,user_code,level,total_xp,stat_distribution')
-        .order('total_xp', { ascending: false })
-        .limit(100);
-      if (globalError) throw globalError;
+      let allProfiles = [];
+      const { data: publicRows, error: publicError } = await supabase.rpc('get_public_leaderboard', {
+        p_limit: 100,
+      });
+      if (!publicError) {
+        allProfiles = (publicRows || []).map((row) => ({
+          id: row.user_id,
+          name: row.name,
+          user_code: row.user_code,
+          level: Number(row.level || 0),
+          total_xp: Number(row.total_xp || 0),
+        }));
+      } else {
+        const { data: fallbackRows, error: fallbackError } = await supabase
+          .from('public_profiles')
+          .select('user_id,name,user_code,level,total_xp')
+          .eq('is_public', true)
+          .order('total_xp', { ascending: false })
+          .limit(100);
+        if (fallbackError) throw fallbackError;
+        allProfiles = (fallbackRows || []).map((row) => ({
+          id: row.user_id,
+          name: row.name,
+          user_code: row.user_code,
+          level: Number(row.level || 0),
+          total_xp: Number(row.total_xp || 0),
+        }));
+      }
 
-      const allProfiles = (globalProfiles || []).map((row) => ({
-        id: row.user_id,
-        user_id: row.user_id,
-        username: row.username,
-        name: row.name,
-        user_code: row.user_code,
-        level: Number(row.level || 0),
-        total_xp: Number(row.total_xp || 0),
-        stat_distribution: row.stat_distribution || {},
-      }));
       setGlobalRows(hydrateRows(allProfiles));
+
       const { data: weeklyData, error: weeklyError } = await supabase.rpc('get_weekly_leaderboard', { p_limit: 100 });
       if (weeklyError) {
         setWeeklyRows([]);
@@ -177,6 +191,7 @@ export default function Leaderboard() {
         }));
         setWeeklyRows(normalizedWeekly);
       }
+
       const me = allProfiles.find((p) => p.id === userId) || null;
       setCurrentProfile(me);
 
@@ -200,6 +215,7 @@ export default function Leaderboard() {
       try {
         const friendState = await fetchFriendsState(userId);
         setFriendsFeatureEnabled(true);
+
         const incoming = (friendState.incoming || []).map((row) => ({
           id: `${row.user_id}:${row.friend_user_id}`,
           requester_id: row.user_id,
@@ -223,17 +239,13 @@ export default function Leaderboard() {
 
         const friendIds = Array.from(new Set((friendState.accepted || []).map((r) => r.friend_user_id)));
         const ids = Array.from(new Set([userId, ...friendIds]));
-        const { data: friendsProfiles, error: friendsError } = await supabase.rpc('get_profiles_basic', {
-          p_user_ids: ids,
-        });
-        if (!friendsError) {
-          for (const fp of friendsProfiles || []) {
-            directorySeed[fp.id] = fp;
-            seedIds.add(fp.id);
-          }
-          setProfileDirectory({ ...directorySeed });
-          setFriendRows(hydrateRows(friendsProfiles));
+        const friendsProfiles = await fetchProfilesBasic(ids);
+        for (const fp of friendsProfiles || []) {
+          directorySeed[fp.id] = fp;
+          seedIds.add(fp.id);
         }
+        setProfileDirectory({ ...directorySeed });
+        setFriendRows(hydrateRows(friendsProfiles));
       } catch (_friendErr) {
         setFriendsFeatureEnabled(false);
         setIncomingRequests([]);
@@ -245,18 +257,14 @@ export default function Leaderboard() {
       try {
         const idsForIdentity = Array.from(seedIds).filter(Boolean);
         if (idsForIdentity.length > 0) {
-          const { data: identityProfiles, error: identityError } = await supabase.rpc('get_profiles_basic', {
-            p_user_ids: idsForIdentity,
-          });
-          if (!identityError) {
-            for (const entry of identityProfiles || []) {
-              directorySeed[entry.id] = {
-                ...(directorySeed[entry.id] || {}),
-                ...entry,
-              };
-            }
-            setProfileDirectory({ ...directorySeed });
+          const identityProfiles = await fetchProfilesBasic(idsForIdentity);
+          for (const entry of identityProfiles || []) {
+            directorySeed[entry.id] = {
+              ...(directorySeed[entry.id] || {}),
+              ...entry,
+            };
           }
+          setProfileDirectory({ ...directorySeed });
         }
       } catch (_) {
         // Best-effort identity enrichment for weekly/global ID display.

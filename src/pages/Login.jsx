@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { adminLogin } from '@/lib/admin';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -66,15 +65,20 @@ export default function Login() {
       if (!user) return createPageUrl('Login');
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, role')
         .eq('id', user.id)
         .maybeSingle();
       if (profileError) return redirectTarget;
-      return profile ? redirectTarget : landingPath;
+      if (!profile) return landingPath;
+      const role = String(profile.role || 'user').trim().toLowerCase();
+      if (role === 'admin' && redirectTarget === defaultRedirect) {
+        return '/admin-dashboard';
+      }
+      return redirectTarget;
     } catch {
       return redirectTarget;
     }
-  }, [landingPath, redirectTarget]);
+  }, [defaultRedirect, landingPath, redirectTarget]);
 
   useEffect(() => {
     if (!pendingPostAuthRedirect) return;
@@ -101,25 +105,6 @@ export default function Login() {
 
     try {
       if (mode === 'login') {
-        const identifier = email.trim();
-        if (identifier.toLowerCase() === 'admin') {
-          try {
-            await adminLogin({
-              username: identifier,
-              password,
-              userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-            });
-            setMessage('Admin login successful. Redirecting...');
-            setMessageType('success');
-            navigate('/admin-dashboard', { replace: true });
-            return;
-          } catch (adminErr) {
-            setMessage(normalizeErrorMessage(adminErr));
-            setMessageType('error');
-            return;
-          }
-        }
-
         const { error } = await login(email, password);
         
         if (error) {
@@ -219,15 +204,13 @@ export default function Login() {
     return (
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="email" className="text-[#94A3B8]">
-            {mode === 'login' ? 'Email or Username' : 'Email'}
-          </Label>
+          <Label htmlFor="email" className="text-[#94A3B8]">Email</Label>
           <Input
             id="email"
-            type={mode === 'login' ? 'text' : 'email'}
+            type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder={mode === 'login' ? 'you@example.com or admin' : 'you@example.com'}
+            placeholder="you@example.com"
             required
             className="mt-1 h-12 bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
           />

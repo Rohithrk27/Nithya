@@ -112,7 +112,7 @@ begin
 end;
 $$;
 
-grant execute on function public.admin_login(text, text, text) to anon, authenticated;
+revoke execute on function public.admin_login(text, text, text) from public, anon, authenticated;
 
 -- =========================================================
 -- PROFILES PRIVACY HARDENING
@@ -147,6 +147,7 @@ as $$
     coalesce(p.total_xp, 0)::bigint as total_xp
   from public.profiles p
   where auth.uid() is not null
+    and lower(coalesce(p.role, 'user')) <> 'admin'
     and p.user_code = upper(trim(coalesce(p_user_code, '')))
   limit 1;
 $$;
@@ -171,12 +172,140 @@ as $$
     coalesce(p.total_xp, 0)::bigint as total_xp
   from public.profiles p
   where auth.uid() is not null
+    and lower(coalesce(p.role, 'user')) <> 'admin'
     and p.id = any(coalesce(p_user_ids, array[]::uuid[]));
 $$;
 
 grant execute on function public.lookup_profile_by_user_code(text) to authenticated;
 grant execute on function public.get_profiles_basic(uuid[]) to authenticated;
 
+-- Hide admin accounts from public profile surfaces and prevent re-enabling.
+do $$
+begin
+  if to_regclass('public.public_profiles') is null then
+    return;
+  end if;
+
+  update public.public_profiles pp
+  set
+    is_public = false,
+    updated_at = now()
+  from public.profiles p
+  where p.id = pp.user_id
+    and lower(coalesce(p.role, 'user')) = 'admin'
+    and pp.is_public = true;
+end;
+$$;
+
+create or replace function public.set_public_profile_visibility(
+  p_user_id uuid,
+  p_is_public boolean
+)
+returns public.public_profiles
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_row public.public_profiles%rowtype;
+  v_role text := 'user';
+begin
+  if auth.uid() <> p_user_id then
+    raise exception 'forbidden';
+  end if;
+
+  perform public.refresh_public_profile(p_user_id);
+
+  select lower(coalesce(p.role, 'user'))
+  into v_role
+  from public.profiles p
+  where p.id = p_user_id
+  limit 1;
+
+  update public.public_profiles
+  set
+    is_public = case when coalesce(v_role, 'user') = 'admin' then false else coalesce(p_is_public, false) end,
+    updated_at = now()
+  where user_id = p_user_id
+  returning *
+  into v_row;
+
+  return v_row;
+end;
+$$;
+
+grant execute on function public.set_public_profile_visibility(uuid, boolean) to authenticated;
+
+create or replace function public.get_public_leaderboard(
+  p_limit integer default 100
+)
+returns table(
+  user_id uuid,
+  name text,
+  user_code text,
+  level integer,
+  total_xp bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    pp.user_id::uuid,
+    nullif(trim(coalesce(pp.name, '')), '')::text as name,
+    pp.user_code::text,
+    coalesce(pp.level, 0)::integer as level,
+    coalesce(pp.total_xp, 0)::bigint as total_xp
+  from public.public_profiles pp
+  join public.profiles p on p.id = pp.user_id
+  where pp.is_public = true
+    and lower(coalesce(p.role, 'user')) <> 'admin'
+  order by coalesce(pp.total_xp, 0) desc, coalesce(pp.level, 0) desc, pp.user_id
+  limit greatest(1, least(500, coalesce(p_limit, 100)));
+$$;
+
+grant execute on function public.get_public_leaderboard(integer) to authenticated;
+
+create or replace function public.get_weekly_leaderboard(
+  p_limit integer default 50
+)
+returns table(
+  user_id uuid,
+  name text,
+  total_weekly_xp bigint,
+  level integer,
+  rank_position integer
+)
+language sql
+security definer
+set search_path = public
+as $$
+  with bounds as (
+    select (current_date - ((extract(isodow from current_date)::int - 1)))::date as week_start
+  ),
+  agg as (
+    select
+      p.id as user_id,
+      p.name,
+      coalesce(sum(case when coalesce(x.xp_change, x.change_amount, 0) > 0 then coalesce(x.xp_change, x.change_amount, 0) else 0 end), 0)::bigint as total_weekly_xp,
+      coalesce(p.level, 0) as level
+    from public.profiles p
+    left join public.xp_logs x on x.user_id = p.id
+      and coalesce(x.date, (x.created_at at time zone 'utc')::date) >= (select week_start from bounds)
+    where lower(coalesce(p.role, 'user')) <> 'admin'
+    group by p.id, p.name, p.level
+  )
+  select
+    a.user_id,
+    a.name,
+    a.total_weekly_xp,
+    a.level,
+    row_number() over (order by a.total_weekly_xp desc, a.level desc, a.user_id) as rank_position
+  from agg a
+  order by a.total_weekly_xp desc, a.level desc, a.user_id
+  limit greatest(1, least(500, coalesce(p_limit, 50)));
+$$;
 -- =========================================================
 -- MAINTENANCE MODE ENFORCEMENT
 -- =========================================================
