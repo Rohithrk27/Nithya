@@ -654,28 +654,31 @@ export default function AdminDashboard() {
           <p className="mt-2 text-[11px] text-slate-500">
             Last refresh: {lastRefreshAt ? formatDateTime(lastRefreshAt) : 'Not yet'}
           </p>
-          <div className="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {ADMIN_TABS.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                  className="rounded-lg px-3 py-2 text-left border transition-colors"
-                  style={{
-                    borderColor: active ? 'rgba(56,189,248,0.5)' : 'rgba(51,65,85,0.8)',
-                    background: active ? 'rgba(8,47,73,0.45)' : 'rgba(15,23,42,0.35)',
-                    color: active ? '#67E8F9' : '#94A3B8',
-                  }}
-                >
-                  <p className="text-[11px] font-black tracking-widest flex items-center gap-1.5">
-                    <Icon className="w-3.5 h-3.5" /> {tab.label.toUpperCase()}
-                  </p>
-                </button>
-              );
-            })}
+          <div className="mt-3">
+            <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {ADMIN_TABS.map((tab) => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className="min-w-[132px] sm:min-w-0 sm:flex-1 rounded-lg px-3 py-2 text-left border transition-colors"
+                    style={{
+                      borderColor: active ? 'rgba(56,189,248,0.5)' : 'rgba(51,65,85,0.8)',
+                      background: active ? 'rgba(8,47,73,0.45)' : 'rgba(15,23,42,0.35)',
+                      color: active ? '#67E8F9' : '#94A3B8',
+                    }}
+                  >
+                    <p className="text-[11px] font-black tracking-widest flex items-center gap-1.5 whitespace-nowrap">
+                      <Icon className="w-3.5 h-3.5" /> {tab.label.toUpperCase()}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500 sm:hidden">Swipe to view all sections.</p>
           </div>
         </HoloPanel>
         <datalist id="admin-user-id-options">
