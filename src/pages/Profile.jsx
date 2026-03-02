@@ -481,6 +481,12 @@ export default function Profile() {
             <p className="text-xs text-slate-300">
               Support ongoing development and maintenance with a UPI donation.
             </p>
+            <p className="text-xs text-slate-300">
+              Need help?{' '}
+              <a href="mailto:itsnithyaapp@gmail.com" className="underline" style={{ color: '#7DD3FC' }}>
+                Contact us
+              </a>
+            </p>
             <Button onClick={() => setDonationOpen(true)} className="w-full sm:w-auto">
               Donate with UPI
             </Button>

@@ -36,50 +36,110 @@ function IntroHero({ onBeginJourney, onSignIn }) {
       />
 
       <main className="intro-hero" role="main">
-        <motion.section
-          className="intro-logo-section"
-          initial={{ opacity: 0, scale: 0.86 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.22, duration: 0.65, ease: [0.2, 0.8, 0.2, 1] }}
-        >
-          <div className="intro-logo-wave" aria-hidden="true" />
-          <div className="intro-avatar-silhouette" aria-hidden="true" />
-          <div className="intro-logo-crop">
-            <img src={LogoMark} alt="Nithya logo" className="intro-logo-svg" />
-          </div>
-        </motion.section>
+        <div className="intro-main-content">
+          <motion.section
+            className="intro-logo-section"
+            initial={{ opacity: 0, scale: 0.86 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.22, duration: 0.65, ease: [0.2, 0.8, 0.2, 1] }}
+          >
+            <div className="intro-logo-wave" aria-hidden="true" />
+            <div className="intro-avatar-silhouette" aria-hidden="true" />
+            <div className="intro-logo-crop">
+              <img src={LogoMark} alt="Nithya logo" className="intro-logo-svg" />
+            </div>
+          </motion.section>
 
-        <motion.h1
-          className="intro-header-text"
-          initial={{ opacity: 0, y: 26 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35, duration: 0.7, ease: [0.2, 0.8, 0.2, 1] }}
-        >
-          NITHYA
-        </motion.h1>
+          <motion.p
+            className="intro-brand"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35, duration: 0.55, ease: 'easeOut' }}
+          >
+            NITHYA
+          </motion.p>
 
-        <motion.p
-          className="intro-tagline"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.58, duration: 0.62, ease: 'easeOut' }}
-        >
-          Discipline. Evolve. Conquer.
-        </motion.p>
+          <motion.h1
+            className="intro-header-text"
+            initial={{ opacity: 0, y: 26 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.42, duration: 0.7, ease: [0.2, 0.8, 0.2, 1] }}
+          >
+            Build unstoppable discipline. One day at a time.
+          </motion.h1>
 
-        <motion.div
-          className="intro-cta"
-          initial={{ opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.82, duration: 0.5, ease: 'easeOut' }}
-        >
-          <Button type="button" className="intro-btn intro-btn--primary" onClick={onBeginJourney}>
-            Begin Journey
-          </Button>
-          <Button type="button" className="intro-btn intro-btn--secondary" onClick={onSignIn}>
-            Sign In
-          </Button>
-        </motion.div>
+          <motion.p
+            className="intro-tagline"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.58, duration: 0.62, ease: 'easeOut' }}
+          >
+            Turn routines into streaks, streaks into levels, and levels into a stronger you.
+          </motion.p>
+
+          <motion.section
+            className="intro-demo"
+            aria-label="Live app demo preview"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.72, duration: 0.6, ease: 'easeOut' }}
+          >
+            <div className="intro-demo-header">
+              <span>Today&apos;s Power Session</span>
+              <span>Hunter Level 7</span>
+            </div>
+            <ul className="intro-demo-list">
+              <li>
+                <span>6:00 AM wake-up mission complete</span>
+                <strong>+40 XP</strong>
+              </li>
+              <li>
+                <span>45-minute deep-focus grind</span>
+                <strong>+60 XP</strong>
+              </li>
+              <li>
+                <span>30-minute workout finished strong</span>
+                <strong>+50 XP</strong>
+              </li>
+            </ul>
+            <div className="intro-demo-footer">
+              <div className="intro-demo-streak">
+                <span>Streak live</span>
+                <strong>12 days</strong>
+              </div>
+              <div className="intro-demo-progress" role="presentation" aria-hidden="true">
+                <div className="intro-demo-progress-bar" />
+              </div>
+            </div>
+          </motion.section>
+
+          <motion.div
+            className="intro-cta"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.86, duration: 0.5, ease: 'easeOut' }}
+          >
+            <Button type="button" className="intro-btn intro-btn--primary" onClick={onBeginJourney}>
+              Try Free
+            </Button>
+            <p className="intro-signin-hint">
+              Already using Nithya?{' '}
+              <button type="button" className="intro-text-link" onClick={onSignIn}>
+                Sign in
+              </button>
+            </p>
+          </motion.div>
+        </div>
+
+        <footer className="intro-footer" aria-label="Privacy and support">
+          <a href="#intro-privacy-policy" className="intro-footer-link">Privacy Policy</a>
+          <span className="intro-footer-divider" aria-hidden="true">|</span>
+          <span id="intro-privacy-policy">We only use your account data to run habit tracking and progress insights.</span>
+          <span className="intro-footer-divider" aria-hidden="true">|</span>
+          <a href="mailto:itsnithyaapp@gmail.com" className="intro-footer-link">
+            Contact us
+          </a>
+        </footer>
       </main>
     </div>
   );
