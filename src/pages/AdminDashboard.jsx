@@ -85,7 +85,7 @@ const formatDateTime = (value) => {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { isAuthenticated, profileRole } = useAuth();
+  const { isAuthenticated, profileRole, logout: logoutAuth } = useAuth();
   const [sessionReady, setSessionReady] = useState(false);
   const [adminName, setAdminName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -333,7 +333,12 @@ export default function AdminDashboard() {
   };
 
   const logoutAdmin = async () => {
-    await adminLogout(getAdminSessionToken());
+    try {
+      await adminLogout(getAdminSessionToken());
+    } catch (_) {
+      // Continue logout flow even if admin session revoke fails.
+    }
+    await logoutAuth();
     navigate('/login', { replace: true });
   };
 
