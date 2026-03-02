@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { createPageUrl } from './utils';
-import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, Gem, LogIn, LogOut, Trophy, Menu, X, ShieldAlert, Ticket, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, Gem, LogIn, LogOut, Trophy, Menu, X, ShieldAlert, Ticket, MessageSquare, Timer, Brain, Users, ShieldCheck } from 'lucide-react';
 import ConfirmActionModal from '@/components/ConfirmActionModal';
 
 const LOGO_URL = '/logo/logo.svg';
@@ -25,7 +25,11 @@ const NAV_ITEMS = [
   { label: 'Leaderboard', page: 'Leaderboard', icon: Trophy },
   { label: 'Habits', page: 'Habits', icon: Dumbbell },
   { label: 'Analytics', page: 'Analytics', icon: BarChart2 },
+  { label: 'Insights', page: 'Insights', icon: Brain },
+  { label: 'Focus', page: 'Focus', icon: Timer },
   { label: 'Quests', page: 'Quests', icon: Sword },
+  { label: 'Party Challenges', page: 'PartyChallenges', icon: Users },
+  { label: 'Recovery', page: 'Recovery', icon: ShieldCheck },
   { label: 'Relics', page: 'Relics', icon: Gem },
   { label: 'Redeem Codes', page: 'RedeemCodes', icon: Ticket },
   { label: 'Archive', page: 'Archive', icon: Archive },
@@ -37,6 +41,10 @@ const NAV_ITEMS = [
 
 const MOBILE_EXTRA_NAV = [
   { label: 'Analytics', page: 'Analytics', icon: BarChart2 },
+  { label: 'Insights', page: 'Insights', icon: Brain },
+  { label: 'Focus', page: 'Focus', icon: Timer },
+  { label: 'Party Challenges', page: 'PartyChallenges', icon: Users },
+  { label: 'Recovery', page: 'Recovery', icon: ShieldCheck },
   { label: 'Relics', page: 'Relics', icon: Gem },
   { label: 'Redeem Codes', page: 'RedeemCodes', icon: Ticket },
   { label: 'Archive', page: 'Archive', icon: Archive },

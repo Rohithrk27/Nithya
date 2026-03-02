@@ -54,9 +54,13 @@ const Analytics = lazy(() => import('./pages/Analytics'));
 const Archive = lazy(() => import('./pages/Archive'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Dungeon = lazy(() => import('./pages/Dungeon'));
+const Focus = lazy(() => import('./pages/Focus'));
 const Landing = lazy(() => import('./pages/Landing'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const Profile = lazy(() => import('./pages/Profile'));
+const Insights = lazy(() => import('./pages/Insights'));
+const PartyChallenges = lazy(() => import('./pages/PartyChallenges'));
+const Recovery = lazy(() => import('./pages/Recovery'));
 const Community = lazy(() => import('./pages/Community'));
 const PaymentVerification = lazy(() => import('./pages/PaymentVerification'));
 const Quests = lazy(() => import('./pages/Quests'));
@@ -72,9 +76,13 @@ export const PAGES = {
     "Archive": Archive,
     "Dashboard": Dashboard,
     "Dungeon": Dungeon,
+    "Focus": Focus,
     "Landing": Landing,
     "Leaderboard": Leaderboard,
     "Profile": Profile,
+    "Insights": Insights,
+    "PartyChallenges": PartyChallenges,
+    "Recovery": Recovery,
     "Community": Community,
     "PaymentVerification": PaymentVerification,
     "Quests": Quests,

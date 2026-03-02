@@ -41,6 +41,97 @@ const toDateTimeLocalValue = (value) => {
   return parsed.toISOString().slice(0, 16);
 };
 
+const HABIT_OPTIONAL_COLUMNS = [
+  'description',
+  'deadline_at',
+  'punishment_type',
+  'punishment_value',
+  'punishment_difficulty',
+  'punishment_xp_penalty_pct',
+];
+
+const isMissingHabitsColumnError = (error) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    (
+      msg.includes("column of 'habits'")
+      && msg.includes('could not find')
+    )
+    || (
+      msg.includes('relation "habits"')
+      && msg.includes('column')
+      && msg.includes('does not exist')
+    )
+    || (
+      msg.includes('column')
+      && msg.includes('habits')
+      && msg.includes('does not exist')
+    )
+  );
+};
+
+const getMissingHabitsColumn = (error) => {
+  const raw = String(error?.message || '');
+  let match = raw.match(/Could not find the '([^']+)' column of 'habits'/i);
+  if (match?.[1]) return match[1];
+  match = raw.match(/column "([^"]+)" of relation "habits" does not exist/i);
+  if (match?.[1]) return match[1];
+  return null;
+};
+
+const runHabitWriteCompat = async ({ mode, payload, userId, habitId }) => {
+  let workingPayload = { ...payload };
+  let fallbackUsed = false;
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const result = mode === 'update'
+      ? await supabase
+        .from('habits')
+        .update(workingPayload)
+        .eq('id', habitId)
+        .eq('user_id', userId)
+        .select('*')
+        .maybeSingle()
+      : await supabase
+        .from('habits')
+        .insert(workingPayload)
+        .select('*')
+        .single();
+
+    if (!result.error) {
+      return { data: result.data || null, payload: workingPayload, fallbackUsed, error: null };
+    }
+
+    if (!isMissingHabitsColumnError(result.error)) {
+      return { data: null, payload: workingPayload, fallbackUsed, error: result.error };
+    }
+
+    const missingColumn = getMissingHabitsColumn(result.error);
+    if (missingColumn && Object.prototype.hasOwnProperty.call(workingPayload, missingColumn)) {
+      delete workingPayload[missingColumn];
+      fallbackUsed = true;
+      continue;
+    }
+
+    if (!fallbackUsed) {
+      fallbackUsed = true;
+      for (const columnName of HABIT_OPTIONAL_COLUMNS) {
+        delete workingPayload[columnName];
+      }
+      continue;
+    }
+
+    return { data: null, payload: workingPayload, fallbackUsed, error: result.error };
+  }
+
+  return {
+    data: null,
+    payload: workingPayload,
+    fallbackUsed: true,
+    error: new Error('Failed to save habit because the habits schema is out of date.'),
+  };
+};
+
 export default function Habits() {
   const navigate = useNavigate();
   const { user, authReady } = useAuthedPageUser();
@@ -62,25 +153,35 @@ export default function Habits() {
 
   const loadData = async (userId) => {
     if (!userId) return;
-    const { data } = await supabase
-      .from('habits')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    const habitRows = data || [];
-    setHabits(habitRows);
-    const habitIds = habitRows.map((row) => row.id).filter(Boolean);
-    if (habitIds.length > 0) {
-      try {
-        const subtasks = await fetchHabitSubtasks({ userId, habitIds });
-        setSubtasksByHabit(mapSubtasksByHabit(subtasks));
-      } catch (_) {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('habits')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const habitRows = data || [];
+      setHabits(habitRows);
+      const habitIds = habitRows.map((row) => row.id).filter(Boolean);
+      if (habitIds.length > 0) {
+        try {
+          const subtasks = await fetchHabitSubtasks({ userId, habitIds });
+          setSubtasksByHabit(mapSubtasksByHabit(subtasks));
+        } catch (_) {
+          setSubtasksByHabit({});
+        }
+      } else {
         setSubtasksByHabit({});
       }
-    } else {
+    } catch (err) {
+      setHabits([]);
       setSubtasksByHabit({});
+      toastError(err?.message || 'Failed to load habits.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const openNew = () => {
@@ -108,39 +209,90 @@ export default function Habits() {
   };
 
   const handleSave = async () => {
-    if (!form.title.trim() || !form.punishment_text.trim()) return;
-    setSaving(true);
-    const payload = {
-      ...form,
-      xp_value: Number(form.xp_value) || 50,
-      punishment_xp_penalty_pct: Number(form.punishment_xp_penalty_pct) || 10,
-      punishment_value: Math.max(0, Number(form.punishment_value || 0)),
-      deadline_at: form.deadline_at ? new Date(form.deadline_at).toISOString() : null,
-      user_id: user.id,
-    };
-    if (editingId) {
-      await supabase.from('habits').update(payload).eq('id', editingId).eq('user_id', user.id);
-      setHabits(h => h.map(x => x.id === editingId ? { ...x, ...payload } : x));
-    } else {
-      const { data } = await supabase.from('habits').insert(payload).select().single();
-      setHabits(h => [...h, data || { ...payload }]);
-      if (data?.id) {
-        setSubtasksByHabit((prev) => ({ ...prev, [data.id]: [] }));
-      }
+    if (!user?.id) {
+      toastError('You must be signed in to save habits.');
+      return;
     }
-    setShowForm(false);
-    setEditingId(null);
-    setSaving(false);
+
+    const title = form.title.trim();
+    const punishmentText = form.punishment_text.trim();
+
+    if (!title) {
+      toastError('Habit name is required.');
+      return;
+    }
+
+    if (!punishmentText && !editingId) {
+      toastError('Punishment description is required for new habits.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        title,
+        description: form.description?.trim() || '',
+        punishment_text: punishmentText,
+        xp_value: Number(form.xp_value) || 50,
+        punishment_xp_penalty_pct: Number(form.punishment_xp_penalty_pct) || 10,
+        punishment_value: Math.max(0, Number(form.punishment_value || 0)),
+        deadline_at: form.deadline_at ? new Date(form.deadline_at).toISOString() : null,
+        user_id: user.id,
+      };
+
+      if (editingId) {
+        const result = await runHabitWriteCompat({
+          mode: 'update',
+          payload,
+          userId: user.id,
+          habitId: editingId,
+        });
+        if (result.error) throw result.error;
+
+        const nextHabit = result.data || { id: editingId, ...result.payload };
+        setHabits((prev) => prev.map((row) => (row.id === editingId ? { ...row, ...nextHabit } : row)));
+      } else {
+        const result = await runHabitWriteCompat({
+          mode: 'insert',
+          payload,
+          userId: user.id,
+          habitId: null,
+        });
+        if (result.error) throw result.error;
+
+        if (result.data?.id) {
+          setHabits((prev) => [...prev, result.data]);
+          setSubtasksByHabit((prev) => ({ ...prev, [result.data.id]: [] }));
+        } else {
+          await loadData(user.id);
+        }
+      }
+
+      setShowForm(false);
+      setEditingId(null);
+    } catch (err) {
+      toastError(err?.message || 'Failed to save habit.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id) => {
-    await supabase.from('habits').delete().eq('id', id).eq('user_id', user.id);
-    setHabits(h => h.filter(x => x.id !== id));
-    setSubtasksByHabit((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
+    if (!user?.id) return;
+    try {
+      const { error } = await supabase.from('habits').delete().eq('id', id).eq('user_id', user.id);
+      if (error) throw error;
+
+      setHabits((h) => h.filter((x) => x.id !== id));
+      setSubtasksByHabit((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch (err) {
+      toastError(err?.message || 'Failed to delete habit.');
+    }
   };
 
   const updateSubtaskDraft = (habitId, patch) => {
@@ -392,7 +544,7 @@ export default function Habits() {
                   </div>
 
                   {/* Save */}
-                  <Button onClick={handleSave} disabled={saving || !form.title || !form.punishment_text} className="w-full font-black tracking-widest"
+                  <Button onClick={handleSave} disabled={saving || !form.title.trim() || (!editingId && !form.punishment_text.trim())} className="w-full font-black tracking-widest"
                     style={{ background: 'rgba(56,189,248,0.15)', border: '1px solid rgba(56,189,248,0.4)', color: '#38BDF8' }}>
                     <Check className="w-4 h-4 mr-2" />
                     {saving ? 'SAVING...' : editingId ? 'UPDATE HABIT' : 'CREATE HABIT'}

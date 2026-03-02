@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
-import { ArrowLeft, Flame, Trophy } from 'lucide-react';
-import { fetchPublicProfileByUsername } from '@/lib/publicProfiles';
-import { levelProgressPct, xpBetweenLevels, xpIntoCurrentLevel } from '@/components/gameEngine';
+import { ArrowLeft, Award, Flame, Trophy } from 'lucide-react';
+import { fetchPublicProfileByUsername, fetchPublicProfileRank } from '@/lib/publicProfiles';
+import { getRankTitle, levelProgressPct, xpBetweenLevels, xpIntoCurrentLevel } from '@/components/gameEngine';
 
 const STAT_LABELS = [
   { key: 'strength', label: 'STR' },
@@ -19,6 +19,7 @@ export default function PublicProfile() {
   const { username } = useParams();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
+  const [rankPosition, setRankPosition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -27,10 +28,19 @@ export default function PublicProfile() {
     const loadProfile = async () => {
       setLoading(true);
       setError('');
+      setRankPosition(null);
       try {
         const row = await fetchPublicProfileByUsername(username || '');
         if (cancelled) return;
         setProfile(row || null);
+        if (row?.username) {
+          try {
+            const rank = await fetchPublicProfileRank(row.username);
+            if (!cancelled) setRankPosition(rank);
+          } catch (_) {
+            if (!cancelled) setRankPosition(null);
+          }
+        }
       } catch (err) {
         if (cancelled) return;
         setError(err?.message || 'Failed to load public profile.');
@@ -46,6 +56,7 @@ export default function PublicProfile() {
 
   const totalXp = Number(profile?.total_xp || 0);
   const level = Number(profile?.level || 0);
+  const rankTitle = useMemo(() => String(getRankTitle(level)), [level]);
   const xpInLevel = Math.max(0, Math.floor(xpIntoCurrentLevel(totalXp)));
   const xpNeeded = Math.max(1, Math.floor(xpBetweenLevels(level)));
   const xpPct = Math.max(0, Math.min(100, Math.round(levelProgressPct(totalXp))));
@@ -63,6 +74,21 @@ export default function PublicProfile() {
   const dungeonAchievements = (profile?.dungeon_achievements && typeof profile.dungeon_achievements === 'object')
     ? profile.dungeon_achievements
     : {};
+  const completedRuns = Number(dungeonAchievements.completed || 0);
+  const bestRunDays = Number(dungeonAchievements.best_completed_days || 0);
+  const failedRuns = Number(dungeonAchievements.failed || 0);
+  const streakDays = Number(profile?.streak_count || 0);
+  const unlockedAchievements = useMemo(() => {
+    const badges = [];
+    if (completedRuns >= 1) badges.push('First Dungeon Clear');
+    if (completedRuns >= 10) badges.push('Dungeon Veteran');
+    if (bestRunDays >= 7) badges.push('Week Survivor');
+    if (streakDays >= 7) badges.push('7-Day Streak');
+    if (streakDays >= 30) badges.push('30-Day Discipline');
+    if (level >= 100) badges.push('Rank Gate: Warrior');
+    if (level >= 350) badges.push('Rank Gate: Champion');
+    return badges;
+  }, [bestRunDays, completedRuns, level, streakDays]);
   const displayName = (profile?.name || profile?.username || 'Unknown Hunter');
 
   if (loading) {
@@ -122,6 +148,10 @@ export default function PublicProfile() {
               <p className="text-base md:text-lg font-bold text-cyan-100">{displayName}</p>
               <p className="text-lg md:text-xl font-black text-white">@{profile.username}</p>
               <p className="text-sm text-cyan-300">Level {level} · {totalXp.toLocaleString()} XP</p>
+              <p className="text-xs font-black tracking-widest text-amber-300">RANK: {rankTitle.toUpperCase()}</p>
+              <p className="text-xs font-black tracking-widest text-emerald-300">
+                GLOBAL LEADERBOARD: {Number.isFinite(rankPosition) && rankPosition > 0 ? `#${rankPosition}` : 'N/A'}
+              </p>
             </div>
           </div>
 
@@ -162,12 +192,27 @@ export default function PublicProfile() {
 
             <div className="space-y-3">
               <div className="rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.2)' }}>
+                <p className="text-xs tracking-widest font-black text-cyan-300 flex items-center gap-2 mb-1">
+                  <Award className="w-3.5 h-3.5" /> ACHIEVEMENTS
+                </p>
+                {unlockedAchievements.length === 0 ? (
+                  <p className="text-sm text-slate-300">No unlocked achievements yet.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {unlockedAchievements.map((item) => (
+                      <p key={item} className="text-sm text-cyan-100">• {item}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.2)' }}>
                 <p className="text-xs tracking-widest font-black text-amber-300 flex items-center gap-2 mb-1">
                   <Trophy className="w-3.5 h-3.5" /> DUNGEON ACHIEVEMENTS
                 </p>
-                <p className="text-sm text-white">Completed: {Number(dungeonAchievements.completed || 0)}</p>
-                <p className="text-sm text-white">Best Run: {Number(dungeonAchievements.best_completed_days || 0)} days</p>
-                <p className="text-sm text-white">Failed: {Number(dungeonAchievements.failed || 0)}</p>
+                <p className="text-sm text-white">Completed: {completedRuns}</p>
+                <p className="text-sm text-white">Best Run: {bestRunDays} days</p>
+                <p className="text-sm text-white">Failed: {failedRuns}</p>
               </div>
 
               <div className="rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.55)', border: '1px solid rgba(148,163,184,0.2)' }}>

@@ -214,7 +214,10 @@ export default function Punishments() {
                 {entries.length} active · accumulated punishment {projectedLoss} XP
               </p>
             </div>
-            <Button variant="outline" onClick={() => user?.id && loadData(user.id)}>Refresh</Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => navigate(createPageUrl('Recovery'))}>Recovery</Button>
+              <Button variant="outline" onClick={() => user?.id && loadData(user.id)}>Refresh</Button>
+            </div>
           </div>
         </HoloPanel>
 

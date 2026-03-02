@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -31,25 +31,6 @@ const toAmount = (raw) => {
   return parsed;
 };
 
-const PAYMENT_PROOF_BUCKET = 'payment-proofs';
-const MAX_PROOF_BYTES = 5 * 1024 * 1024;
-
-const guessFileExtension = (file) => {
-  const fromName = String(file?.name || '').split('.').pop()?.trim().toLowerCase();
-  if (fromName && /^[a-z0-9]+$/.test(fromName)) return fromName;
-  const mime = String(file?.type || '').toLowerCase();
-  if (mime === 'image/jpeg') return 'jpg';
-  if (mime === 'image/png') return 'png';
-  if (mime === 'image/webp') return 'webp';
-  return 'img';
-};
-
-const formatFileSize = (bytes) => {
-  const n = Number(bytes || 0);
-  if (!Number.isFinite(n) || n <= 0) return '0 MB';
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-};
-
 export default function PaymentVerification() {
   const navigate = useNavigate();
   const { user } = useAuthedPageUser();
@@ -68,46 +49,11 @@ export default function PaymentVerification() {
   const [paymentApp, setPaymentApp] = useState('');
   const [paidAt, setPaidAt] = useState(getDefaultPaidAt());
   const [notes, setNotes] = useState('');
-  const [proofFile, setProofFile] = useState(null);
-  const [proofPreviewUrl, setProofPreviewUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
 
   const amount = useMemo(() => toAmount(amountInput), [amountInput]);
-
-  useEffect(() => {
-    if (!proofFile) {
-      setProofPreviewUrl('');
-      return undefined;
-    }
-    const url = URL.createObjectURL(proofFile);
-    setProofPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [proofFile]);
-
-  const handleProofChange = (event) => {
-    const file = event.target.files?.[0] || null;
-    if (!file) {
-      setProofFile(null);
-      return;
-    }
-
-    if (!String(file.type || '').startsWith('image/')) {
-      setError('Screenshot must be an image file.');
-      setProofFile(null);
-      return;
-    }
-
-    if (file.size > MAX_PROOF_BYTES) {
-      setError('Screenshot size must be 5 MB or less.');
-      setProofFile(null);
-      return;
-    }
-
-    setError('');
-    setProofFile(file);
-  };
 
   const handleSubmit = async () => {
     if (!user?.id || saving) return;
@@ -121,32 +67,11 @@ export default function PaymentVerification() {
       setError('Enter a valid UTR / transaction reference.');
       return;
     }
-    if (!proofFile) {
-      setError('Upload payment screenshot for verification.');
-      return;
-    }
 
     setSaving(true);
     setError('');
     setInfo('');
-    let proofPath = '';
     try {
-      const ext = guessFileExtension(proofFile);
-      const randomPart = typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      proofPath = `${user.id}/${Date.now()}-${randomPart}.${ext}`;
-
-      const { error: uploadError } = await supabase
-        .storage
-        .from(PAYMENT_PROOF_BUCKET)
-        .upload(proofPath, proofFile, {
-          upsert: false,
-          contentType: proofFile.type || undefined,
-          cacheControl: '3600',
-        });
-      if (uploadError) throw uploadError;
-
       const { error: insertError } = await supabase
         .from('payment_verification_requests')
         .insert({
@@ -157,21 +82,17 @@ export default function PaymentVerification() {
           payment_app: paymentApp.trim() || null,
           paid_at: paidAt ? new Date(paidAt).toISOString() : new Date().toISOString(),
           notes: notes.trim() || null,
-          proof_path: proofPath,
+          proof_path: null,
           status: 'pending',
         });
 
-      if (insertError) {
-        await supabase.storage.from(PAYMENT_PROOF_BUCKET).remove([proofPath]).catch(() => {});
-        throw insertError;
-      }
+      if (insertError) throw insertError;
 
       setInfo('Verification submitted. Admin will review it.');
       setUtrReference('');
       setPayerName('');
       setPaymentApp('');
       setNotes('');
-      setProofFile(null);
     } catch (err) {
       setError(err?.message || 'Failed to submit verification details.');
     } finally {
@@ -200,7 +121,7 @@ export default function PaymentVerification() {
             </button>
             <div>
               <p className="text-white font-black tracking-widest">PAYMENT VERIFICATION</p>
-              <p className="text-xs text-slate-400">Submit UPI transaction details for confirmation</p>
+              <p className="text-xs text-slate-400">Submit UPI transaction details for manual confirmation</p>
             </div>
           </div>
         </HoloPanel>
@@ -274,30 +195,7 @@ export default function PaymentVerification() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs text-slate-400 tracking-widest">PAYMENT SCREENSHOT</Label>
-              <Input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                onChange={handleProofChange}
-                className="bg-slate-900/70 border-slate-700 text-white file:text-slate-200"
-              />
-              <p className="text-[11px] text-slate-500">Accepted: PNG, JPG, WEBP. Max size: 5 MB.</p>
-              {proofFile && (
-                <p className="text-[11px] text-slate-400">
-                  {proofFile.name} ({formatFileSize(proofFile.size)})
-                </p>
-              )}
-              {proofPreviewUrl && (
-                <img
-                  src={proofPreviewUrl}
-                  alt="Payment proof preview"
-                  className="w-full max-h-64 object-contain rounded-md border border-slate-700"
-                />
-              )}
-            </div>
-
-            <Button onClick={handleSubmit} disabled={saving || amount < 1 || !utrReference.trim() || !proofFile} className="w-full sm:w-auto">
+            <Button onClick={handleSubmit} disabled={saving || amount < 1 || !utrReference.trim()} className="w-full sm:w-auto">
               <Send className="w-4 h-4 mr-2" />
               {saving ? 'Submitting...' : 'Submit Verification'}
             </Button>
