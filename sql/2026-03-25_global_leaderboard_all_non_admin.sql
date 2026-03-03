@@ -1,5 +1,8 @@
+-- Global leaderboard should include all non-admin users.
+-- Depends on: 2026-03-24_schema_compat_global_guard.sql
+-- Include all non-admin users, not only public-profile rows.
+set search_path = public, extensions;
 
--- Global leaderboard: include all non-admin users, not only public-profile rows.
 create or replace function public.get_public_leaderboard(
   p_limit integer default 10000
 )
