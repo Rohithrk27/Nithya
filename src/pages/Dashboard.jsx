@@ -381,6 +381,7 @@ export default function Dashboard() {
   const punishmentStartNoticeRef = useRef(new Set());
   const punishmentUrgencyNoticeRef = useRef(new Set());
   const seenXpLogRef = useRef(new Set());
+  const loadInFlightRef = useRef(false);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const rowDate = (row) => (row?.date || row?.logged_at || row?.completed_at || row?.created_at || '').toString().slice(0, 10);
@@ -443,9 +444,31 @@ export default function Dashboard() {
     if (!createError && created) setRankEvaluation(created);
   }, []);
 
-  const loadData = useCallback(async (userId) => {
+  const applyCachedSnapshot = useCallback((cachedSnapshot, { notifyUser = false } = {}) => {
+    if (!cachedSnapshot) return false;
+    setProfile(cachedSnapshot.profile || null);
+    setSystemState(cachedSnapshot.systemState || null);
+    setHabits(Array.isArray(cachedSnapshot.habits) ? cachedSnapshot.habits : []);
+    setLogs(Array.isArray(cachedSnapshot.logs) ? cachedSnapshot.logs : []);
+    setHistoryLogs(Array.isArray(cachedSnapshot.historyLogs) ? cachedSnapshot.historyLogs : []);
+    setQuests(Array.isArray(cachedSnapshot.quests) ? cachedSnapshot.quests : []);
+    setActiveDungeon(cachedSnapshot.activeDungeon || null);
+    setDailyChallenge(cachedSnapshot.dailyChallenge || null);
+    setPendingPunishments(Array.isArray(cachedSnapshot.pendingPunishments) ? cachedSnapshot.pendingPunishments : []);
+    setRelicBalance(Math.max(0, Number(cachedSnapshot.relicBalance || 0)));
+    setAnnouncements(Array.isArray(cachedSnapshot.announcements) ? cachedSnapshot.announcements : []);
     setLoadError('');
-    setLoading(true);
+    if (notifyUser) {
+      notify('quest', 'Offline snapshot loaded', 'Showing cached dashboard while reconnecting.');
+    }
+    return true;
+  }, [notify]);
+
+  const loadData = useCallback(async (userId, { soft = false } = {}) => {
+    if (!userId || loadInFlightRef.current) return false;
+    loadInFlightRef.current = true;
+    setLoadError('');
+    if (!soft) setLoading(true);
     try {
       const overdueRes = await supabase.rpc('apply_overdue_punishments', { p_user_id: userId });
       if (!overdueRes?.error) {
@@ -732,44 +755,56 @@ export default function Dashboard() {
         relicBalance: resolvedRelicBalance,
         announcements: latestAnnouncements,
       });
+      return true;
     } catch (err) {
       const cachedSnapshot = readDashboardSnapshot(userId);
-      if (cachedSnapshot) {
-        setProfile(cachedSnapshot.profile || null);
-        setSystemState(cachedSnapshot.systemState || null);
-        setHabits(Array.isArray(cachedSnapshot.habits) ? cachedSnapshot.habits : []);
-        setLogs(Array.isArray(cachedSnapshot.logs) ? cachedSnapshot.logs : []);
-        setHistoryLogs(Array.isArray(cachedSnapshot.historyLogs) ? cachedSnapshot.historyLogs : []);
-        setQuests(Array.isArray(cachedSnapshot.quests) ? cachedSnapshot.quests : []);
-        setActiveDungeon(cachedSnapshot.activeDungeon || null);
-        setDailyChallenge(cachedSnapshot.dailyChallenge || null);
-        setPendingPunishments(Array.isArray(cachedSnapshot.pendingPunishments) ? cachedSnapshot.pendingPunishments : []);
-        setRelicBalance(Math.max(0, Number(cachedSnapshot.relicBalance || 0)));
-        setAnnouncements(Array.isArray(cachedSnapshot.announcements) ? cachedSnapshot.announcements : []);
-        setLoadError('');
-        notify('quest', 'Offline snapshot loaded', 'Showing cached dashboard while reconnecting.');
-        return;
+      if (applyCachedSnapshot(cachedSnapshot, { notifyUser: true })) {
+        return true;
       }
       setLoadError(err?.message || 'Failed to load dashboard data.');
+      return false;
     } finally {
-      setLoading(false);
+      if (!soft) setLoading(false);
+      loadInFlightRef.current = false;
     }
-  }, [ensureRankEvaluation, navigate, notify, today]);
+  }, [applyCachedSnapshot, ensureRankEvaluation, navigate, notify, today]);
 
   useEffect(() => {
     if (!authReady || !user?.id) return;
+    const cachedSnapshot = readDashboardSnapshot(user.id);
+    const hydrated = applyCachedSnapshot(cachedSnapshot, { notifyUser: false });
+    if (hydrated) {
+      setLoading(false);
+      void loadData(user.id, { soft: true });
+      return;
+    }
     void loadData(user.id);
-  }, [authReady, loadData, user?.id]);
+  }, [applyCachedSnapshot, authReady, loadData, user?.id]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !user?.id) return undefined;
     const handleQuestUpdate = (event) => {
       const changedUserId = event?.detail?.userId;
       if (changedUserId && changedUserId !== user.id) return;
-      void loadData(user.id);
+      void loadData(user.id, { soft: true });
     };
     window.addEventListener('nithya:quests-updated', handleQuestUpdate);
     return () => window.removeEventListener('nithya:quests-updated', handleQuestUpdate);
+  }, [loadData, user?.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !user?.id) return undefined;
+    const onPullRefresh = (event) => {
+      if (typeof event?.preventDefault === 'function') event.preventDefault();
+      void (async () => {
+        await loadData(user.id, { soft: true });
+        window.dispatchEvent(new CustomEvent('nithya-pull-refresh-complete', {
+          detail: { source: 'dashboard' },
+        }));
+      })();
+    };
+    window.addEventListener('nithya-pull-refresh', onPullRefresh);
+    return () => window.removeEventListener('nithya-pull-refresh', onPullRefresh);
   }, [loadData, user?.id]);
 
   useEffect(() => {
@@ -785,7 +820,7 @@ export default function Dashboard() {
         const applied = Math.max(0, Number(row?.penalties_applied || 0));
         if (applied > 0) {
           notify('penalty', 'Deadline missed', `${applied} punishment${applied > 1 ? 's' : ''} applied automatically`);
-          await loadData(user.id);
+          await loadData(user.id, { soft: true });
         }
       } finally {
         busy = false;
@@ -847,6 +882,9 @@ export default function Dashboard() {
       setLevelUpPulse(true);
       levelPulseTimeoutRef.current = setTimeout(() => setLevelUpPulse(false), 1800);
       notify('levelup', `Level ${level} reached`, `+${(level - prev) * 5} stat points unlocked`);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('nithya-haptic', { detail: { type: 'success' } }));
+      }
       const prevRank = getRankTitle(prev);
       const nextRank = getRankTitle(level);
       if (nextRank !== prevRank) {

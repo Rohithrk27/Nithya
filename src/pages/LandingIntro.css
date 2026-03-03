@@ -520,14 +520,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .intro-bg-fade,
-  .intro-bg-grid,
-  .intro-particle,
-  .intro-streak,
-  .intro-logo-wave,
-  .intro-avatar-silhouette,
-  .intro-logo-svg,
-  .intro-motto {
+  body:not(.native-app) .intro-bg-fade,
+  body:not(.native-app) .intro-bg-grid,
+  body:not(.native-app) .intro-particle,
+  body:not(.native-app) .intro-streak,
+  body:not(.native-app) .intro-logo-wave,
+  body:not(.native-app) .intro-avatar-silhouette,
+  body:not(.native-app) .intro-logo-svg,
+  body:not(.native-app) .intro-motto {
     animation: none;
   }
 }

@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -9,8 +9,6 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
-import { Analytics } from '@vercel/analytics/react';
-import { SpeedInsights } from '@vercel/speed-insights/react';
 import { lazyWithRetry } from '@/lib/lazyWithRetry';
 
 const ResetPassword = lazyWithRetry(() => import('./pages/ResetPassword'));
@@ -38,6 +36,53 @@ const RouteLoadingFallback = () => (
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
   : <>{children}</>;
+
+const shouldLoadVercelMetrics = () => {
+  if (!import.meta.env.PROD) return false;
+  if (typeof window === 'undefined') return false;
+  const cap = window?.Capacitor;
+  if (typeof cap?.isNativePlatform === 'function' && cap.isNativePlatform()) {
+    return false;
+  }
+  return true;
+};
+
+const VercelMetrics = () => {
+  const [metrics, setMetrics] = useState(null);
+
+  useEffect(() => {
+    if (!shouldLoadVercelMetrics()) return undefined;
+
+    let cancelled = false;
+    void Promise.all([
+      import('@vercel/analytics/react'),
+      import('@vercel/speed-insights/react'),
+    ])
+      .then(([analyticsMod, speedMod]) => {
+        if (cancelled) return;
+        setMetrics({
+          AnalyticsComponent: analyticsMod?.Analytics || null,
+          SpeedInsightsComponent: speedMod?.SpeedInsights || null,
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!metrics) return null;
+  const AnalyticsComponent = metrics.AnalyticsComponent;
+  const SpeedInsightsComponent = metrics.SpeedInsightsComponent;
+
+  return (
+    <>
+      {AnalyticsComponent ? <AnalyticsComponent /> : null}
+      {SpeedInsightsComponent ? <SpeedInsightsComponent /> : null}
+    </>
+  );
+};
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, authError, isAuthenticated, navigateToLogin, isSuspended, profileRole, maintenanceMode } = useAuth();
@@ -165,6 +210,10 @@ const AuthenticatedApp = () => {
     return <Navigate to={adminDashboardPath} replace />;
   }
 
+  if (location.pathname === loginPath) {
+    return <Navigate to={defaultAuthenticatedPath} replace />;
+  }
+
   // Render the main app
   return (
       <Suspense fallback={<RouteLoadingFallback />}>
@@ -264,8 +313,7 @@ function App() {
             <AuthenticatedApp />
           </Router>
           <Toaster />
-          <Analytics />
-          <SpeedInsights />
+          <VercelMetrics />
         </QueryClientProvider>
       </AuthProvider>
     </AppErrorBoundary>

@@ -15,8 +15,47 @@ import {
   startFocusSession,
 } from '@/lib/focus';
 import { toastError, toastInfo, toastSuccess } from '@/lib/toast';
+import { keepScreenAwake, releaseScreenAwake } from '@/lib/keepAwake';
 
 const DURATION_OPTIONS = [15, 25, 40, 50];
+const FOCUS_CACHE_PREFIX = 'nithya_focus_snapshot_v1';
+const FOCUS_CACHE_TTL_MS = 15 * 60 * 1000;
+
+const getFocusCacheKey = (userId) => `${FOCUS_CACHE_PREFIX}:${userId}`;
+
+const readFocusSnapshot = (userId) => {
+  if (!userId || typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(getFocusCacheKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const ts = Number(parsed?.ts || 0);
+    if (!ts || (Date.now() - ts) > FOCUS_CACHE_TTL_MS) {
+      localStorage.removeItem(getFocusCacheKey(userId));
+      return null;
+    }
+    return parsed?.data || null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const writeFocusSnapshot = (userId, data) => {
+  if (!userId || typeof window === 'undefined' || !data) return;
+  try {
+    localStorage.setItem(getFocusCacheKey(userId), JSON.stringify({
+      ts: Date.now(),
+      data,
+    }));
+  } catch (_) {
+    // Ignore storage quota/availability errors.
+  }
+};
+
+const triggerHaptic = (type = 'light') => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('nithya-haptic', { detail: { type } }));
+};
 
 const sessionStatusColor = (status) => {
   const key = String(status || '').toLowerCase();
@@ -47,32 +86,102 @@ export default function Focus() {
   const [recentSessions, setRecentSessions] = useState([]);
   const [nowMs, setNowMs] = useState(Date.now());
   const interruptLockRef = useRef(false);
+  const loadInFlightRef = useRef(false);
 
-  const loadData = useCallback(async (userId) => {
-    if (!userId) return;
+  const applySnapshot = useCallback((snapshot) => {
+    if (!snapshot) return false;
+    setActiveSession(snapshot.activeSession || null);
+    setRecentSessions(Array.isArray(snapshot.recentSessions) ? snapshot.recentSessions : []);
+    return true;
+  }, []);
+
+  const loadData = useCallback(async (userId, { soft = false } = {}) => {
+    if (!userId || loadInFlightRef.current) return false;
+    loadInFlightRef.current = true;
+    if (!soft) setLoading(true);
     try {
       const [active, recent] = await Promise.all([
         fetchActiveFocusSession(userId),
         fetchRecentFocusSessions(userId, 20),
       ]);
-      setActiveSession(active || null);
-      setRecentSessions(recent || []);
+      const next = {
+        activeSession: active || null,
+        recentSessions: recent || [],
+      };
+      applySnapshot(next);
+      writeFocusSnapshot(userId, next);
+      return true;
     } catch (err) {
+      const cached = readFocusSnapshot(userId);
+      if (applySnapshot(cached)) return true;
       toastError(err?.message || 'Failed to load focus sessions.');
+      return false;
     } finally {
-      setLoading(false);
+      if (!soft) setLoading(false);
+      loadInFlightRef.current = false;
     }
-  }, []);
+  }, [applySnapshot]);
 
   useEffect(() => {
     if (!authReady || !user?.id) return;
+    const cached = readFocusSnapshot(user.id);
+    const hydrated = applySnapshot(cached);
+    if (hydrated) {
+      setLoading(false);
+      void loadData(user.id, { soft: true });
+      return;
+    }
     void loadData(user.id);
-  }, [authReady, user?.id, loadData]);
+  }, [applySnapshot, authReady, user?.id, loadData]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !user?.id) return undefined;
+    const onPullRefresh = (event) => {
+      if (typeof event?.preventDefault === 'function') event.preventDefault();
+      void (async () => {
+        await loadData(user.id, { soft: true });
+        window.dispatchEvent(new CustomEvent('nithya-pull-refresh-complete', {
+          detail: { source: 'focus' },
+        }));
+      })();
+    };
+    window.addEventListener('nithya-pull-refresh', onPullRefresh);
+    return () => window.removeEventListener('nithya-pull-refresh', onPullRefresh);
+  }, [loadData, user?.id]);
 
   useEffect(() => {
     if (!activeSession?.id) return undefined;
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
+  }, [activeSession?.id]);
+
+  useEffect(() => {
+    if (!activeSession?.id) {
+      void releaseScreenAwake();
+      return undefined;
+    }
+
+    let cancelled = false;
+    const activate = async () => {
+      const locked = await keepScreenAwake();
+      if (!locked && !cancelled) {
+        toastInfo('Screen wake lock unavailable. Keep phone awake manually.');
+      }
+    };
+    void activate();
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void keepScreenAwake();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      void releaseScreenAwake();
+    };
   }, [activeSession?.id]);
 
   const activeEndsAtMs = useMemo(() => {
@@ -123,7 +232,7 @@ export default function Focus() {
         reason,
       });
       toastError('Focus session interrupted. XP reward cancelled.');
-      await loadData(user.id);
+      await loadData(user.id, { soft: true });
     } catch {
       // Non-blocking auto-interrupt path.
     } finally {
@@ -157,10 +266,12 @@ export default function Focus() {
       });
       setActiveSession(row || null);
       setNowMs(Date.now());
-      toastInfo(`Focus session started (${selectedMinutes} min). Keep this tab open.`);
-      await loadData(user.id);
+      toastInfo(`Focus session started (${selectedMinutes} min). Screen will stay awake until timer ends.`);
+      triggerHaptic('medium');
+      await loadData(user.id, { soft: true });
     } catch (err) {
       toastError(err?.message || 'Failed to start focus session.');
+      triggerHaptic('error');
     } finally {
       setBusy(false);
     }
@@ -176,9 +287,11 @@ export default function Focus() {
         reason: 'manual_interrupt',
       });
       toastInfo('Focus session interrupted.');
-      await loadData(user.id);
+      triggerHaptic('warning');
+      await loadData(user.id, { soft: true });
     } catch (err) {
       toastError(err?.message || 'Failed to interrupt focus session.');
+      triggerHaptic('error');
     } finally {
       setBusy(false);
     }
@@ -199,9 +312,11 @@ export default function Focus() {
       });
       const xp = Math.max(0, Number(result?.xp_awarded || 0));
       toastSuccess(`Focus block complete. +${xp} XP awarded.`);
-      await loadData(user.id);
+      triggerHaptic('success');
+      await loadData(user.id, { soft: true });
     } catch (err) {
       toastError(err?.message || 'Failed to complete focus session.');
+      triggerHaptic('error');
     } finally {
       setBusy(false);
     }
@@ -285,7 +400,7 @@ export default function Focus() {
             <p className="text-xs text-amber-300 font-bold tracking-widest mb-2">ACTIVE FOCUS BLOCK</p>
             <p className="text-4xl sm:text-5xl font-black text-white tabular-nums">{formatCountdown(remainingMs)}</p>
             <p className="text-xs text-slate-400 mt-2">
-              Keep this tab in foreground. Switching tabs marks the session interrupted and no XP is granted.
+              Keep this tab in foreground. Screen stays awake during countdown. Switching tabs marks the session interrupted and no XP is granted.
             </p>
             <div className="flex flex-col sm:flex-row gap-2 mt-4">
               <Button onClick={handleComplete} disabled={busy || !isReadyToComplete} className="w-full sm:w-auto">

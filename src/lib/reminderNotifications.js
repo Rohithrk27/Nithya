@@ -1,8 +1,78 @@
 import { supabase } from '@/lib/supabase';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 const DEFAULT_ICON = '/logo/logo.png';
+const NATIVE_REMINDER_CHANNEL_ID = 'nithya-reminders';
+const NATIVE_DAILY_REMINDER_ID = 9001;
+let nativePermissionCache = 'default';
+
+const getCapacitorRuntime = () => {
+  if (typeof window !== 'undefined' && window?.Capacitor) return window.Capacitor;
+  return Capacitor;
+};
+
+const isNativeAndroid = () => {
+  try {
+    const cap = getCapacitorRuntime();
+    const platform = typeof cap?.getPlatform === 'function' ? String(cap.getPlatform() || '') : '';
+    const nativePlatform = typeof cap?.isNativePlatform === 'function' ? !!cap.isNativePlatform() : false;
+    return nativePlatform && platform === 'android';
+  } catch (_) {
+    return false;
+  }
+};
+
+const mapNativePermission = (value) => {
+  if (value === 'granted') return 'granted';
+  if (value === 'denied') return 'denied';
+  return 'default';
+};
+
+const ensureReminderChannel = async () => {
+  if (!isNativeAndroid()) return;
+  try {
+    await LocalNotifications.createChannel({
+      id: NATIVE_REMINDER_CHANNEL_ID,
+      name: 'Habit Reminders',
+      description: 'Daily habit and discipline reminders',
+      importance: 5,
+      visibility: 1,
+      sound: 'default',
+    });
+  } catch (_) {
+    // Channel may already exist; ignore.
+  }
+};
+
+const parseReminderTime = (value) => {
+  const parts = String(value || '').split(':').map(Number);
+  if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) return null;
+  const hours = Math.max(0, Math.min(23, parts[0]));
+  const minutes = Math.max(0, Math.min(59, parts[1]));
+  return { hours, minutes };
+};
+
+const nextNativeNotificationId = () => Math.floor((Date.now() % 1000000000) + 1000);
+
+export const checkNotificationPermission = async () => {
+  if (isNativeAndroid()) {
+    try {
+      const res = await LocalNotifications.checkPermissions();
+      const mapped = mapNativePermission(res?.display);
+      nativePermissionCache = mapped;
+      return mapped;
+    } catch (_) {
+      return nativePermissionCache;
+    }
+  }
+
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
+  return Notification.permission;
+};
 
 export const getNotificationPermission = () => {
+  if (isNativeAndroid()) return nativePermissionCache;
   if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
   return Notification.permission;
 };
@@ -10,6 +80,17 @@ export const getNotificationPermission = () => {
 export const isNotificationGranted = () => getNotificationPermission() === 'granted';
 
 export const requestNotificationPermission = async () => {
+  if (isNativeAndroid()) {
+    try {
+      const res = await LocalNotifications.requestPermissions();
+      const mapped = mapNativePermission(res?.display);
+      nativePermissionCache = mapped;
+      return mapped;
+    } catch (_) {
+      return nativePermissionCache;
+    }
+  }
+
   if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
   try {
     return await Notification.requestPermission();
@@ -68,7 +149,45 @@ const buildPushSubscriptionRow = ({ userId, subscription, reminderTime = '21:00'
 
 export const syncWebPushSubscription = async ({ userId, reminderTime = '21:00' } = {}) => {
   if (!userId) return { ok: false, reason: 'missing_user' };
-  if (!isNotificationGranted()) return { ok: false, reason: 'permission_not_granted' };
+
+  const permission = await checkNotificationPermission();
+  if (permission !== 'granted') return { ok: false, reason: 'permission_not_granted' };
+
+  // APK path: use native Android local notifications for reliable reminders.
+  if (isNativeAndroid()) {
+    const parsedTime = parseReminderTime(reminderTime);
+    if (!parsedTime) return { ok: false, reason: 'invalid_time' };
+    try {
+      await ensureReminderChannel();
+      await LocalNotifications.cancel({
+        notifications: [{ id: NATIVE_DAILY_REMINDER_ID }],
+      });
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: NATIVE_DAILY_REMINDER_ID,
+          title: 'Nithya Habit Reminder',
+          body: 'Check in and complete your pending habits.',
+          channelId: NATIVE_REMINDER_CHANNEL_ID,
+          schedule: {
+            on: {
+              hour: parsedTime.hours,
+              minute: parsedTime.minutes,
+            },
+            repeats: true,
+            allowWhileIdle: true,
+          },
+          extra: {
+            source: 'native_daily',
+            reminder_time: String(reminderTime || '21:00').slice(0, 5),
+          },
+        }],
+      });
+      return { ok: true, native: true };
+    } catch (error) {
+      return { ok: false, reason: 'native_schedule_failed', error };
+    }
+  }
+
   if (!isPushSupported()) return { ok: false, reason: 'push_unsupported' };
 
   const publicKey = getPushPublicKey();
@@ -134,7 +253,33 @@ export const showReminderNotification = async ({
   renotify = false,
   data = {},
 }) => {
-  if (!isNotificationGranted()) return false;
+  const permission = await checkNotificationPermission();
+  if (permission !== 'granted') return false;
+
+  if (isNativeAndroid()) {
+    try {
+      await ensureReminderChannel();
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: nextNativeNotificationId(),
+          title,
+          body,
+          channelId: NATIVE_REMINDER_CHANNEL_ID,
+          schedule: {
+            at: new Date(Date.now() + 750),
+            allowWhileIdle: true,
+          },
+          extra: {
+            tag,
+            ...data,
+          },
+        }],
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   const options = {
     body,

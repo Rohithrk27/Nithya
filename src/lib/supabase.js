@@ -14,6 +14,7 @@ const SUPABASE_READ_CACHE_TTL_MS = 20000
 const SUPABASE_READ_CACHE_MAX_ENTRIES = 240
 const INFLIGHT_READ_REQUESTS = new Map()
 const READ_RESPONSE_CACHE = new Map()
+const NATIVE_ONLINE_KEY = '__NITHYA_NATIVE_ONLINE__'
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -25,8 +26,17 @@ const resolveMethod = (input, init = {}) => {
 
 const isReadMethod = (method) => method === 'GET' || method === 'HEAD'
 
+const isLikelyOffline = () => {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true
+  if (typeof window !== 'undefined') {
+    const nativeFlag = window?.[NATIVE_ONLINE_KEY]
+    if (nativeFlag === false) return true
+  }
+  return false
+}
+
 const toResponseError = (err) => {
-  if (err?.name === 'AbortError' && typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (err?.name === 'AbortError' && isLikelyOffline()) {
     return new Error('Network error: You appear to be offline. Reconnect and try again.')
   }
 
@@ -88,6 +98,10 @@ const fetchWithTimeoutAndRetry = async (input, init = {}) => {
   let attempts = 0
 
   while (attempts <= (canRetry ? SUPABASE_READ_RETRY_COUNT : 0)) {
+    if (isLikelyOffline()) {
+      throw new Error('Network error: You appear to be offline. Reconnect and try again.')
+    }
+
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS)
     const onAbort = () => controller.abort()

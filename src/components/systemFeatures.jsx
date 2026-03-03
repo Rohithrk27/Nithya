@@ -54,19 +54,75 @@ const dungeonCompletions = (profile) => Math.max(
   ) || 0
 );
 
+const questCompletions = (profile) => Math.max(
+  0,
+  Number(profile?.quests_completed || profile?.quest_completed || 0) || 0
+);
+
+const totalStatScore = (profile, level) => {
+  const stats = computeAllStats(profile, level);
+  return STAT_KEYS.reduce((sum, key) => sum + (stats[key] || 0), 0);
+};
+
+const maxSingleStat = (profile, level) => {
+  const stats = computeAllStats(profile, level);
+  return STAT_KEYS.reduce((maxVal, key) => Math.max(maxVal, Number(stats[key] || 0)), 0);
+};
+
 export const ACHIEVEMENT_DEFS = [
+  // STREAK
+  { key: 'streak_3',    title: 'Ignition',         description: '3-day global streak',            icon: '✨', category: 'streak',  check: (p) => achievementStreak(p) >= 3 },
   { key: 'streak_7',    title: 'Relentless',      description: '7-day global streak',          icon: '🔥', category: 'streak',  check: (p) => achievementStreak(p) >= 7 },
+  { key: 'streak_14',   title: 'No Brakes',        description: '14-day global streak',           icon: '🚀', category: 'streak',  check: (p) => achievementStreak(p) >= 14 },
   { key: 'streak_30',   title: 'Iron Will',        description: '30-day global streak',         icon: '⚡', category: 'streak',  check: (p) => achievementStreak(p) >= 30 },
+  { key: 'streak_60',   title: 'Unbroken Line',    description: '60-day global streak',          icon: '🌋', category: 'streak',  check: (p) => achievementStreak(p) >= 60 },
   { key: 'streak_100',  title: 'The Relentless',   description: '100-day streak',               icon: '💎', category: 'streak',  check: (p) => achievementStreak(p) >= 100 },
-  { key: 'quests_10',   title: 'Quest Taker',      description: '10 quests completed',          icon: '⚔️', category: 'quests',  check: (p) => (p.quests_completed || 0) >= 10 },
-  { key: 'quests_50',   title: 'Unyielding',       description: '50 quests completed',          icon: '🗡️', category: 'quests',  check: (p) => (p.quests_completed || 0) >= 50 },
-  { key: 'quests_200',  title: 'The Unyielding',   description: '200 quests completed',         icon: '👑', category: 'quests',  check: (p) => (p.quests_completed || 0) >= 200 },
+  { key: 'streak_180',  title: 'Shadow Routine',   description: '180-day streak',                icon: '🩸', category: 'streak',  check: (p) => achievementStreak(p) >= 180 },
+  { key: 'streak_365',  title: 'Eternal Discipline', description: '365-day streak',              icon: '👑', category: 'streak',  check: (p) => achievementStreak(p) >= 365 },
+
+  // QUESTS
+  { key: 'quests_1',    title: 'First Blood',      description: 'Complete your first quest',     icon: '🎯', category: 'quests',  check: (p) => questCompletions(p) >= 1 },
+  { key: 'quests_10',   title: 'Quest Taker',      description: '10 quests completed',           icon: '⚔️', category: 'quests',  check: (p) => questCompletions(p) >= 10 },
+  { key: 'quests_25',   title: 'Task Crusher',     description: '25 quests completed',           icon: '🛡️', category: 'quests',  check: (p) => questCompletions(p) >= 25 },
+  { key: 'quests_50',   title: 'Unyielding',       description: '50 quests completed',           icon: '🗡️', category: 'quests',  check: (p) => questCompletions(p) >= 50 },
+  { key: 'quests_100',  title: 'War Ledger',       description: '100 quests completed',          icon: '📜', category: 'quests',  check: (p) => questCompletions(p) >= 100 },
+  { key: 'quests_200',  title: 'The Unyielding',   description: '200 quests completed',          icon: '🥇', category: 'quests',  check: (p) => questCompletions(p) >= 200 },
+  { key: 'quests_500',  title: 'Quest Monarch',    description: '500 quests completed',          icon: '🏆', category: 'quests',  check: (p) => questCompletions(p) >= 500 },
+
+  // LEVEL
+  { key: 'level_5',     title: 'System Recruit',   description: 'Reached Level 5',               icon: '🛰️', category: 'level',   check: (p, l) => l >= 5 },
   { key: 'level_10',    title: 'System Candidate', description: 'Reached Level 10',             icon: '🌀', category: 'level',   check: (p, l) => l >= 10 },
+  { key: 'level_25',    title: 'Field Operative',  description: 'Reached Level 25',              icon: '🛸', category: 'level',   check: (p, l) => l >= 25 },
   { key: 'level_50',    title: 'The Strategist',   description: 'Reached Level 50',             icon: '🔷', category: 'level',   check: (p, l) => l >= 50 },
+  { key: 'level_75',    title: 'Battle Analyst',   description: 'Reached Level 75',              icon: '🧠', category: 'level',   check: (p, l) => l >= 75 },
   { key: 'level_100',   title: 'Awakened',         description: 'Reached Level 100',            icon: '✨', category: 'level',   check: (p, l) => l >= 100 },
+  { key: 'level_200',   title: 'High Commander',   description: 'Reached Level 200',             icon: '🦾', category: 'level',   check: (p, l) => l >= 200 },
+  { key: 'level_300',   title: 'Gate Breaker',     description: 'Reached Level 300',             icon: '🌌', category: 'level',   check: (p, l) => l >= 300 },
   { key: 'level_500',   title: 'System Architect', description: 'Reached Level 500',            icon: '🏛️', category: 'level',   check: (p, l) => l >= 500 },
-  { key: 'stat_100',    title: 'Iron Body',        description: 'Total stats exceed 100',       icon: '💪', category: 'stats',   check: (p, l) => { const s = computeAllStats(p, l); return STAT_KEYS.reduce((a, k) => a + (s[k]||0), 0) >= 100; } },
+  { key: 'level_800',   title: 'Absolute Vector',  description: 'Reached Level 800',             icon: '☄️', category: 'level',   check: (p, l) => l >= 800 },
+  { key: 'level_1000',  title: 'Mythic Core',      description: 'Reached Level 1000',            icon: '🌠', category: 'level',   check: (p, l) => l >= 1000 },
+
+  // STATS (TOTAL)
+  { key: 'stat_50',     title: 'Rising Frame',     description: 'Total stats exceed 50',         icon: '🧬', category: 'stats',   check: (p, l) => totalStatScore(p, l) >= 50 },
+  { key: 'stat_100',    title: 'Iron Body',        description: 'Total stats exceed 100',        icon: '💪', category: 'stats',   check: (p, l) => totalStatScore(p, l) >= 100 },
+  { key: 'stat_200',    title: 'Adaptive Core',    description: 'Total stats exceed 200',        icon: '⚙️', category: 'stats',   check: (p, l) => totalStatScore(p, l) >= 200 },
+  { key: 'stat_350',    title: 'Peak Protocol',    description: 'Total stats exceed 350',        icon: '📈', category: 'stats',   check: (p, l) => totalStatScore(p, l) >= 350 },
+  { key: 'stat_500',    title: 'Perfect Vessel',   description: 'Total stats exceed 500',        icon: '🏹', category: 'stats',   check: (p, l) => totalStatScore(p, l) >= 500 },
+  { key: 'stat_750',    title: 'Singularity Form', description: 'Total stats exceed 750',        icon: '🔱', category: 'stats',   check: (p, l) => totalStatScore(p, l) >= 750 },
+
+  // STATS (SINGLE ATTRIBUTE MASTERY)
+  { key: 'stat_single_25', title: 'Specialist',    description: 'Any single stat reaches 25',    icon: '🎖️', category: 'stats',   check: (p, l) => maxSingleStat(p, l) >= 25 },
+  { key: 'stat_single_50', title: 'Elite Specialist', description: 'Any single stat reaches 50', icon: '🥈', category: 'stats',   check: (p, l) => maxSingleStat(p, l) >= 50 },
+  { key: 'stat_single_75', title: 'Grand Specialist', description: 'Any single stat reaches 75', icon: '🥇', category: 'stats',   check: (p, l) => maxSingleStat(p, l) >= 75 },
+  { key: 'stat_single_100', title: 'Legendary Specialist', description: 'Any single stat reaches 100', icon: '🏅', category: 'stats', check: (p, l) => maxSingleStat(p, l) >= 100 },
+
+  // DUNGEON
   { key: 'dungeon_1',   title: 'Dungeon Walker',   description: 'Completed first Dungeon Mode', icon: '🏰', category: 'dungeon', check: (p) => dungeonCompletions(p) >= 1 },
+  { key: 'dungeon_3',   title: 'Dungeon Raider',   description: 'Completed 3 dungeon runs',      icon: '🧱', category: 'dungeon', check: (p) => dungeonCompletions(p) >= 3 },
+  { key: 'dungeon_5',   title: 'Abyss Diver',      description: 'Completed 5 dungeon runs',      icon: '🕳️', category: 'dungeon', check: (p) => dungeonCompletions(p) >= 5 },
+  { key: 'dungeon_10',  title: 'Citadel Hunter',   description: 'Completed 10 dungeon runs',     icon: '🗿', category: 'dungeon', check: (p) => dungeonCompletions(p) >= 10 },
+  { key: 'dungeon_25',  title: 'Ruin Sovereign',   description: 'Completed 25 dungeon runs',     icon: '🛕', category: 'dungeon', check: (p) => dungeonCompletions(p) >= 25 },
+  { key: 'dungeon_50',  title: 'Abyss Monarch',    description: 'Completed 50 dungeon runs',     icon: '🐉', category: 'dungeon', check: (p) => dungeonCompletions(p) >= 50 },
 ];
 
 export function checkNewAchievements(profile, level, existingKeys) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import confetti from 'canvas-confetti';
+import { burstConfetti } from '@/lib/confetti';
 import { computeLevel, xpIntoCurrentLevel, xpBetweenLevels, levelProgressPct, getTierColors } from './gameEngine';
 
 export default function RPGXPBar({ totalXp = 0, levelUp = false }) {
@@ -27,10 +27,10 @@ export default function RPGXPBar({ totalXp = 0, levelUp = false }) {
 
   useEffect(() => {
     if (levelUp && !prevLevelUp.current) {
-      confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 }, colors: [c1, c2, '#fff'], zIndex: 9999 });
+      burstConfetti({ particleCount: 150, spread: 100, origin: { y: 0.5 }, colors: [c1, c2, '#fff'], zIndex: 9999 });
     }
     prevLevelUp.current = levelUp;
-  }, [levelUp]);
+  }, [c1, c2, levelUp]);
 
   return (
     <div className="w-full">

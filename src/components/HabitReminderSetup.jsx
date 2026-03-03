@@ -3,6 +3,7 @@ import { Bell, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { speakWithFemaleVoice } from '@/lib/voice';
 import {
+  checkNotificationPermission,
   getLocalDateKey,
   getNotificationPermission,
   hasReminderFired,
@@ -130,7 +131,15 @@ export default function HabitReminderSetup({ reminderTime, habits, onTimeChange,
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setPermission(getNotificationPermission());
+    let cancelled = false;
+    const refreshPermission = async () => {
+      const value = await checkNotificationPermission();
+      if (!cancelled) setPermission(value);
+    };
+    void refreshPermission();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

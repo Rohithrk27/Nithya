@@ -25,6 +25,14 @@ const config: CapacitorConfig = {
       showSpinner: false,
       androidScaleType: 'CENTER_CROP',
     },
+    Keyboard: {
+      resize: 'body',
+      resizeOnFullScreen: true,
+    },
+    LocalNotifications: {
+      iconColor: '#22d3ee',
+      sound: 'default',
+    },
   },
   android: {
     studioPath: 'D:\\Android Studio\\bin\\studio64.exe',

@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 export const CANONICAL_WEB_ORIGIN = 'https://nithya.fit';
 export const AUTH_CALLBACK_PATH = '/auth/callback';
 export const NATIVE_AUTH_CALLBACK = 'com.rohith.nitya://auth/callback';
+const OAUTH_PENDING_NEXT_KEY = '__nithya_oauth_next_path__';
 
 const ensurePath = (value, fallback = '/dashboard') => {
   if (!value || typeof value !== 'string') return fallback;
@@ -21,9 +22,27 @@ const ensurePath = (value, fallback = '/dashboard') => {
 
 export const normalizeAppPath = (value, fallback = '/dashboard') => ensurePath(value, fallback);
 
+const getCapacitorRuntime = () => {
+  if (typeof window !== 'undefined' && window?.Capacitor) {
+    return window.Capacitor;
+  }
+  return Capacitor;
+};
+
 export const isNativeAndroid = () => {
   try {
-    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+    const cap = getCapacitorRuntime();
+    const platform = typeof cap?.getPlatform === 'function' ? String(cap.getPlatform() || '') : '';
+    const isNative = typeof cap?.isNativePlatform === 'function' ? !!cap.isNativePlatform() : false;
+    const ua = typeof navigator !== 'undefined' ? String(navigator.userAgent || '').toLowerCase() : '';
+    const androidUa = ua.includes('android');
+    const localHostApp = typeof window !== 'undefined'
+      && (window.location.hostname === 'localhost' || window.location.protocol === 'capacitor:');
+
+    if (platform === 'android') return true;
+    if (isNative && platform && platform !== 'web' && androidUa) return true;
+    if (androidUa && localHostApp && !!(typeof window !== 'undefined' && window?.Capacitor)) return true;
+    return false;
   } catch (_) {
     return false;
   }
@@ -33,14 +52,32 @@ export const buildOAuthRedirect = (nextPath = '/dashboard') => {
   const safeNext = ensurePath(nextPath, '/dashboard');
 
   if (isNativeAndroid()) {
-    const nativeUrl = new URL(NATIVE_AUTH_CALLBACK);
-    nativeUrl.searchParams.set('next', safeNext);
-    return nativeUrl.toString();
+    return NATIVE_AUTH_CALLBACK;
   }
 
   const webUrl = new URL(`${CANONICAL_WEB_ORIGIN}${AUTH_CALLBACK_PATH}`);
   webUrl.searchParams.set('next', safeNext);
   return webUrl.toString();
+};
+
+export const rememberOAuthNextPath = (nextPath = '/dashboard') => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage?.setItem(OAUTH_PENDING_NEXT_KEY, ensurePath(nextPath, '/dashboard'));
+  } catch (_) {
+    // Best effort only.
+  }
+};
+
+export const consumeRememberedOAuthNextPath = (fallback = '/dashboard') => {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const value = window.sessionStorage?.getItem(OAUTH_PENDING_NEXT_KEY);
+    window.sessionStorage?.removeItem(OAUTH_PENDING_NEXT_KEY);
+    return ensurePath(value, fallback);
+  } catch (_) {
+    return fallback;
+  }
 };
 
 export const buildResetPasswordRedirect = () => `${CANONICAL_WEB_ORIGIN}/reset-password`;
@@ -61,8 +98,9 @@ export const resolveNextPathFromCallback = (urlLike, fallback = '/dashboard') =>
   try {
     const parsed = new URL(urlLike);
     const next = parsed.searchParams.get('next');
-    return ensurePath(next, fallback);
+    if (next) return ensurePath(next, fallback);
+    return consumeRememberedOAuthNextPath(fallback);
   } catch (_) {
-    return fallback;
+    return consumeRememberedOAuthNextPath(fallback);
   }
 };

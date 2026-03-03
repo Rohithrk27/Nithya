@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 222 47% 11%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 3.9%;
@@ -92,6 +92,8 @@
   #root {
     width: 100%;
     min-height: 100%;
+    min-height: 100dvh;
+    background: #0f172a;
   }
 
   * {
@@ -101,8 +103,15 @@
   body {
     @apply bg-background text-foreground;
     overflow-x: hidden;
+    overscroll-behavior-y: none;
+    overscroll-behavior-x: none;
     text-size-adjust: 100%;
     -webkit-text-size-adjust: 100%;
+    background-color: #0f172a;
+  }
+
+  body.keyboard-open {
+    overscroll-behavior-y: contain;
   }
 
   img,
@@ -131,6 +140,10 @@
 
   .safe-bottom-nav {
     padding-bottom: max(8px, var(--safe-area-bottom));
+  }
+
+  body.keyboard-open .safe-bottom-nav {
+    padding-bottom: max(4px, var(--safe-area-bottom));
   }
 
   .tap-target {
@@ -286,9 +299,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .holo-ribbon--a,
-  .holo-ribbon--b,
-  .system-bg-particle {
+  body:not(.native-app) .holo-ribbon--a,
+  body:not(.native-app) .holo-ribbon--b,
+  body:not(.native-app) .system-bg-particle {
     animation: none !important;
   }
 }

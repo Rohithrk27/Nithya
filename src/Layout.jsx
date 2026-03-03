@@ -53,7 +53,7 @@ const MOBILE_EXTRA_NAV = [
   { label: 'Community', page: 'Community', icon: MessageSquare },
 ];
 
-const NO_NAV_PAGES = ['Landing', 'PublicProfile', 'AdminDashboard', 'Suspended'];
+const NO_NAV_PAGES = ['Landing', 'Login', 'ResetPassword', 'PublicProfile', 'AdminDashboard', 'Suspended'];
 
 export default function Layout({ children, currentPageName }) {
   const showNav = !NO_NAV_PAGES.includes(currentPageName);

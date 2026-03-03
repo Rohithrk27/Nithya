@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { buildOAuthRedirect } from '@/lib/authRedirect';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -50,6 +49,17 @@ export default function Login() {
     if (qMode === 'signup' || qMode === 'login' || qMode === 'forgotPassword') {
       setMode(qMode);
     }
+  }, [location.search]);
+
+  useEffect(() => {
+    const oauthError = new URLSearchParams(location.search).get('oauth_error');
+    if (!oauthError) return;
+
+    const messageByCode = {
+      callback_failed: 'Google sign-in callback failed. Please try again.',
+    };
+    setMessage(messageByCode[oauthError] || 'Google sign-in failed. Please try again.');
+    setMessageType('error');
   }, [location.search]);
 
   const redirectTarget = useMemo(() => {
@@ -104,6 +114,21 @@ export default function Login() {
       cancelled = true;
     };
   }, [isAuthenticated, isLoadingAuth, navigate, pendingPostAuthRedirect, resolvePostAuthPath]);
+
+  useEffect(() => {
+    if (isLoadingAuth || !isAuthenticated) return;
+    let cancelled = false;
+    const finishRedirect = async () => {
+      const nextPath = await resolvePostAuthPath();
+      if (!cancelled) {
+        navigate(nextPath, { replace: true });
+      }
+    };
+    void finishRedirect();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isLoadingAuth, navigate, resolvePostAuthPath]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -165,8 +190,7 @@ export default function Login() {
     setMessageType(null);
     setGoogleLoading(true);
     try {
-      const oauthRedirect = buildOAuthRedirect(redirectTarget);
-      const { error } = await loginWithGoogle(oauthRedirect);
+      const { error } = await loginWithGoogle(redirectTarget);
       if (error) {
         setMessage(normalizeErrorMessage(error));
         setMessageType('error');

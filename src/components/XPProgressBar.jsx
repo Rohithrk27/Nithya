@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import confetti from 'canvas-confetti';
+import { burstConfetti } from '@/lib/confetti';
 
 const XP_PER_LEVEL = 500;
 
@@ -30,7 +30,7 @@ export default function XPProgressBar({ totalXp, levelUp }) {
   // Trigger confetti on level-up
   useEffect(() => {
     if (levelUp && !prevLevelUp.current) {
-      confetti({
+      burstConfetti({
         particleCount: 120,
         spread: 80,
         origin: { y: 0.5 },
