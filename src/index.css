@@ -80,6 +80,13 @@
 
 
 @layer base {
+  :root {
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
+  }
+
   html,
   body,
   #root {
@@ -110,6 +117,87 @@
   textarea,
   button {
     min-width: 0;
+  }
+}
+
+@layer utilities {
+  .safe-top {
+    padding-top: var(--safe-area-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: var(--safe-area-bottom);
+  }
+
+  .safe-bottom-nav {
+    padding-bottom: max(8px, var(--safe-area-bottom));
+  }
+
+  .tap-target {
+    min-width: 48px;
+    min-height: 48px;
+    touch-action: manipulation;
+  }
+
+  .tap-ripple {
+    position: relative;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .tap-ripple::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 9999px;
+    background: rgba(148, 163, 184, 0.24);
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: width 240ms ease, height 240ms ease, opacity 320ms ease;
+    pointer-events: none;
+  }
+
+  .tap-ripple:active::after {
+    width: 180%;
+    height: 180%;
+    opacity: 1;
+    transition: width 40ms ease, height 40ms ease, opacity 40ms ease;
+  }
+
+  .mobile-readable {
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+
+  body {
+    line-height: 1.55;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hover-capable-lift:hover {
+    transform: scale(1.08);
+  }
+}
+
+@media (hover: none) {
+  .hover-capable-lift:hover {
+    transform: none !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .safe-bottom-nav {
+    padding-bottom: max(6px, var(--safe-area-bottom));
   }
 }
 

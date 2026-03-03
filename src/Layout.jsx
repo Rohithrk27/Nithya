@@ -111,9 +111,12 @@ export default function Layout({ children, currentPageName }) {
         onCancel={() => setShowLogoutConfirm(false)}
         onConfirm={() => void confirmAndLogout()}
       />
-      <div className={`w-full flex-1 ${showNav ? 'pb-16 md:pb-0 md:pl-16' : ''}`}>
+      <div
+        className={`w-full flex-1 ${showNav ? 'md:pb-0 md:pl-16' : ''}`}
+        style={showNav ? { paddingBottom: 'calc(74px + env(safe-area-inset-bottom))' } : undefined}
+      >
         {/* Header with app title */}
-        <header className={`w-full sticky top-0 z-40 app-topbar ${isScrolled ? 'app-topbar--scrolled' : ''}`}>
+        <header className={`w-full sticky top-0 z-40 app-topbar safe-top ${isScrolled ? 'app-topbar--scrolled' : ''}`}>
           <div className="pl-4 pr-4 md:pl-16 md:pr-6 py-3 flex items-center justify-between gap-3 min-w-0">
             <img
               src={headerSrc}
@@ -166,7 +169,7 @@ export default function Layout({ children, currentPageName }) {
                   onClick={() => {
                     setMobileMenuOpen((v) => !v);
                   }}
-                  className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors"
+                  className="md:hidden w-12 h-12 rounded-xl tap-target tap-ripple flex items-center justify-center shrink-0 transition-colors active:scale-95"
                   style={{
                     border: '1px solid rgba(56,189,248,0.3)',
                     background: mobileMenuOpen ? 'rgba(56,189,248,0.2)' : 'rgba(15,23,42,0.55)',
@@ -213,7 +216,7 @@ export default function Layout({ children, currentPageName }) {
                   <button
                     type="button"
                     onClick={() => setMobileMenuOpen(false)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                    className="w-12 h-12 rounded-lg tap-target tap-ripple flex items-center justify-center active:scale-95"
                     style={{ background: 'rgba(15,23,42,0.7)', color: '#94A3B8' }}
                     aria-label="Close menu"
                   >
@@ -229,7 +232,7 @@ export default function Layout({ children, currentPageName }) {
                         key={`quick-${page}`}
                         to={createPageUrl(page)}
                         onClick={() => setMobileMenuOpen(false)}
-                        className="rounded-xl px-3 py-2 flex items-center gap-2"
+                        className="rounded-xl px-3 py-2 tap-target tap-ripple flex items-center gap-2 active:scale-[0.99]"
                         style={{
                           border: '1px solid rgba(56,189,248,0.16)',
                           background: active ? 'rgba(56,189,248,0.2)' : 'rgba(15,23,42,0.45)',
@@ -251,7 +254,7 @@ export default function Layout({ children, currentPageName }) {
                         key={`extra-${page}`}
                         to={createPageUrl(page)}
                         onClick={() => setMobileMenuOpen(false)}
-                        className="w-full rounded-xl px-3 py-2.5 flex items-center justify-between"
+                        className="w-full rounded-xl px-3 py-2.5 tap-target tap-ripple flex items-center justify-between active:scale-[0.99]"
                         style={{
                           border: '1px solid rgba(56,189,248,0.16)',
                           background: active ? 'rgba(56,189,248,0.2)' : 'rgba(15,23,42,0.55)',
@@ -272,7 +275,7 @@ export default function Layout({ children, currentPageName }) {
                   <Link
                     to={createPageUrl('Profile')}
                     onClick={() => setMobileMenuOpen(false)}
-                    className="w-full rounded-xl px-3 py-2.5 flex items-center justify-between mb-2"
+                    className="w-full rounded-xl px-3 py-2.5 tap-target tap-ripple flex items-center justify-between mb-2 active:scale-[0.99]"
                     style={{
                       border: '1px solid rgba(56,189,248,0.16)',
                       background: currentPageName === 'Profile' ? 'rgba(56,189,248,0.2)' : 'rgba(15,23,42,0.55)',
@@ -288,7 +291,7 @@ export default function Layout({ children, currentPageName }) {
                     <button
                       type="button"
                       onClick={() => setShowLogoutConfirm(true)}
-                      className="w-full rounded-xl px-3 py-2.5 flex items-center justify-between"
+                      className="w-full rounded-xl px-3 py-2.5 tap-target tap-ripple flex items-center justify-between active:scale-[0.99]"
                       style={{
                         border: '1px solid rgba(239,68,68,0.35)',
                         background: 'rgba(127,29,29,0.22)',
@@ -304,7 +307,7 @@ export default function Layout({ children, currentPageName }) {
                     <Link
                       to={createPageUrl('Login')}
                       onClick={() => setMobileMenuOpen(false)}
-                      className="w-full rounded-xl px-3 py-2.5 flex items-center justify-between"
+                      className="w-full rounded-xl px-3 py-2.5 tap-target tap-ripple flex items-center justify-between active:scale-[0.99]"
                       style={{
                         border: '1px solid rgba(56,189,248,0.35)',
                         background: 'rgba(2,132,199,0.18)',
@@ -323,19 +326,25 @@ export default function Layout({ children, currentPageName }) {
           )}
 
           {/* Mobile bottom nav - 5 items only */}
-          <nav className="md:hidden fixed bottom-0 left-0 right-0 flex z-50"
-            style={{ background: 'rgba(15,32,39,0.95)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(56,189,248,0.15)' }}>
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 flex z-50 safe-bottom-nav"
+            style={{
+              background: 'rgba(15,32,39,0.95)',
+              backdropFilter: 'blur(16px)',
+              borderTop: '1px solid rgba(56,189,248,0.15)',
+              paddingLeft: 'max(8px, env(safe-area-inset-left))',
+              paddingRight: 'max(8px, env(safe-area-inset-right))',
+            }}>
             {MOBILE_NAV.map(({ label, page, icon: Icon }) => {
               const active = currentPageName === page;
               return (
                 <Link
                   key={page}
                   to={createPageUrl(page)}
-                  className="flex-1 flex flex-col items-center py-2.5 gap-0.5 transition-colors"
+                  className="flex-1 tap-target tap-ripple flex flex-col items-center justify-center py-2 gap-1 transition-colors active:opacity-90"
                   style={{ color: active ? '#38BDF8' : '#475569' }}
                 >
                   <Icon className="w-5 h-5" />
-                  <span className="font-bold tracking-wide" style={{ fontSize: 9 }}>{label.toUpperCase()}</span>
+                  <span className="font-bold tracking-wide" style={{ fontSize: 10 }}>{label.toUpperCase()}</span>
                 </Link>
               );
             })}
@@ -385,7 +394,7 @@ export default function Layout({ children, currentPageName }) {
                     key={page}
                     to={createPageUrl(page)}
                     title={label}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110 shrink-0"
+                    className="w-12 h-12 tap-target tap-ripple rounded-xl flex items-center justify-center transition-transform hover-capable-lift active:scale-95 shrink-0"
                     style={{
                       background: active ? 'rgba(56,189,248,0.2)' : 'transparent',
                       border: active ? '1px solid rgba(56,189,248,0.4)' : '1px solid transparent',
@@ -402,7 +411,7 @@ export default function Layout({ children, currentPageName }) {
               <button
                 title="Sign Out"
                 onClick={() => setShowLogoutConfirm(true)}
-                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110"
+                className="w-12 h-12 tap-target tap-ripple rounded-xl flex items-center justify-center transition-transform hover-capable-lift active:scale-95"
                 style={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.35)' }}
               >
                 <LogOut className="w-5 h-5" />
@@ -411,7 +420,7 @@ export default function Layout({ children, currentPageName }) {
               <Link
                 to={createPageUrl('Login')}
                 title="Login"
-                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-110"
+                className="w-12 h-12 tap-target tap-ripple rounded-xl flex items-center justify-center transition-transform hover-capable-lift active:scale-95"
                 style={{ color: '#38BDF8', border: '1px solid rgba(56,189,248,0.35)' }}
               >
                 <LogIn className="w-5 h-5" />

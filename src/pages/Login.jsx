@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { buildOAuthRedirect } from '@/lib/authRedirect';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -164,7 +165,7 @@ export default function Login() {
     setMessageType(null);
     setGoogleLoading(true);
     try {
-      const oauthRedirect = `${window.location.origin}${redirectTarget}`;
+      const oauthRedirect = buildOAuthRedirect(redirectTarget);
       const { error } = await loginWithGoogle(oauthRedirect);
       if (error) {
         setMessage(normalizeErrorMessage(error));
@@ -191,16 +192,16 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
-              className="mt-1 h-12 bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
+              className="mt-1 h-12 tap-target bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
             />
           </div>
-          <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] hover:from-[#3B82F6]/90 hover:to-[#0EA5E9]/90 text-white">
+          <Button type="submit" disabled={loading} className="w-full h-12 tap-target tap-ripple active:scale-[0.99] bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] text-white">
             {loading ? 'Sending...' : 'Send Reset Link'}
           </Button>
           <button
             type="button"
             onClick={() => { setMode('login'); setMessage(null); }}
-            className="w-full text-sm text-[#94A3B8] hover:text-[#F8FAFC] underline"
+            className="w-full text-sm text-[#94A3B8] active:text-[#F8FAFC] focus-visible:text-[#F8FAFC] underline"
           >
             Back to Sign In
           </button>
@@ -219,7 +220,7 @@ export default function Login() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
             required
-            className="mt-1 h-12 bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
+            className="mt-1 h-12 tap-target bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
           />
         </div>
         <div>
@@ -231,7 +232,7 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             required
-            className="mt-1 h-12 bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
+            className="mt-1 h-12 tap-target bg-[#0F172A] border-[#334155] text-[#F8FAFC]"
           />
         </div>
 
@@ -240,14 +241,14 @@ export default function Login() {
             <button
               type="button"
               onClick={() => { setMode('forgotPassword'); setMessage(null); }}
-              className="text-sm text-[#94A3B8] hover:text-[#F8FAFC] underline"
+              className="text-sm text-[#94A3B8] active:text-[#F8FAFC] focus-visible:text-[#F8FAFC] underline"
             >
               Forgot Password?
             </button>
           </div>
         )}
 
-        <Button type="submit" disabled={loading} className="w-full h-12 bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] hover:from-[#3B82F6]/90 hover:to-[#0EA5E9]/90 text-white">
+        <Button type="submit" disabled={loading} className="w-full h-12 tap-target tap-ripple active:scale-[0.99] bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] text-white">
           {loading ? (mode === 'login' ? 'Signing in...' : 'Signing up...') : (mode === 'login' ? 'Sign In' : 'Sign Up')}
         </Button>
         {(mode === 'login' || mode === 'signup') && (
@@ -264,7 +265,7 @@ export default function Login() {
               type="button"
               onClick={handleGoogleSignIn}
               disabled={googleLoading}
-              className="w-full h-12 rounded-md border border-slate-200 bg-white text-slate-900 hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed font-semibold inline-flex items-center justify-center gap-2"
+              className="w-full h-12 tap-target tap-ripple rounded-md border border-slate-200 bg-white text-slate-900 active:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed font-semibold inline-flex items-center justify-center gap-2"
               style={{ color: '#0f172a', fontWeight: 700 }}
             >
               <span className="text-base leading-none" style={{ color: '#ea4335' }}>G</span>
@@ -279,7 +280,7 @@ export default function Login() {
           <button
             type="button"
             onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }}
-            className="text-sm text-[#94A3B8] hover:text-[#F8FAFC] underline"
+            className="text-sm text-[#94A3B8] active:text-[#F8FAFC] focus-visible:text-[#F8FAFC] underline"
           >
             {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
           </button>
@@ -289,7 +290,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F172A] flex items-center justify-center p-6">
+    <div className="min-h-screen bg-[#0F172A] safe-top safe-bottom flex items-center justify-center p-6">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -300,7 +301,7 @@ export default function Login() {
             <CardTitle className="text-3xl font-bold bg-gradient-to-r from-[#3B82F6] to-[#0EA5E9] bg-clip-text text-transparent">
               {mode === 'forgotPassword' ? 'Reset Password' : (mode === 'login' ? 'Welcome Back' : 'Create Account')}
             </CardTitle>
-            <CardDescription className="text-base text-[#94A3B8]">
+            <CardDescription className="text-base text-[#94A3B8] mobile-readable">
               {mode === 'forgotPassword' 
                 ? 'Enter your email to receive a reset link' 
                 : (mode === 'login' 

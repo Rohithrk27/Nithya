@@ -6,12 +6,29 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   bundledWebRuntime: false,
   server: {
-    url: 'https://my-nithya.vercel.app',
-    cleartext: false
+    androidScheme: 'https',
+    cleartext: false,
+  },
+  plugins: {
+    App: {
+      disableBackButtonHandler: false,
+    },
+    StatusBar: {
+      style: 'DARK',
+      backgroundColor: '#0f172a',
+      overlaysWebView: true,
+    },
+    SplashScreen: {
+      launchShowDuration: 700,
+      launchAutoHide: true,
+      backgroundColor: '#0f172a',
+      showSpinner: false,
+      androidScaleType: 'CENTER_CROP',
+    },
   },
   android: {
-    studioPath: 'D:\\Android Studio\\bin\\studio64.exe'
-  }
+    studioPath: 'D:\\Android Studio\\bin\\studio64.exe',
+  },
 };
 
 export default config;

@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { supabase } from './supabase';
+import { buildOAuthRedirect, buildResetPasswordRedirect } from './authRedirect';
 
 const AuthContext = createContext(null);
 
@@ -168,7 +169,7 @@ export const AuthProvider = ({ children }) => {
     return { data };
   };
 
-  const loginWithGoogle = async (redirectTo = `${window.location.origin}/dashboard`) => {
+  const loginWithGoogle = async (redirectTo = buildOAuthRedirect('/dashboard')) => {
     setAuthError(null);
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -206,7 +207,7 @@ export const AuthProvider = ({ children }) => {
   const resetPassword = async (email) => {
     setAuthError(null);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: buildResetPasswordRedirect(),
     });
 
     if (error) {

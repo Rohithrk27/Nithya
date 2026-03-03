@@ -24,8 +24,14 @@ const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
 
 const RouteLoadingFallback = () => (
-  <div className="fixed inset-0 flex items-center justify-center">
-    <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+  <div className="min-h-screen safe-top safe-bottom bg-[#0F172A]">
+    <div className="h-16 border-b border-[#334155] bg-[#0F2027]" />
+    <div className="px-4 py-5 space-y-4 animate-pulse">
+      <div className="h-6 w-44 rounded bg-slate-700/60" />
+      <div className="h-24 rounded-xl bg-slate-800/70 border border-slate-700/70" />
+      <div className="h-24 rounded-xl bg-slate-800/70 border border-slate-700/70" />
+      <div className="h-24 rounded-xl bg-slate-800/70 border border-slate-700/70" />
+    </div>
   </div>
 );
 
