@@ -1,20 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { createPageUrl } from '../utils';
 import { supabase } from '@/lib/supabase';
 import SystemBackground from '../components/SystemBackground';
 import HoloPanel from '../components/HoloPanel';
-import QuestCard from '../components/QuestCard';
-import StatGrid from '../components/StatGrid';
 import { Button } from '@/components/ui/button';
 import { computeLevel, getAvatarTier, getRankTitle, levelProgressPct, punishmentRefusalPenalty, xpBetweenLevels, xpIntoCurrentLevel } from '../components/gameEngine';
 import { ChevronDown, ChevronUp, Circle, CheckCircle2, Gem, Shield, Zap } from 'lucide-react';
 import RPGHumanoidAvatar from '../components/RPGHumanoidAvatar';
 import RPGXPBar from '../components/RPGXPBar';
-import VoiceGreeting from '../components/VoiceGreeting';
 import PunishmentBanner from '../components/PunishmentBanner';
-import PunishmentModal from '../components/PunishmentModal';
 import SystemNotification, { useSystemNotifications } from '../components/SystemNotification';
 import { getDailySystemInterrupt } from '../components/systemInterrupts';
 import { ensureDailyQuests } from '@/lib/questSystem';
@@ -51,6 +47,12 @@ import {
 } from '@/lib/reminderNotifications';
 import { speakWithFemaleVoice } from '@/lib/voice';
 import { syncUserAchievements } from '@/lib/achievements';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
+
+const QuestCard = lazyWithRetry(() => import('../components/QuestCard'));
+const StatGrid = lazyWithRetry(() => import('../components/StatGrid'));
+const VoiceGreeting = lazyWithRetry(() => import('../components/VoiceGreeting'));
+const PunishmentModal = lazyWithRetry(() => import('../components/PunishmentModal'));
 
 const DAILY_PRINCIPLES = [
   'It does not matter how slowly you go as long as you do not stop.',
@@ -259,6 +261,27 @@ const playPendingHabitReminderCue = (message, includeSpeech = true) => {
   });
 };
 
+const DashboardSectionFallback = () => (
+  <div className="min-h-8 flex items-center justify-center text-xs text-cyan-300/70">
+    Loading section...
+  </div>
+);
+
+function DashboardClock() {
+  const [clockNow, setClockNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const intervalId = setInterval(() => setClockNow(new Date()), 1000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  return (
+    <p className="text-cyan-400 text-xs">
+      {format(clockNow, 'EEE, MMM d').toUpperCase()} · {format(clockNow, 'hh:mm:ss a')}
+    </p>
+  );
+}
+
 const getSystemWarningDailyStorageKey = (userId, dateKey) => `nithya_system_warning_daily_${userId}_${dateKey}`;
 const hasWeeklyTarget120Progress = (rows) => (
   (rows || []).some((row) => {
@@ -311,7 +334,7 @@ export default function Dashboard() {
   const [levelUpPulse, setLevelUpPulse] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [now, setNow] = useState(new Date());
+  const [habitTimerNowMs, setHabitTimerNowMs] = useState(() => Date.now());
   const [xpDelta, setXpDelta] = useState(0);
   const [announcements, setAnnouncements] = useState([]);
   const [habitSectionExpanded, setHabitSectionExpanded] = useState(false);
@@ -707,9 +730,10 @@ export default function Dashboard() {
   }, [loadData, notify, user?.id]);
 
   useEffect(() => {
-    const intervalId = setInterval(() => setNow(new Date()), 1000);
+    if (!habitSectionExpanded) return undefined;
+    const intervalId = setInterval(() => setHabitTimerNowMs(Date.now()), 1000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [habitSectionExpanded]);
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -1462,40 +1486,26 @@ export default function Dashboard() {
     }
   };
 
-  if (loading) {
-    return <SystemBackground><div className="min-h-screen flex items-center justify-center text-cyan-400">SYSTEM LOADING...</div></SystemBackground>;
-  }
-
-  if (loadError) {
-    return (
-      <SystemBackground>
-        <div className="min-h-screen flex items-center justify-center p-6">
-          <HoloPanel>
-            <div className="space-y-3">
-              <p className="text-red-400 font-bold">DASHBOARD LOAD FAILED</p>
-              <p className="text-slate-300 text-sm">{loadError}</p>
-              <div className="flex gap-2">
-                <Button onClick={() => user?.id && loadData(user.id)}>Retry</Button>
-                <Button variant="outline" onClick={() => navigate(createPageUrl('Landing'))}>Go to Landing</Button>
-              </div>
-            </div>
-          </HoloPanel>
-        </div>
-      </SystemBackground>
-    );
-  }
-
-  const activeQuests = quests.filter((q) => isQuestInProgressStatus(q.status));
+  const activeQuests = useMemo(
+    () => quests.filter((q) => isQuestInProgressStatus(q.status)),
+    [quests]
+  );
   const totalHabitsToday = habits.length;
-  const habitIdSet = new Set(habits.map((h) => h.id));
-  const completedHabitsToday = new Set(
-    logs
-      .filter((l) => l.status === 'completed' && habitIdSet.has(l.habit_id))
-      .map((l) => l.habit_id)
-  ).size;
-  const habitProgressPct = totalHabitsToday > 0
-    ? Math.min(100, Math.round((completedHabitsToday / totalHabitsToday) * 100))
-    : 0;
+  const habitIdSet = useMemo(() => new Set(habits.map((h) => h.id)), [habits]);
+  const completedHabitIdsToday = useMemo(
+    () => new Set(
+      logs
+        .filter((l) => l.status === 'completed' && habitIdSet.has(l.habit_id))
+        .map((l) => l.habit_id)
+    ),
+    [habitIdSet, logs]
+  );
+  const completedHabitsToday = completedHabitIdsToday.size;
+  const habitProgressPct = useMemo(() => (
+    totalHabitsToday > 0
+      ? Math.min(100, Math.round((completedHabitsToday / totalHabitsToday) * 100))
+      : 0
+  ), [completedHabitsToday, totalHabitsToday]);
   const totalXp = profile?.total_xp || 0;
   const xpInLevel = Math.max(0, Math.floor(xpIntoCurrentLevel(totalXp)));
   const xpNeededForNextLevel = Math.max(1, Math.floor(xpBetweenLevels(level)));
@@ -1506,7 +1516,7 @@ export default function Dashboard() {
   const gateRank = getGateRank(level);
   const shadowDebt = systemState?.shadow_debt_xp || 0;
   const strikeCount = systemState?.strict_strikes || 0;
-  const difficultyColor = (d) => ({ easy: '#34D399', medium: '#FBBF24', hard: '#F87171' }[d] || '#64748B');
+  const difficultyColor = useCallback((d) => ({ easy: '#34D399', medium: '#FBBF24', hard: '#F87171' }[d] || '#64748B'), []);
   const activeDungeonProgress = getDungeonProgress(activeDungeon);
   const dungeonStability = Math.max(0, Number(activeDungeon?.stability ?? 100));
   const interruptRemainingTotalSec = Math.max(0, Math.floor(interruptRemainingMs / 1000));
@@ -1517,7 +1527,7 @@ export default function Dashboard() {
   const interruptActionable = !!interruptRecord?.id
     && !systemState?.interruptions_paused
     && ['active', 'paused', 'penalized'].includes(interruptStatus || '');
-  const nowMs = now.getTime();
+  const nowMs = Date.now();
   const activeAnnouncements = (announcements || []).filter((item) => {
     if (!item?.active) return false;
     if (!item?.expires_at) return true;
@@ -1525,9 +1535,19 @@ export default function Dashboard() {
     if (Number.isNaN(expiry.getTime())) return true;
     return expiry.getTime() > nowMs;
   });
-  const habitDetailRows = habits.map((habit) => {
-    const habitCompletedRows = historyLogs.filter((row) => row.habit_id === habit.id && row.status === 'completed');
-    const todayDone = logs.some((row) => row.habit_id === habit.id && row.status === 'completed');
+  const completedHistoryByHabitId = useMemo(() => {
+    const map = new Map();
+    (historyLogs || []).forEach((row) => {
+      if (!row?.habit_id || row?.status !== 'completed') return;
+      const current = map.get(row.habit_id) || [];
+      current.push(row);
+      map.set(row.habit_id, current);
+    });
+    return map;
+  }, [historyLogs]);
+  const habitDetailBaseRows = useMemo(() => habits.map((habit) => {
+    const habitCompletedRows = completedHistoryByHabitId.get(habit.id) || [];
+    const todayDone = completedHabitIdsToday.has(habit.id);
     const lastCompletedRaw = habitCompletedRows.reduce((latest, row) => {
       const candidate = toEpoch(row?.completed_at || row?.logged_at || row?.created_at);
       return candidate > latest ? candidate : latest;
@@ -1555,10 +1575,6 @@ export default function Dashboard() {
 
     const deadlineRaw = habit?.deadline_at || null;
     const deadlineMs = deadlineRaw ? new Date(deadlineRaw).getTime() : Number.NaN;
-    const hasDeadline = Number.isFinite(deadlineMs);
-    const timerMs = hasDeadline ? Math.max(0, deadlineMs - nowMs) : 0;
-    const timerActive = hasDeadline && deadlineMs > nowMs && !todayDone;
-    const timerExpired = hasDeadline && deadlineMs <= nowMs && !todayDone;
 
     return {
       ...habit,
@@ -1566,11 +1582,45 @@ export default function Dashboard() {
       streak,
       lastCompletedDate: lastCompletedRaw ? format(new Date(lastCompletedRaw), 'yyyy-MM-dd') : null,
       punishmentRule: formatTaskPunishmentRule(habit),
+      deadlineMs,
+    };
+  }), [completedHabitIdsToday, completedHistoryByHabitId, habits]);
+  const habitDetailRows = useMemo(() => habitDetailBaseRows.map((habit) => {
+    const hasDeadline = Number.isFinite(habit.deadlineMs);
+    const timerMs = hasDeadline ? Math.max(0, habit.deadlineMs - habitTimerNowMs) : 0;
+    const timerActive = hasDeadline && habit.deadlineMs > habitTimerNowMs && !habit.todayDone;
+    const timerExpired = hasDeadline && habit.deadlineMs <= habitTimerNowMs && !habit.todayDone;
+
+    return {
+      ...habit,
       timerActive,
       timerExpired,
-      timerLabel: timerActive ? toCountdownLabel(timerMs) : (timerExpired ? 'Expired' : (todayDone ? 'Completed' : 'No timer')),
+      timerLabel: timerActive ? toCountdownLabel(timerMs) : (timerExpired ? 'Expired' : (habit.todayDone ? 'Completed' : 'No timer')),
     };
-  });
+  }), [habitDetailBaseRows, habitTimerNowMs]);
+
+  if (loading) {
+    return <SystemBackground><div className="min-h-screen flex items-center justify-center text-cyan-400">SYSTEM LOADING...</div></SystemBackground>;
+  }
+
+  if (loadError) {
+    return (
+      <SystemBackground>
+        <div className="min-h-screen flex items-center justify-center p-6">
+          <HoloPanel>
+            <div className="space-y-3">
+              <p className="text-red-400 font-bold">DASHBOARD LOAD FAILED</p>
+              <p className="text-slate-300 text-sm">{loadError}</p>
+              <div className="flex gap-2">
+                <Button onClick={() => user?.id && loadData(user.id)}>Retry</Button>
+                <Button variant="outline" onClick={() => navigate(createPageUrl('Landing'))}>Go to Landing</Button>
+              </div>
+            </div>
+          </HoloPanel>
+        </div>
+      </SystemBackground>
+    );
+  }
 
   return (
     <SystemBackground>
@@ -1615,21 +1665,25 @@ export default function Dashboard() {
         </div>
       )}
       <PunishmentBanner count={pendingPunishments.length} onResolve={() => navigate(createPageUrl('Punishments'))} />
-      <PunishmentModal
-        pendingPunishments={pendingPunishments}
-        hardcoreMode={!!systemState?.hardcore_mode}
-        onDone={handlePunishmentDone}
-        onSkip={handlePunishmentSkip}
-        timeLimitHours={PUNISHMENT_TIME_LIMIT_HOURS}
-      />
-      {profile && (
-        <VoiceGreeting
-          userId={user?.id || profile?.id}
-          name={profile.name || ''}
-          isFirstTime={(profile.total_xp || 0) === 0}
-          voiceEnabled={systemState?.voice_enabled !== false}
-          onGlowPulse={handleGlowPulse}
+      <Suspense fallback={null}>
+        <PunishmentModal
+          pendingPunishments={pendingPunishments}
+          hardcoreMode={!!systemState?.hardcore_mode}
+          onDone={handlePunishmentDone}
+          onSkip={handlePunishmentSkip}
+          timeLimitHours={PUNISHMENT_TIME_LIMIT_HOURS}
         />
+      </Suspense>
+      {profile && (
+        <Suspense fallback={null}>
+          <VoiceGreeting
+            userId={user?.id || profile?.id}
+            name={profile.name || ''}
+            isFirstTime={(profile.total_xp || 0) === 0}
+            voiceEnabled={systemState?.voice_enabled !== false}
+            onGlowPulse={handleGlowPulse}
+          />
+        </Suspense>
       )}
       <div className="w-full max-w-2xl mx-auto p-4 md:p-6 space-y-4 overflow-x-hidden">
         <HoloPanel>
@@ -1637,9 +1691,7 @@ export default function Dashboard() {
             <div className="min-w-0">
               <p className="text-cyan-300 text-[10px] tracking-[0.2em] font-black">HUNTER PROFILE</p>
               <p className="text-white text-lg font-bold">{profile?.name || 'PLAYER'}</p>
-              <p className="text-cyan-400 text-xs">
-                {format(now, 'EEE, MMM d').toUpperCase()} · {format(now, 'hh:mm:ss a')}
-              </p>
+              <DashboardClock />
             </div>
             <div className="flex w-full sm:w-auto items-center justify-start sm:justify-end gap-2">
               <button
@@ -1723,13 +1775,15 @@ export default function Dashboard() {
                   {profile?.stat_points || 0} PTS
                 </span>
               </div>
-              <StatGrid
-                profile={profile}
-                level={level}
-                statPoints={profile?.stat_points || 0}
-                onAllocate={() => {}}
-                expandable
-              />
+              <Suspense fallback={<DashboardSectionFallback />}>
+                <StatGrid
+                  profile={profile}
+                  level={level}
+                  statPoints={profile?.stat_points || 0}
+                  onAllocate={() => {}}
+                  expandable
+                />
+              </Suspense>
             </div>
           </div>
         </HoloPanel>
@@ -1927,53 +1981,50 @@ export default function Dashboard() {
             </div>
           </button>
 
-          <div
-            className="overflow-hidden"
-            style={{
-              maxHeight: habitSectionExpanded ? '70vh' : '0px',
-              opacity: habitSectionExpanded ? 1 : 0,
-              marginTop: habitSectionExpanded ? '0.5rem' : '0px',
-              transition: 'max-height 360ms ease, opacity 220ms ease, margin-top 220ms ease',
-            }}
-          >
-            <div className="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
-              {habitDetailRows.length === 0 ? (
-                <p className="text-xs text-slate-500 py-2">No habits configured.</p>
-              ) : habitDetailRows.map((habit) => {
-                const color = difficultyColor(habit.difficulty);
-                return (
-                  <div key={habit.id} className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
-                    <div className="flex items-start gap-3">
-                      <button onClick={() => toggleHabit(habit)} className="text-slate-400 mt-0.5">
-                        {habit.todayDone ? <CheckCircle2 className="w-5 h-5 text-cyan-400" /> : <Circle className="w-5 h-5" />}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-white font-semibold break-words">{habit.title}</p>
-                          <span className="px-2 py-1 rounded text-xs font-black shrink-0" style={{ color, border: `1px solid ${color}66`, background: `${color}22` }}>
-                            {(habit.difficulty || 'medium').toUpperCase()}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1 break-words">{habit.description || 'No description set.'}</p>
-                        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 text-[11px]">
-                          <p className="text-yellow-300">XP Reward: <span className="text-yellow-100">+{Number(habit.xp_value || 0)}</span></p>
-                          <p className="text-orange-300">Current Streak: <span className="text-orange-100">{habit.streak}d</span></p>
-                          <p className="text-cyan-300">Last Completed: <span className="text-cyan-100">{habit.lastCompletedDate || 'Never'}</span></p>
-                          <p className={`${habit.timerExpired ? 'text-red-300' : 'text-emerald-300'}`}>
-                            Timer: <span className={habit.timerExpired ? 'text-red-100' : 'text-emerald-100'}>{habit.timerLabel}</span>
+          {habitSectionExpanded && (
+            <div
+              className="mt-2 will-change-transform motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1"
+              style={{ contentVisibility: 'auto', containIntrinsicSize: '600px' }}
+            >
+              <div className="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
+                {habitDetailRows.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-2">No habits configured.</p>
+                ) : habitDetailRows.map((habit) => {
+                  const color = difficultyColor(habit.difficulty);
+                  return (
+                    <div key={habit.id} className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+                      <div className="flex items-start gap-3">
+                        <button onClick={() => toggleHabit(habit)} className="text-slate-400 mt-0.5">
+                          {habit.todayDone ? <CheckCircle2 className="w-5 h-5 text-cyan-400" /> : <Circle className="w-5 h-5" />}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-white font-semibold break-words">{habit.title}</p>
+                            <span className="px-2 py-1 rounded text-xs font-black shrink-0" style={{ color, border: `1px solid ${color}66`, background: `${color}22` }}>
+                              {(habit.difficulty || 'medium').toUpperCase()}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1 break-words">{habit.description || 'No description set.'}</p>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-2 text-[11px]">
+                            <p className="text-yellow-300">XP Reward: <span className="text-yellow-100">+{Number(habit.xp_value || 0)}</span></p>
+                            <p className="text-orange-300">Current Streak: <span className="text-orange-100">{habit.streak}d</span></p>
+                            <p className="text-cyan-300">Last Completed: <span className="text-cyan-100">{habit.lastCompletedDate || 'Never'}</span></p>
+                            <p className={`${habit.timerExpired ? 'text-red-300' : 'text-emerald-300'}`}>
+                              Timer: <span className={habit.timerExpired ? 'text-red-100' : 'text-emerald-100'}>{habit.timerLabel}</span>
+                            </p>
+                          </div>
+                          <p className="text-[11px] text-red-300 mt-1.5">
+                            Punishment: <span className="text-red-100">{habit.punishmentRule}</span>
+                            {habit.punishment_text ? ` | ${habit.punishment_text}` : ''}
                           </p>
                         </div>
-                        <p className="text-[11px] text-red-300 mt-1.5">
-                          Punishment: <span className="text-red-100">{habit.punishmentRule}</span>
-                          {habit.punishment_text ? ` | ${habit.punishment_text}` : ''}
-                        </p>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </HoloPanel>
 
         <div className="flex items-center justify-between gap-2">
@@ -1981,9 +2032,11 @@ export default function Dashboard() {
           <button onClick={() => navigate(createPageUrl('Quests'))} className="text-cyan-400 text-xs font-bold whitespace-nowrap">VIEW ALL</button>
         </div>
         <div className="space-y-3">
-          {activeQuests.slice(0, 2).map((quest, i) => (
-            <QuestCard key={quest.id} quest={quest} index={i} onComplete={handleQuestComplete} onFail={handleQuestFail} nowMs={now.getTime()} />
-          ))}
+          <Suspense fallback={<DashboardSectionFallback />}>
+            {activeQuests.slice(0, 2).map((quest, i) => (
+              <QuestCard key={quest.id} quest={quest} index={i} onComplete={handleQuestComplete} onFail={handleQuestFail} />
+            ))}
+          </Suspense>
         </div>
       </div>
     </SystemBackground>

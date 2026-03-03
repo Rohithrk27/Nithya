@@ -381,7 +381,17 @@ export default function Profile() {
             <ArrowLeft className="w-4 h-4 text-white" />
           </button>
           <div className="flex items-center gap-2">
-            {LOGO_URL && <img src={LOGO_URL} alt="" className="w-7 h-7 object-contain" />}
+            {LOGO_URL && (
+              <img
+                src={LOGO_URL}
+                alt=""
+                width="28"
+                height="28"
+                loading="lazy"
+                decoding="async"
+                className="w-7 h-7 object-contain"
+              />
+            )}
             <h1 className="text-lg font-black tracking-widest text-white">STATUS FILE</h1>
           </div>
         </div>

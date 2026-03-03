@@ -1,12 +1,14 @@
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v8';
 const SHELL_CACHE = `nithya-shell-${CACHE_VERSION}`;
 const ASSET_CACHE = `nithya-asset-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `nithya-runtime-${CACHE_VERSION}`;
 const CACHE_PREFIX = 'nithya-';
+const OFFLINE_ASSET_MANIFEST_URL = '/asset-manifest.json';
 
 const APP_SHELL = [
   '/',
   '/index.html',
+  OFFLINE_ASSET_MANIFEST_URL,
   '/manifest.json',
   '/logo/logo.png',
   '/logo/logo.svg',
@@ -22,21 +24,96 @@ const getExtension = (pathname) => {
   return i >= 0 ? pathname.slice(i).toLowerCase() : '';
 };
 
-const isCacheableResponse = (response) => response && response.ok && (response.type === 'basic' || response.type === 'default');
+const toCacheablePath = (value) => {
+  if (!value) return null;
+  try {
+    const url = new URL(value, self.location.origin);
+    if (url.origin !== self.location.origin) return null;
+    return `${url.pathname}${url.search}`;
+  } catch (_) {
+    return null;
+  }
+};
+
+const toRequestUrl = (request) => {
+  try {
+    const raw = typeof request === 'string' ? request : request.url;
+    return new URL(raw, self.location.origin);
+  } catch (_) {
+    return null;
+  }
+};
+
+const isCacheableResponse = (request, response) => {
+  if (!response || !response.ok || (response.type !== 'basic' && response.type !== 'default')) {
+    return false;
+  }
+
+  const requestUrl = toRequestUrl(request);
+  const pathname = requestUrl?.pathname || '';
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  const destination = typeof request === 'string' ? '' : String(request.destination || '').toLowerCase();
+
+  // Never cache HTML under hashed asset URLs; this causes poisoned dynamic imports.
+  if (pathname.startsWith('/assets/') && contentType.includes('text/html')) return false;
+
+  if (destination === 'script' || destination === 'worker') {
+    return contentType.includes('javascript') || contentType.includes('ecmascript');
+  }
+
+  if (destination === 'style') {
+    return contentType.includes('text/css');
+  }
+
+  return true;
+};
 
 const putInCache = async (cacheName, request, response) => {
-  if (!isCacheableResponse(response)) return;
+  if (!isCacheableResponse(request, response)) return;
   const cache = await caches.open(cacheName);
   await cache.put(request, response.clone());
+};
+
+const warmCacheFromList = async (cacheName, urls = []) => {
+  if (!Array.isArray(urls) || urls.length === 0) return;
+  await Promise.all(urls.map(async (url) => {
+    const safePath = toCacheablePath(url);
+    if (!safePath) return;
+    try {
+      const request = new Request(safePath, { cache: 'reload' });
+      const response = await fetch(request);
+      await putInCache(cacheName, request, response);
+    } catch (_) {
+      // Ignore unavailable assets and keep install resilient.
+    }
+  }));
+};
+
+const loadBuildAssetManifest = async () => {
+  try {
+    const response = await fetch(OFFLINE_ASSET_MANIFEST_URL, { cache: 'no-store' });
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const list = Array.isArray(payload?.assets) ? payload.assets : [];
+    return list
+      .map((entry) => toCacheablePath(entry))
+      .filter(Boolean);
+  } catch (_) {
+    return [];
+  }
 };
 
 const cacheFirst = async (request, cacheName) => {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) {
-    // Revalidate in background for freshness.
-    fetch(request).then((res) => putInCache(cacheName, request, res)).catch(() => {});
-    return cached;
+    if (!isCacheableResponse(request, cached)) {
+      await cache.delete(request);
+    } else {
+      // Revalidate in background for freshness.
+      fetch(request).then((res) => putInCache(cacheName, request, res)).catch(() => {});
+      return cached;
+    }
   }
   const network = await fetch(request);
   await putInCache(cacheName, request, network);
@@ -46,13 +123,20 @@ const cacheFirst = async (request, cacheName) => {
 const staleWhileRevalidate = async (request, cacheName) => {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
+  if (cached && !isCacheableResponse(request, cached)) {
+    await cache.delete(request);
+  }
   const networkPromise = fetch(request)
     .then(async (response) => {
       await putInCache(cacheName, request, response);
       return response;
     })
-    .catch(() => cached);
-  return cached || networkPromise;
+    .catch(async () => {
+      const fallback = await cache.match(request);
+      return fallback;
+    });
+  const safeCached = await cache.match(request);
+  return safeCached || networkPromise;
 };
 
 const networkFirstForDocument = async (event) => {
@@ -73,11 +157,12 @@ const networkFirstForDocument = async (event) => {
 };
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(SHELL_CACHE)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    await warmCacheFromList(SHELL_CACHE, APP_SHELL);
+    const buildAssets = await loadBuildAssetManifest();
+    await warmCacheFromList(ASSET_CACHE, buildAssets);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {

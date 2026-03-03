@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { createPageUrl } from './utils';
 import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, Gem, LogIn, LogOut, Trophy, Menu, X, ShieldAlert, Ticket, MessageSquare, Timer, Brain, Users, ShieldCheck } from 'lucide-react';
@@ -57,15 +57,9 @@ const NO_NAV_PAGES = ['Landing', 'PublicProfile', 'AdminDashboard', 'Suspended']
 
 export default function Layout({ children, currentPageName }) {
   const showNav = !NO_NAV_PAGES.includes(currentPageName);
-  const location = useLocation();
   const {
     isAuthenticated,
     logout,
-    user,
-    accounts,
-    switchAccount,
-    removeSavedAccount,
-    isSwitchingAccount,
   } = useAuth();
   const [isScrolled, setIsScrolled] = useState(false);
   const [logoSrc, setLogoSrc] = useState(LOGO_URL);
@@ -73,76 +67,29 @@ export default function Layout({ children, currentPageName }) {
   const [logoBroken, setLogoBroken] = useState(false);
   const [headerBroken, setHeaderBroken] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [accountActionError, setAccountActionError] = useState('');
-  const [accountActionLoadingId, setAccountActionLoadingId] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const savedAccounts = useMemo(() => (Array.isArray(accounts) ? accounts : []), [accounts]);
   const mobileQuickItems = useMemo(
     () => MOBILE_NAV.filter((item) => item.page !== 'Profile'),
     []
   );
-  const addAccountHref = useMemo(() => {
-    const fallback = createPageUrl('Dashboard');
-    const currentPath = `${location.pathname || ''}${location.search || ''}${location.hash || ''}` || fallback;
-    return `${createPageUrl('Login')}?mode=login&add_account=1&redirect=${encodeURIComponent(currentPath)}`;
-  }, [location.hash, location.pathname, location.search]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
-    setAccountMenuOpen(false);
-    setAccountActionError('');
   }, [currentPageName]);
 
   useEffect(() => {
-    if (!mobileMenuOpen && !accountMenuOpen) return undefined;
+    if (!mobileMenuOpen) return undefined;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = prevOverflow;
     };
-  }, [accountMenuOpen, mobileMenuOpen]);
+  }, [mobileMenuOpen]);
 
   const confirmAndLogout = async () => {
     setMobileMenuOpen(false);
-    setAccountMenuOpen(false);
     await logout();
     setShowLogoutConfirm(false);
-  };
-
-  const handleSwitchAccount = async (accountId) => {
-    const safeId = String(accountId || '').trim();
-    if (!safeId) return;
-    setAccountActionError('');
-    setAccountActionLoadingId(safeId);
-    const { error } = await switchAccount(safeId);
-    if (error) {
-      setAccountActionError(error.message || 'Unable to switch account.');
-    } else {
-      setAccountMenuOpen(false);
-      setMobileMenuOpen(false);
-    }
-    setAccountActionLoadingId('');
-  };
-
-  const handleRemoveAccount = (accountId) => {
-    const safeId = String(accountId || '').trim();
-    if (!safeId) return;
-    setAccountActionError('');
-    const { error } = removeSavedAccount(safeId);
-    if (error) {
-      setAccountActionError(error.message || 'Unable to remove saved account.');
-    }
-  };
-
-  const resolveAccountLabel = (account) => {
-    const label = String(account?.label || '').trim();
-    if (label) return label;
-    const email = String(account?.email || '').trim();
-    if (email) return email;
-    const userId = String(account?.user_id || account?.account_id || '').trim();
-    if (!userId) return 'Unknown account';
-    return `${userId.slice(0, 8)}...`;
   };
 
   useEffect(() => {
@@ -171,6 +118,11 @@ export default function Layout({ children, currentPageName }) {
             <img
               src={headerSrc}
               alt="Niത്യ"
+              width="420"
+              height="44"
+              decoding="async"
+              fetchPriority="high"
+              loading="eager"
               onError={() => {
                 if (headerSrc !== HEADER_WORDMARK_FALLBACK_URL) {
                   setHeaderSrc(HEADER_WORDMARK_FALLBACK_URL);
@@ -208,32 +160,10 @@ export default function Layout({ children, currentPageName }) {
               </div>
             )}
             <div className="flex items-center gap-2 shrink-0">
-              {showNav && isAuthenticated && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAccountActionError('');
-                    setMobileMenuOpen(false);
-                    setAccountMenuOpen((v) => !v);
-                  }}
-                  className="h-9 rounded-xl px-2.5 flex items-center justify-center text-xs font-bold tracking-wide transition-colors"
-                  style={{
-                    border: '1px solid rgba(56,189,248,0.3)',
-                    background: accountMenuOpen ? 'rgba(56,189,248,0.2)' : 'rgba(15,23,42,0.55)',
-                    color: accountMenuOpen ? '#38BDF8' : '#94A3B8',
-                  }}
-                  aria-label={accountMenuOpen ? 'Close account switcher' : 'Open account switcher'}
-                  aria-expanded={accountMenuOpen}
-                  aria-controls="account-switcher-menu"
-                >
-                  Accounts
-                </button>
-              )}
               {showNav && (
                 <button
                   type="button"
                   onClick={() => {
-                    setAccountMenuOpen(false);
                     setMobileMenuOpen((v) => !v);
                   }}
                   className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors"
@@ -258,152 +188,6 @@ export default function Layout({ children, currentPageName }) {
 
       {showNav && (
         <>
-          {/* Account switcher drawer */}
-          {accountMenuOpen && isAuthenticated && (
-            <div className="fixed inset-0 z-[70]">
-              <button
-                type="button"
-                className="absolute inset-0"
-                onClick={() => setAccountMenuOpen(false)}
-                style={{ background: 'rgba(2,6,23,0.72)' }}
-                aria-label="Close account switcher overlay"
-              />
-              <aside
-                id="account-switcher-menu"
-                className="absolute top-0 right-0 h-full w-[88vw] max-w-[420px] p-4 flex flex-col"
-                style={{
-                  background: 'linear-gradient(180deg, rgba(15,32,39,0.98), rgba(2,6,23,0.98))',
-                  borderLeft: '1px solid rgba(56,189,248,0.18)',
-                  boxShadow: '-16px 0 32px rgba(2,6,23,0.6)',
-                  backdropFilter: 'blur(16px)',
-                }}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-xs tracking-widest font-bold" style={{ color: '#64748B' }}>ACCOUNTS</p>
-                    <p className="text-[11px]" style={{ color: '#94A3B8' }}>Switch between saved sessions</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setAccountMenuOpen(false)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center"
-                    style={{ background: 'rgba(15,23,42,0.7)', color: '#94A3B8' }}
-                    aria-label="Close account switcher"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="space-y-2 overflow-y-auto pb-4">
-                  {savedAccounts.length === 0 && (
-                    <div
-                      className="rounded-xl px-3 py-3 text-xs"
-                      style={{ border: '1px solid rgba(56,189,248,0.16)', background: 'rgba(15,23,42,0.55)', color: '#94A3B8' }}
-                    >
-                      No saved accounts yet.
-                    </div>
-                  )}
-
-                  {savedAccounts.map((account) => {
-                    const accountId = String(account?.account_id || account?.user_id || '');
-                    const isCurrent = !!user?.id && accountId === String(user.id);
-                    const isBusy = accountActionLoadingId === accountId;
-                    const canSwitch = !isCurrent && !isBusy && !isSwitchingAccount;
-                    const canRemove = !isCurrent && !isBusy && !isSwitchingAccount;
-                    const lastSeenText = account?.last_used_at
-                      ? new Date(account.last_used_at).toLocaleString()
-                      : 'Unknown';
-                    return (
-                      <div
-                        key={accountId}
-                        className="rounded-xl px-3 py-3 space-y-2"
-                        style={{
-                          border: '1px solid rgba(56,189,248,0.16)',
-                          background: isCurrent ? 'rgba(56,189,248,0.18)' : 'rgba(15,23,42,0.55)',
-                        }}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold truncate" style={{ color: '#E2E8F0' }}>
-                              {resolveAccountLabel(account)}
-                            </p>
-                            <p className="text-[11px] truncate" style={{ color: '#94A3B8' }}>
-                              {String(account?.email || account?.user_id || '')}
-                            </p>
-                            <p className="text-[10px]" style={{ color: '#64748B' }}>
-                              Last used: {lastSeenText}
-                            </p>
-                          </div>
-                          {isCurrent && (
-                            <span className="text-[10px] font-bold tracking-wide px-2 py-1 rounded-lg"
-                              style={{ color: '#38BDF8', border: '1px solid rgba(56,189,248,0.4)' }}>
-                              ACTIVE
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={!canSwitch}
-                            onClick={() => void handleSwitchAccount(accountId)}
-                            className="rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                            style={{
-                              border: '1px solid rgba(56,189,248,0.35)',
-                              color: '#7DD3FC',
-                              background: 'rgba(2,132,199,0.18)',
-                            }}
-                          >
-                            {isCurrent ? 'Current' : (isBusy ? 'Switching...' : 'Switch')}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!canRemove}
-                            onClick={() => handleRemoveAccount(accountId)}
-                            className="rounded-lg px-2.5 py-1.5 text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                            style={{
-                              border: '1px solid rgba(239,68,68,0.35)',
-                              color: '#FCA5A5',
-                              background: 'rgba(127,29,29,0.22)',
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {accountActionError && (
-                  <p className="text-xs mb-2" style={{ color: '#FCA5A5' }}>
-                    {accountActionError}
-                  </p>
-                )}
-
-                <div className="mt-auto pt-3 border-t" style={{ borderColor: 'rgba(56,189,248,0.12)' }}>
-                  <Link
-                    to={addAccountHref}
-                    onClick={() => {
-                      setAccountMenuOpen(false);
-                      setMobileMenuOpen(false);
-                    }}
-                    className="w-full rounded-xl px-3 py-2.5 flex items-center justify-between"
-                    style={{
-                      border: '1px solid rgba(56,189,248,0.35)',
-                      background: 'rgba(2,132,199,0.18)',
-                      color: '#7DD3FC',
-                    }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <LogIn className="w-4 h-4" />
-                      <span className="text-sm font-semibold">Add Another Account</span>
-                    </span>
-                  </Link>
-                </div>
-              </aside>
-            </div>
-          )}
-
           {/* Mobile quick access drawer */}
           {mobileMenuOpen && (
             <div className="md:hidden fixed inset-0 z-[60]">
@@ -564,6 +348,10 @@ export default function Layout({ children, currentPageName }) {
               <img
                 src={logoSrc}
                 alt="Niത്യ"
+                width="32"
+                height="32"
+                decoding="async"
+                loading="lazy"
                 onError={() => {
                   if (logoSrc !== LOGO_FALLBACK_URL) {
                     setLogoSrc(LOGO_FALLBACK_URL);

@@ -11,6 +11,11 @@ const PARTICLES = Array.from({ length: 40 }, (_, i) => ({
 }));
 
 export default function SystemBackground({ children }) {
+  const isMobileViewport = typeof window !== 'undefined'
+    && window.matchMedia
+    && window.matchMedia('(max-width: 768px)').matches;
+  const visibleParticles = isMobileViewport ? PARTICLES.slice(0, 20) : PARTICLES;
+
   return (
     <div className="relative min-h-screen overflow-x-hidden"
       style={{ background: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)' }}>
@@ -39,8 +44,8 @@ export default function SystemBackground({ children }) {
 
       {/* Floating particles */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0, overflow: 'hidden' }}>
-        {PARTICLES.map((p, i) => (
-          <div key={i} style={{
+        {visibleParticles.map((p, i) => (
+          <div key={i} className="system-bg-particle" style={{
             position: 'absolute',
             left: `${p.x}%`,
             top: `${p.y}%`,
@@ -49,7 +54,8 @@ export default function SystemBackground({ children }) {
             borderRadius: '50%',
             background: '#38BDF8',
             opacity: p.opacity,
-            animation: `particleDrift ${p.duration}s ${p.delay}s linear infinite`,
+            animationDuration: `${p.duration}s`,
+            animationDelay: `${p.delay}s`,
           }} />
         ))}
 
@@ -59,16 +65,6 @@ export default function SystemBackground({ children }) {
       <div style={{ position: 'relative', zIndex: 1 }}>
         {children}
       </div>
-
-      <style>{`
-        @keyframes particleDrift {
-          0%   { transform: translate(0, 0) scale(1); opacity: inherit; }
-          25%  { transform: translate(12px, -18px) scale(1.2); }
-          50%  { transform: translate(-8px, -35px) scale(0.8); }
-          75%  { transform: translate(6px, -52px) scale(1.1); }
-          100% { transform: translate(0, -70px) scale(1); opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 }

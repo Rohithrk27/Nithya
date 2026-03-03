@@ -47,28 +47,28 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
-import { lazy } from 'react';
 import __Layout from './Layout.jsx';
+import { lazyWithRetry } from './lib/lazyWithRetry';
 
-const Analytics = lazy(() => import('./pages/Analytics'));
-const Archive = lazy(() => import('./pages/Archive'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Dungeon = lazy(() => import('./pages/Dungeon'));
-const Focus = lazy(() => import('./pages/Focus'));
-const Landing = lazy(() => import('./pages/Landing'));
-const Leaderboard = lazy(() => import('./pages/Leaderboard'));
-const Profile = lazy(() => import('./pages/Profile'));
-const Insights = lazy(() => import('./pages/Insights'));
-const PartyChallenges = lazy(() => import('./pages/PartyChallenges'));
-const Recovery = lazy(() => import('./pages/Recovery'));
-const Community = lazy(() => import('./pages/Community'));
-const PaymentVerification = lazy(() => import('./pages/PaymentVerification'));
-const Quests = lazy(() => import('./pages/Quests'));
-const RedeemCodes = lazy(() => import('./pages/RedeemCodes'));
-const Relics = lazy(() => import('./pages/Relics'));
-const Habits = lazy(() => import('./pages/Habits'));
-const Login = lazy(() => import('./pages/Login'));
-const Punishments = lazy(() => import('./pages/Punishments'));
+const Analytics = lazyWithRetry(() => import('./pages/Analytics'));
+const Archive = lazyWithRetry(() => import('./pages/Archive'));
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'));
+const Dungeon = lazyWithRetry(() => import('./pages/Dungeon'));
+const Focus = lazyWithRetry(() => import('./pages/Focus'));
+const Landing = lazyWithRetry(() => import('./pages/Landing'));
+const Leaderboard = lazyWithRetry(() => import('./pages/Leaderboard'));
+const Profile = lazyWithRetry(() => import('./pages/Profile'));
+const Insights = lazyWithRetry(() => import('./pages/Insights'));
+const PartyChallenges = lazyWithRetry(() => import('./pages/PartyChallenges'));
+const Recovery = lazyWithRetry(() => import('./pages/Recovery'));
+const Community = lazyWithRetry(() => import('./pages/Community'));
+const PaymentVerification = lazyWithRetry(() => import('./pages/PaymentVerification'));
+const Quests = lazyWithRetry(() => import('./pages/Quests'));
+const RedeemCodes = lazyWithRetry(() => import('./pages/RedeemCodes'));
+const Relics = lazyWithRetry(() => import('./pages/Relics'));
+const Habits = lazyWithRetry(() => import('./pages/Habits'));
+const Login = lazyWithRetry(() => import('./pages/Login'));
+const Punishments = lazyWithRetry(() => import('./pages/Punishments'));
 
 
 export const PAGES = {

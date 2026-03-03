@@ -2,6 +2,47 @@ import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { defineConfig, loadEnv } from 'vite'
 
+const OFFLINE_ASSET_MANIFEST = 'asset-manifest.json'
+
+const buildOfflineAssetManifestPlugin = () => ({
+  name: 'build-offline-asset-manifest',
+  apply: 'build',
+  generateBundle(_, bundle) {
+    const assets = new Set()
+
+    Object.entries(bundle).forEach(([fileName, output]) => {
+      if (output.type === 'chunk') {
+        if (fileName.startsWith('assets/')) {
+          assets.add(`/${fileName}`)
+        }
+
+        const importedCss = output.viteMetadata?.importedCss
+        if (importedCss && importedCss.size) {
+          importedCss.forEach((cssFile) => {
+            if (cssFile) assets.add(`/${cssFile}`)
+          })
+        }
+        return
+      }
+
+      if (output.type === 'asset' && fileName.startsWith('assets/')) {
+        assets.add(`/${fileName}`)
+      }
+    })
+
+    const payload = {
+      generated_at: new Date().toISOString(),
+      assets: Array.from(assets).sort(),
+    }
+
+    this.emitFile({
+      type: 'asset',
+      fileName: OFFLINE_ASSET_MANIFEST,
+      source: JSON.stringify(payload, null, 2),
+    })
+  },
+})
+
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -42,6 +83,7 @@ export default defineConfig(({ command, mode }) => {
     logLevel: 'error',
     plugins: [
       react(),
+      buildOfflineAssetManifestPlugin(),
       ...(command === 'serve' ? [devUpiConfigApi] : []),
     ],
     resolve: {

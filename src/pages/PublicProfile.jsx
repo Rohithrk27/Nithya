@@ -137,7 +137,15 @@ export default function PublicProfile() {
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-full overflow-hidden border border-cyan-400/30 bg-slate-900/80">
               {profile.avatar_url ? (
-                <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                <img
+                  src={profile.avatar_url}
+                  alt="avatar"
+                  width="64"
+                  height="64"
+                  loading="lazy"
+                  decoding="async"
+                  className="w-full h-full object-cover"
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-cyan-300 font-black text-xl">
                   {(displayName || '?').slice(0, 1).toUpperCase()}

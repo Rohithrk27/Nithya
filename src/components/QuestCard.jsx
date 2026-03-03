@@ -37,7 +37,7 @@ const isQuestInProgressStatus = (status) => {
   return ['active', 'in_progress', 'accepted', 'inprogress', 'ongoing', 'started', 'start'].includes(normalized);
 };
 
-export default function QuestCard({ quest, onComplete = async (_quest) => {}, onFail = null, index = 0, disabled = false, nowMs = Date.now() }) {
+function QuestCard({ quest, onComplete = async (_quest) => {}, onFail = null, index = 0, disabled = false, nowMs = Date.now() }) {
   const [completing, setCompleting] = useState(false);
   const cfg = TYPE_CONFIG[quest.type] || TYPE_CONFIG.daily;
   const Icon = cfg.icon;
@@ -193,3 +193,5 @@ export default function QuestCard({ quest, onComplete = async (_quest) => {}, on
     </motion.div>
   );
 }
+
+export default React.memo(QuestCard);

@@ -57,7 +57,16 @@ function IntroHero({ onBeginJourney, onSignIn }) {
             <div className="intro-logo-wave" aria-hidden="true" />
             <div className="intro-avatar-silhouette" aria-hidden="true" />
             <div className="intro-logo-crop">
-              <img src={LogoMark} alt="Nithya logo" className="intro-logo-svg" />
+              <img
+                src={LogoMark}
+                alt="Nithya logo"
+                width="220"
+                height="220"
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+                className="intro-logo-svg"
+              />
             </div>
           </motion.section>
 

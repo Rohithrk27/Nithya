@@ -133,21 +133,37 @@ export default function Community() {
     setSubmissionSaving(true);
     setSubmissionError('');
     setSubmissionInfo('');
+    const message = submissionMessage.trim();
+    const optimisticId = `optimistic-submission-${Date.now()}`;
+    const optimisticRow = {
+      id: optimisticId,
+      user_id: user.id,
+      category,
+      message,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      admin_reply: null,
+    };
     try {
       const payload = {
         user_id: user.id,
         category,
-        message: submissionMessage.trim(),
+        message,
         status: 'pending',
       };
-      const { error: insertError } = await supabase
-        .from('community_submissions')
-        .insert(payload);
-      if (insertError) throw insertError;
+      setSubmissionRows((prev) => [optimisticRow, ...prev]);
       setSubmissionMessage('');
+      const { data: insertedRow, error: insertError } = await supabase
+        .from('community_submissions')
+        .insert(payload)
+        .select('*')
+        .single();
+      if (insertError) throw insertError;
+      setSubmissionRows((prev) => prev.map((row) => (row.id === optimisticId ? (insertedRow || row) : row)));
       setSubmissionInfo('Submitted. Admin will review and reply here.');
-      await loadRows(user.id);
     } catch (err) {
+      setSubmissionRows((prev) => prev.filter((row) => row.id !== optimisticId));
+      setSubmissionMessage(message);
       setSubmissionError(err?.message || 'Failed to submit message.');
     } finally {
       setSubmissionSaving(false);
@@ -159,23 +175,40 @@ export default function Community() {
     setChatSending(true);
     setChatError('');
     setChatInfo('');
+    const message = chatMessage.trim();
+    const optimisticId = `optimistic-chat-${Date.now()}`;
+    const optimisticRow = {
+      id: optimisticId,
+      room: CHAT_ROOM,
+      user_id: user.id,
+      sender_label: 'YOU',
+      message,
+      created_at: new Date().toISOString(),
+      metadata: {},
+    };
     try {
+      setChatRows((prev) => [...prev, optimisticRow]);
+      setChatMessage('');
       const { data, error: rpcError } = await supabase.rpc('send_community_chat_message', {
         p_user_id: user.id,
-        p_message: chatMessage.trim(),
+        p_message: message,
         p_room: CHAT_ROOM,
         p_metadata: {},
       });
       if (rpcError) throw rpcError;
 
       const row = firstRow(data);
-      if (row?.id) {
-        setChatRows((prev) => (prev.some((item) => item.id === row.id) ? prev : [...prev, row]));
-      }
+      setChatRows((prev) => {
+        const withoutOptimistic = prev.filter((item) => item.id !== optimisticId);
+        if (!row?.id) return withoutOptimistic;
+        if (withoutOptimistic.some((item) => item.id === row.id)) return withoutOptimistic;
+        return [...withoutOptimistic, row];
+      });
 
-      setChatMessage('');
       setChatInfo('Message sent.');
     } catch (err) {
+      setChatRows((prev) => prev.filter((item) => item.id !== optimisticId));
+      setChatMessage(message);
       setChatError(err?.message || 'Failed to send chat message.');
     } finally {
       setChatSending(false);

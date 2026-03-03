@@ -1,12 +1,5 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { supabase } from './supabase';
-import {
-  activateStoredAccountSession,
-  listStoredAccountSessions,
-  removeStoredAccountSession,
-  upsertStoredAccountSession,
-  markStoredAccountUsed,
-} from './accountSessions';
 
 const AuthContext = createContext(null);
 
@@ -29,18 +22,10 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [isSwitchingAccount, setIsSwitchingAccount] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [emailConfirmationPending, setEmailConfirmationPending] = useState(false);
   const [profile, setProfile] = useState(null);
-  const [accounts, setAccounts] = useState([]);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
-
-  const refreshSavedAccounts = useCallback(() => {
-    const rows = listStoredAccountSessions();
-    setAccounts(rows);
-    return rows;
-  }, []);
 
   const loadSystemControls = useCallback(async () => {
     try {
@@ -91,14 +76,13 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const applySession = useCallback(async (session, { markAccountUsed = true } = {}) => {
+  const applySession = useCallback(async (session) => {
     const authUser = session?.user || null;
     if (!authUser) {
       setUser(null);
       setProfile(null);
       setIsAuthenticated(false);
       setEmailConfirmationPending(false);
-      refreshSavedAccounts();
       await loadSystemControls();
       setIsLoadingAuth(false);
       return;
@@ -107,35 +91,32 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(true);
     setEmailConfirmationPending(false);
     setAuthError(null);
-    upsertStoredAccountSession(session, { markUsed: markAccountUsed });
-    refreshSavedAccounts();
     await loadProfileStatus(authUser);
     await loadSystemControls();
     setIsLoadingAuth(false);
-  }, [loadProfileStatus, loadSystemControls, refreshSavedAccounts]);
+  }, [loadProfileStatus, loadSystemControls]);
 
   useEffect(() => {
     const loadUser = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        await applySession(session || null, { markAccountUsed: true });
+        await applySession(session || null);
       } catch (error) {
         setAuthError(error?.message || 'Unable to load auth session');
-        refreshSavedAccounts();
         setIsLoadingAuth(false);
       }
     };
 
     loadUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      await applySession(session || null, { markAccountUsed: event !== 'TOKEN_REFRESHED' });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, session) => {
+      await applySession(session || null);
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [applySession, refreshSavedAccounts]);
+  }, [applySession]);
 
   useEffect(() => {
     const channel = supabase
@@ -204,15 +185,10 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     setAuthError(null);
-    const currentUserId = user?.id ? String(user.id) : '';
     const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
       setAuthError(error.message);
     }
-    if (currentUserId) {
-      removeStoredAccountSession(currentUserId);
-    }
-    refreshSavedAccounts();
     setUser(null);
     setProfile(null);
     setIsAuthenticated(false);
@@ -248,74 +224,6 @@ export const AuthProvider = ({ children }) => {
 
   const refreshSystemControls = async () => loadSystemControls();
 
-  const listAccounts = () => refreshSavedAccounts();
-
-  const addCurrentSessionToSwitcher = async () => {
-    setAuthError(null);
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      setAuthError(error.message || 'Unable to read active session.');
-      return { error };
-    }
-    const currentSession = data?.session || null;
-    if (!currentSession) {
-      return { error: new Error('No active session available to save.') };
-    }
-    upsertStoredAccountSession(currentSession, { markUsed: true });
-    refreshSavedAccounts();
-    return { data: currentSession };
-  };
-
-  const switchAccount = async (accountId) => {
-    const safeId = String(accountId || '').trim();
-    if (!safeId) {
-      return { error: new Error('Invalid account selected.') };
-    }
-
-    if (user?.id && safeId === String(user.id)) {
-      markStoredAccountUsed(safeId);
-      refreshSavedAccounts();
-      return { data: { already_active: true } };
-    }
-
-    setAuthError(null);
-    setIsSwitchingAccount(true);
-    setIsLoadingAuth(true);
-
-    try {
-      const { data, error } = await activateStoredAccountSession(safeId);
-      if (error) {
-        removeStoredAccountSession(safeId);
-        refreshSavedAccounts();
-        setAuthError(error.message || 'Unable to switch account.');
-        setIsLoadingAuth(false);
-        return { error };
-      }
-
-      await applySession(data || null, { markAccountUsed: true });
-      return { data };
-    } catch (error) {
-      removeStoredAccountSession(safeId);
-      refreshSavedAccounts();
-      setAuthError(error?.message || 'Unable to switch account.');
-      setIsLoadingAuth(false);
-      return { error };
-    } finally {
-      setIsSwitchingAccount(false);
-    }
-  };
-
-  const removeSavedAccount = (accountId) => {
-    const safeId = String(accountId || '').trim();
-    if (!safeId) return { error: new Error('Invalid account selected.') };
-    if (user?.id && safeId === String(user.id)) {
-      return { error: new Error('Cannot remove currently active account.') };
-    }
-    const nextRows = removeStoredAccountSession(safeId);
-    setAccounts(nextRows);
-    return { data: nextRows };
-  };
-
   const profileRole = profile?.role || 'user';
   const isSuspended = !!profile?.is_suspended;
   const suspensionReason = profile?.suspension_reason || null;
@@ -332,18 +240,12 @@ export const AuthProvider = ({ children }) => {
       maintenanceMode,
       isAuthenticated,
       isLoadingAuth,
-      isSwitchingAccount,
       authError,
       emailConfirmationPending,
-      accounts,
       login,
       loginWithGoogle,
       signup,
       logout,
-      listAccounts,
-      switchAccount,
-      addCurrentSessionToSwitcher,
-      removeSavedAccount,
       navigateToLogin,
       checkEmailConfirmation,
       resetPassword,

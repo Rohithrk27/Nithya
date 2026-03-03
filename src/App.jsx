@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense } from 'react'
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -11,12 +11,13 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 
-const ResetPassword = lazy(() => import('./pages/ResetPassword'));
-const PublicProfile = lazy(() => import('./pages/PublicProfile'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const Suspended = lazy(() => import('./pages/Suspended'));
-const Maintenance = lazy(() => import('./pages/Maintenance'));
+const ResetPassword = lazyWithRetry(() => import('./pages/ResetPassword'));
+const PublicProfile = lazyWithRetry(() => import('./pages/PublicProfile'));
+const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
+const Suspended = lazyWithRetry(() => import('./pages/Suspended'));
+const Maintenance = lazyWithRetry(() => import('./pages/Maintenance'));
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];

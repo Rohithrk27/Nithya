@@ -61,7 +61,72 @@ const derivePublicUsernameFromProfile = (profile) => {
   return base.replace(/[^a-z0-9_]+/g, '-').replace(/^-+|-+$/g, '');
 };
 
+const VIRTUAL_ROW_HEIGHT = 86;
+const VIRTUAL_CONTAINER_HEIGHT = 560;
+const VIRTUAL_OVERSCAN = 6;
+const GLOBAL_LEADERBOARD_LIMIT = 10000;
+const MAX_IDENTITY_ENRICH_IDS = 300;
+const MAX_USERNAME_LOOKUP_IDS = 600;
+const USERNAME_LOOKUP_CHUNK = 200;
+
+const LeaderboardRow = React.memo(function LeaderboardRow({
+  row,
+  idx,
+  currentUserId,
+  usernameByUserId,
+  profileById,
+  onOpenProfile,
+}) {
+  const level = Number(row?.level_override ?? computeLevel(row.total_xp || 0));
+  const mine = row.id === currentUserId;
+  const placeColor = idx === 0 ? '#FBBF24' : idx === 1 ? '#94A3B8' : idx === 2 ? '#FB923C' : '#64748B';
+  const canonical = profileById?.[row.id] || row;
+  const username = usernameByUserId[row.id] || derivePublicUsernameFromProfile(canonical);
+  const canOpen = Boolean(username);
+  return (
+    <div
+      className="rounded-xl p-3 flex items-center gap-3"
+      role={canOpen ? 'button' : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      onClick={canOpen ? () => onOpenProfile(username) : undefined}
+      onKeyDown={canOpen ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpenProfile(username);
+        }
+      } : undefined}
+      style={{
+        minHeight: `${VIRTUAL_ROW_HEIGHT - 8}px`,
+        background: mine ? 'rgba(56,189,248,0.12)' : 'rgba(15,32,39,0.6)',
+        border: `1px solid ${mine ? 'rgba(56,189,248,0.5)' : 'rgba(56,189,248,0.15)'}`,
+        cursor: canOpen ? 'pointer' : 'default',
+      }}
+    >
+      <div className="w-8 text-center font-black" style={{ color: placeColor }}>
+        #{idx + 1}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-white truncate">{formatHunterName(canonical)}</p>
+        <p className="text-xs break-all" style={{ color: '#64748B' }}>
+          {formatHunterCode(canonical)} · Lv. {level} · {(row.total_xp || 0).toLocaleString()} XP
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="text-sm font-black" style={{ color: '#38BDF8' }}>{row.score.toLocaleString()}</p>
+        <p className="text-[10px] tracking-widest" style={{ color: '#475569' }}>POWER</p>
+      </div>
+    </div>
+  );
+});
+
 function LeaderboardTable({ rows, currentUserId, usernameByUserId, profileById, onOpenProfile }) {
+  const shouldVirtualize = rows.length > 24;
+  const [scrollTop, setScrollTop] = useState(0);
+
+  useEffect(() => {
+    setScrollTop(0);
+  }, [rows]);
+
   if (!rows.length) {
     return (
       <div className="text-center py-8 text-sm" style={{ color: '#64748B' }}>
@@ -70,50 +135,51 @@ function LeaderboardTable({ rows, currentUserId, usernameByUserId, profileById, 
     );
   }
 
-  return (
-    <div className="space-y-2">
-      {rows.map((row, idx) => {
-        const level = Number(row?.level_override ?? computeLevel(row.total_xp || 0));
-        const mine = row.id === currentUserId;
-        const placeColor = idx === 0 ? '#FBBF24' : idx === 1 ? '#94A3B8' : idx === 2 ? '#FB923C' : '#64748B';
-        const canonical = profileById?.[row.id] || row;
-        const username = usernameByUserId[row.id] || derivePublicUsernameFromProfile(canonical);
-        const canOpen = Boolean(username);
-        return (
-          <div
+  if (!shouldVirtualize) {
+    return (
+      <div className="space-y-2">
+        {rows.map((row, idx) => (
+          <LeaderboardRow
             key={row.id}
-            className="rounded-xl p-3 flex items-center gap-3"
-            role={canOpen ? 'button' : undefined}
-            tabIndex={canOpen ? 0 : undefined}
-            onClick={canOpen ? () => onOpenProfile(username) : undefined}
-            onKeyDown={canOpen ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onOpenProfile(username);
-              }
-            } : undefined}
-            style={{
-              background: mine ? 'rgba(56,189,248,0.12)' : 'rgba(15,32,39,0.6)',
-              border: `1px solid ${mine ? 'rgba(56,189,248,0.5)' : 'rgba(56,189,248,0.15)'}`,
-              cursor: canOpen ? 'pointer' : 'default',
-            }}
-          >
-            <div className="w-8 text-center font-black" style={{ color: placeColor }}>
-              #{idx + 1}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-white truncate">{formatHunterName(canonical)}</p>
-              <p className="text-xs break-all" style={{ color: '#64748B' }}>
-                {formatHunterCode(canonical)} · Lv. {level} · {(row.total_xp || 0).toLocaleString()} XP
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-black" style={{ color: '#38BDF8' }}>{row.score.toLocaleString()}</p>
-              <p className="text-[10px] tracking-widest" style={{ color: '#475569' }}>POWER</p>
-            </div>
-          </div>
-        );
-      })}
+            row={row}
+            idx={idx}
+            currentUserId={currentUserId}
+            usernameByUserId={usernameByUserId}
+            profileById={profileById}
+            onOpenProfile={onOpenProfile}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const startIndex = Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_OVERSCAN);
+  const visibleCount = Math.ceil(VIRTUAL_CONTAINER_HEIGHT / VIRTUAL_ROW_HEIGHT) + (VIRTUAL_OVERSCAN * 2);
+  const endIndex = Math.min(rows.length, startIndex + visibleCount);
+  const topSpacerHeight = startIndex * VIRTUAL_ROW_HEIGHT;
+  const bottomSpacerHeight = Math.max(0, (rows.length - endIndex) * VIRTUAL_ROW_HEIGHT);
+
+  return (
+    <div
+      className="max-h-[560px] overflow-y-auto pr-1"
+      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+    >
+      <div style={{ paddingTop: topSpacerHeight, paddingBottom: bottomSpacerHeight }} className="space-y-2">
+        {rows.slice(startIndex, endIndex).map((row, offset) => {
+          const idx = startIndex + offset;
+          return (
+            <LeaderboardRow
+              key={row.id}
+              row={row}
+              idx={idx}
+              currentUserId={currentUserId}
+              usernameByUserId={usernameByUserId}
+              profileById={profileById}
+              onOpenProfile={onOpenProfile}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -148,7 +214,7 @@ export default function Leaderboard() {
     try {
       let allProfiles = [];
       const { data: publicRows, error: publicError } = await supabase.rpc('get_public_leaderboard', {
-        p_limit: 100,
+        p_limit: GLOBAL_LEADERBOARD_LIMIT,
       });
       if (!publicError) {
         allProfiles = (publicRows || []).map((row) => ({
@@ -161,18 +227,22 @@ export default function Leaderboard() {
       } else {
         const { data: fallbackRows, error: fallbackError } = await supabase
           .from('public_profiles')
-          .select('user_id,name,user_code,level,total_xp')
-          .eq('is_public', true)
+          .select('user_id,total_xp')
           .order('total_xp', { ascending: false })
-          .limit(100);
+          .limit(GLOBAL_LEADERBOARD_LIMIT);
         if (fallbackError) throw fallbackError;
-        allProfiles = (fallbackRows || []).map((row) => ({
-          id: row.user_id,
-          name: row.name,
-          user_code: row.user_code,
-          level: Number(row.level || 0),
-          total_xp: Number(row.total_xp || 0),
-        }));
+        const fallbackIds = Array.from(new Set((fallbackRows || []).map((row) => row?.user_id).filter(Boolean)));
+        const fallbackProfiles = await fetchProfilesBasic(fallbackIds);
+        allProfiles = (fallbackProfiles || []).map((row) => {
+          const xp = Number(row.total_xp || 0);
+          return {
+            id: row.id,
+            name: row.name,
+            user_code: row.user_code,
+            level: computeLevel(xp),
+            total_xp: xp,
+          };
+        });
       }
 
       setGlobalRows(hydrateRows(allProfiles));
@@ -255,7 +325,13 @@ export default function Leaderboard() {
       }
 
       try {
-        const idsForIdentity = Array.from(seedIds).filter(Boolean);
+        const idsForIdentity = Array.from(seedIds)
+          .filter(Boolean)
+          .filter((id) => {
+            const existing = directorySeed[id];
+            return !existing || (!existing.name && !existing.user_code);
+          })
+          .slice(0, MAX_IDENTITY_ENRICH_IDS);
         if (idsForIdentity.length > 0) {
           const identityProfiles = await fetchProfilesBasic(idsForIdentity);
           for (const entry of identityProfiles || []) {
@@ -275,15 +351,18 @@ export default function Leaderboard() {
         if (!ids.length) {
           setUsernameByUserId({});
         } else {
-          const { data: publicProfiles, error: publicProfilesError } = await supabase
-            .from('public_profiles')
-            .select('user_id,username')
-            .in('user_id', ids);
-          if (publicProfilesError) throw publicProfilesError;
-
           const usernames = {};
-          for (const row of publicProfiles || []) {
-            if (row?.user_id && row?.username) usernames[row.user_id] = row.username;
+          const idsForLookup = ids.slice(0, MAX_USERNAME_LOOKUP_IDS);
+          for (let i = 0; i < idsForLookup.length; i += USERNAME_LOOKUP_CHUNK) {
+            const chunk = idsForLookup.slice(i, i + USERNAME_LOOKUP_CHUNK);
+            const { data: publicProfiles, error: publicProfilesError } = await supabase
+              .from('public_profiles')
+              .select('user_id,username')
+              .in('user_id', chunk);
+            if (publicProfilesError) throw publicProfilesError;
+            for (const row of publicProfiles || []) {
+              if (row?.user_id && row?.username) usernames[row.user_id] = row.username;
+            }
           }
           setUsernameByUserId(usernames);
         }
