@@ -1360,7 +1360,12 @@ export default function Dashboard() {
       return;
     }
     try {
-      await supabase.from('user_quests').upsert({ user_id: user.id, quest_id: quest.id, status: 'completed', completed_date: today });
+      await supabase
+        .from('user_quests')
+        .upsert(
+          { user_id: user.id, quest_id: quest.id, status: 'completed', completed_date: today },
+          { onConflict: 'user_id,quest_id' }
+        );
       setQuests((prev) => prev.map((q) => (q.id === quest.id ? { ...q, status: 'completed', completed_date: today } : q)));
       await awardXp(quest.xp_reward || 0, 'quest_complete', {
         eventId: `quest:${quest.id}:${today}`,
@@ -1385,7 +1390,12 @@ export default function Dashboard() {
   const handleQuestFail = async (quest) => {
     if (!user) return;
     try {
-      await supabase.from('user_quests').upsert({ user_id: user.id, quest_id: quest.id, status: 'failed', completed_date: today });
+      await supabase
+        .from('user_quests')
+        .upsert(
+          { user_id: user.id, quest_id: quest.id, status: 'failed', completed_date: today },
+          { onConflict: 'user_id,quest_id' }
+        );
       setQuests((prev) => prev.map((q) => (q.id === quest.id ? { ...q, status: 'failed', completed_date: today } : q)));
     } catch (err) {
       notify('penalty', 'Quest fail update failed', err?.message || 'Please retry.');
