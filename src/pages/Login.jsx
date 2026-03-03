@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { resolveAccountDisplayName } from '@/lib/accountSessions';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -17,13 +18,27 @@ export default function Login() {
   const [messageType, setMessageType] = useState(null); // 'success' or 'error'
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [switchingSavedAccountId, setSwitchingSavedAccountId] = useState('');
   
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, signup, resetPassword, loginWithGoogle, isAuthenticated, isLoadingAuth } = useAuth();
+  const {
+    user,
+    accounts,
+    login,
+    signup,
+    resetPassword,
+    loginWithGoogle,
+    switchAccount,
+    isSwitchingAccount,
+    isAuthenticated,
+    isLoadingAuth,
+  } = useAuth();
   const defaultRedirect = createPageUrl('Dashboard');
   const landingPath = createPageUrl('Landing');
   const [pendingPostAuthRedirect, setPendingPostAuthRedirect] = useState(false);
+  const addAccountMode = useMemo(() => new URLSearchParams(location.search).get('add_account') === '1', [location.search]);
+  const savedAccounts = useMemo(() => (Array.isArray(accounts) ? accounts : []), [accounts]);
 
   const normalizeErrorMessage = (errorLike) => {
     const raw = typeof errorLike === 'string' ? errorLike : (errorLike?.message || 'Unexpected error occurred.');
@@ -111,7 +126,7 @@ export default function Login() {
           setMessage(normalizeErrorMessage(error));
           setMessageType('error');
         } else {
-          setMessage('Login successful! Redirecting...');
+          setMessage(addAccountMode ? 'Account added. Switching now...' : 'Login successful! Redirecting...');
           setMessageType('success');
           setPendingPostAuthRedirect(true);
         }
@@ -168,6 +183,30 @@ export default function Login() {
       setMessageType('error');
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const handleSavedAccountSwitch = async (accountId) => {
+    const safeId = String(accountId || '').trim();
+    if (!safeId) return;
+    setMessage(null);
+    setMessageType(null);
+    setSwitchingSavedAccountId(safeId);
+    try {
+      const { error } = await switchAccount(safeId);
+      if (error) {
+        setMessage(normalizeErrorMessage(error));
+        setMessageType('error');
+      } else {
+        setMessage('Account switched successfully. Redirecting...');
+        setMessageType('success');
+        setPendingPostAuthRedirect(true);
+      }
+    } catch (err) {
+      setMessage(normalizeErrorMessage(err));
+      setMessageType('error');
+    } finally {
+      setSwitchingSavedAccountId('');
     }
   };
 
@@ -277,6 +316,47 @@ export default function Login() {
             {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
           </button>
         </div>
+
+        {mode === 'login' && savedAccounts.length > 0 && (
+          <div className="mt-4 rounded-lg border border-[#334155] bg-[#0F172A]/70 p-3 space-y-2">
+            <p className="text-[10px] uppercase tracking-widest text-[#64748B] font-bold">Saved Accounts</p>
+            <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+              {savedAccounts.map((account) => {
+                const accountId = String(account?.account_id || account?.user_id || '');
+                const isCurrent = !!user?.id && accountId === String(user.id);
+                const isBusy = switchingSavedAccountId === accountId || (isSwitchingAccount && switchingSavedAccountId);
+                return (
+                  <div
+                    key={accountId}
+                    className="rounded-md border border-[#334155] bg-[#1E293B]/80 px-2.5 py-2 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs text-[#E2E8F0] truncate">
+                        {resolveAccountDisplayName(account)}
+                      </p>
+                      <p className="text-[10px] text-[#94A3B8] truncate">
+                        {String(account?.email || account?.user_id || '')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isCurrent || !!isBusy}
+                      onClick={() => void handleSavedAccountSwitch(accountId)}
+                      className="text-[11px] font-semibold px-2 py-1 rounded-md border disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{
+                        borderColor: isCurrent ? 'rgba(56,189,248,0.5)' : 'rgba(148,163,184,0.35)',
+                        color: isCurrent ? '#38BDF8' : '#E2E8F0',
+                        background: isCurrent ? 'rgba(2,132,199,0.15)' : 'rgba(15,23,42,0.7)',
+                      }}
+                    >
+                      {isCurrent ? 'Current' : (isBusy ? 'Switching...' : 'Switch')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </form>
     );
   };
@@ -302,6 +382,11 @@ export default function Login() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {addAccountMode && (
+              <div className="mb-3 rounded-lg border border-[#1d4ed8]/40 bg-[#1d4ed8]/10 p-2 text-xs text-[#93c5fd]">
+                Add account mode: sign in to store this account for quick switching.
+              </div>
+            )}
             {renderForm()}
             {message && (
               <div className={`mt-4 p-3 rounded-lg text-sm ${messageType === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>

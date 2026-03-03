@@ -21,6 +21,7 @@ import {
 import { fetchRelicBalance } from '@/lib/relics';
 import { fetchActiveDungeonRun } from '@/lib/gameState';
 import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
+import { useAuth } from '@/lib/AuthContext';
 
 const LOGO_URL = "";
 const EMPTY_FORM = {
@@ -34,6 +35,7 @@ const EMPTY_FORM = {
 export default function Profile() {
   const navigate = useNavigate();
   const { user, authReady } = useAuthedPageUser();
+  const { logout } = useAuth();
   const [profile, setProfile] = useState(null);
   const [systemState, setSystemState] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -578,7 +580,7 @@ export default function Profile() {
 
             <Button 
               onClick={async () => {
-                await supabase.auth.signOut();
+                await logout();
                 navigate(createPageUrl('Landing'));
               }} 
               variant="outline" 
