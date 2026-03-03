@@ -77,8 +77,16 @@ export async function syncUserAchievements({ userId, profile }) {
 
   const byKey = new Map();
   for (const row of [...storedAchievements, ...inserted]) {
-    if (!row?.key) continue;
-    if (!byKey.has(row.key)) byKey.set(row.key, row);
+    const key = row?.key ? String(row.key).trim() : '';
+    if (!key) continue;
+    if (!byKey.has(key)) byKey.set(key, row);
+  }
+
+  // Runtime-safe fallback: even if insert fails, keep vault aligned with
+  // current profile progression so unlocked achievements still render.
+  for (const def of unlockedByRule) {
+    if (byKey.has(def.key)) continue;
+    byKey.set(def.key, mapDefToAchievement(def, unlockedDate));
   }
 
   return {
