@@ -312,6 +312,40 @@ const markSystemWarningShownToday = (userId, dateKey) => {
   }
 };
 
+const DASHBOARD_CACHE_PREFIX = 'nithya_dashboard_snapshot_v1';
+const DASHBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+const getDashboardCacheKey = (userId) => `${DASHBOARD_CACHE_PREFIX}:${userId}`;
+
+const readDashboardSnapshot = (userId) => {
+  if (!userId || typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(getDashboardCacheKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const ts = Number(parsed?.ts || 0);
+    if (!ts || (Date.now() - ts) > DASHBOARD_CACHE_TTL_MS) {
+      localStorage.removeItem(getDashboardCacheKey(userId));
+      return null;
+    }
+    return parsed?.data || null;
+  } catch (_) {
+    return null;
+  }
+};
+
+const writeDashboardSnapshot = (userId, data) => {
+  if (!userId || typeof window === 'undefined' || !data) return;
+  try {
+    localStorage.setItem(getDashboardCacheKey(userId), JSON.stringify({
+      ts: Date.now(),
+      data,
+    }));
+  } catch (_) {
+    // Ignore storage quota/availability errors.
+  }
+};
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, authReady } = useAuthedPageUser();
@@ -477,16 +511,19 @@ export default function Dashboard() {
       }
 
       setProfile(p);
-      setRelicBalance(Math.max(0, Number(relicBalanceSnapshot || 0)));
+      let resolvedRelicBalance = Math.max(0, Number(relicBalanceSnapshot || 0));
+      setRelicBalance(resolvedRelicBalance);
       setActiveDungeon(activeDungeonRun || null);
-      setAnnouncements(announcementsRes.data || []);
+      const latestAnnouncements = announcementsRes.data || [];
+      setAnnouncements(latestAnnouncements);
       const baseSystemState = statsRes.data?.[0] || { voice_enabled: true };
-      setSystemState({
+      const resolvedSystemState = {
         strict_strikes: 0,
         last_strike_date: null,
         shadow_debt_xp: 0,
         ...baseSystemState,
-      });
+      };
+      setSystemState(resolvedSystemState);
       const habitsData = habitsRes.data || [];
       const logsData = logsRes.data || [];
       setHabits(habitsData);
@@ -547,7 +584,8 @@ export default function Dashboard() {
         timeLimitHours: PUNISHMENT_TIME_LIMIT_HOURS,
       });
 
-      setPendingPunishments(buildPendingPunishments(punishmentsData, habitsData, logsData));
+      const pendingRows = buildPendingPunishments(punishmentsData, habitsData, logsData);
+      setPendingPunishments(pendingRows);
 
       const userQuestMap = buildUserQuestMap(userQuestsRes.data || []);
       const merged = (questsRes.data || []).map((q) => {
@@ -620,7 +658,8 @@ export default function Dashboard() {
           }
         }
       }
-      setDailyChallenge(challengeToday || null);
+      const resolvedChallenge = challengeToday || null;
+      setDailyChallenge(resolvedChallenge);
 
       try {
         const relicAwardAttempts = [];
@@ -653,7 +692,8 @@ export default function Dashboard() {
           if (awardedCount > 0) {
             const refreshedRelicBalance = await fetchRelicBalance(userId).catch(() => null);
             if (refreshedRelicBalance !== null) {
-              setRelicBalance(Math.max(0, Number(refreshedRelicBalance || 0)));
+              resolvedRelicBalance = Math.max(0, Number(refreshedRelicBalance || 0));
+              setRelicBalance(resolvedRelicBalance);
             }
             notify('quest', 'Relic earned', `+${awardedCount} relic${awardedCount > 1 ? 's' : ''} added.`);
           }
@@ -679,7 +719,37 @@ export default function Dashboard() {
       }
 
       await ensureRankEvaluation(userId, computeLevel(p.total_xp || 0));
+      writeDashboardSnapshot(userId, {
+        profile: p,
+        systemState: resolvedSystemState,
+        habits: habitsData,
+        logs: todayLogs,
+        historyLogs: logsData,
+        quests: merged,
+        activeDungeon: activeDungeonRun || null,
+        dailyChallenge: resolvedChallenge,
+        pendingPunishments: pendingRows,
+        relicBalance: resolvedRelicBalance,
+        announcements: latestAnnouncements,
+      });
     } catch (err) {
+      const cachedSnapshot = readDashboardSnapshot(userId);
+      if (cachedSnapshot) {
+        setProfile(cachedSnapshot.profile || null);
+        setSystemState(cachedSnapshot.systemState || null);
+        setHabits(Array.isArray(cachedSnapshot.habits) ? cachedSnapshot.habits : []);
+        setLogs(Array.isArray(cachedSnapshot.logs) ? cachedSnapshot.logs : []);
+        setHistoryLogs(Array.isArray(cachedSnapshot.historyLogs) ? cachedSnapshot.historyLogs : []);
+        setQuests(Array.isArray(cachedSnapshot.quests) ? cachedSnapshot.quests : []);
+        setActiveDungeon(cachedSnapshot.activeDungeon || null);
+        setDailyChallenge(cachedSnapshot.dailyChallenge || null);
+        setPendingPunishments(Array.isArray(cachedSnapshot.pendingPunishments) ? cachedSnapshot.pendingPunishments : []);
+        setRelicBalance(Math.max(0, Number(cachedSnapshot.relicBalance || 0)));
+        setAnnouncements(Array.isArray(cachedSnapshot.announcements) ? cachedSnapshot.announcements : []);
+        setLoadError('');
+        notify('quest', 'Offline snapshot loaded', 'Showing cached dashboard while reconnecting.');
+        return;
+      }
       setLoadError(err?.message || 'Failed to load dashboard data.');
     } finally {
       setLoading(false);

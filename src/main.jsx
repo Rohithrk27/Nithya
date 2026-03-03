@@ -3,6 +3,15 @@ import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
 
+if (typeof window !== 'undefined') {
+  const url = new URL(window.location.href);
+  if (url.searchParams.has('__nithya_reload')) {
+    url.searchParams.delete('__nithya_reload');
+    const cleaned = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, '', cleaned);
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <App />
 )

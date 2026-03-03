@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v8';
+const CACHE_VERSION = 'v9';
 const SHELL_CACHE = `nithya-shell-${CACHE_VERSION}`;
 const ASSET_CACHE = `nithya-asset-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `nithya-runtime-${CACHE_VERSION}`;

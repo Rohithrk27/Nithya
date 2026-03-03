@@ -225,24 +225,53 @@ export default function Leaderboard() {
           total_xp: Number(row.total_xp || 0),
         }));
       } else {
-        const { data: fallbackRows, error: fallbackError } = await supabase
-          .from('public_profiles')
-          .select('user_id,total_xp')
+        const { data: fallbackProfileRows, error: fallbackProfileError } = await supabase
+          .from('profiles')
+          .select('id,name,user_code,total_xp,level,role')
           .order('total_xp', { ascending: false })
           .limit(GLOBAL_LEADERBOARD_LIMIT);
-        if (fallbackError) throw fallbackError;
-        const fallbackIds = Array.from(new Set((fallbackRows || []).map((row) => row?.user_id).filter(Boolean)));
-        const fallbackProfiles = await fetchProfilesBasic(fallbackIds);
-        allProfiles = (fallbackProfiles || []).map((row) => {
-          const xp = Number(row.total_xp || 0);
-          return {
-            id: row.id,
-            name: row.name,
-            user_code: row.user_code,
-            level: computeLevel(xp),
-            total_xp: xp,
-          };
-        });
+
+        if (!fallbackProfileError) {
+          allProfiles = (fallbackProfileRows || [])
+            .filter((row) => String(row?.role || 'user').trim().toLowerCase() !== 'admin')
+            .map((row) => ({
+              id: row.id,
+              name: row.name,
+              user_code: row.user_code,
+              level: Number(row.level || computeLevel(Number(row.total_xp || 0))),
+              total_xp: Number(row.total_xp || 0),
+            }));
+        } else {
+          const { data: fallbackRows, error: fallbackError } = await supabase
+            .from('public_profiles')
+            .select('user_id,total_xp')
+            .order('total_xp', { ascending: false })
+            .limit(GLOBAL_LEADERBOARD_LIMIT);
+          if (fallbackError) throw fallbackError;
+          const fallbackIds = Array.from(new Set((fallbackRows || []).map((row) => row?.user_id).filter(Boolean)));
+          const fallbackProfiles = await fetchProfilesBasic(fallbackIds);
+          const { data: roleRows } = await supabase
+            .from('profiles')
+            .select('id,role')
+            .in('id', fallbackIds);
+          const adminIds = new Set(
+            (roleRows || [])
+              .filter((row) => String(row?.role || '').trim().toLowerCase() === 'admin')
+              .map((row) => row.id)
+          );
+          allProfiles = (fallbackProfiles || [])
+            .filter((row) => !adminIds.has(row.id))
+            .map((row) => {
+              const xp = Number(row.total_xp || 0);
+              return {
+                id: row.id,
+                name: row.name,
+                user_code: row.user_code,
+                level: computeLevel(xp),
+                total_xp: xp,
+              };
+            });
+        }
       }
 
       setGlobalRows(hydrateRows(allProfiles));
@@ -369,6 +398,8 @@ export default function Leaderboard() {
       } catch (_) {
         setUsernameByUserId({});
       }
+    } catch (err) {
+      setStatusText(err?.message || 'Failed to load leaderboard.');
     } finally {
       setLoading(false);
     }

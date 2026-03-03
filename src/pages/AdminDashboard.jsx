@@ -517,7 +517,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const useUserForActions = (userId) => {
+  const applyUserForActions = (userId) => {
     const value = asText(userId);
     if (!value) return;
     setChallengeForm((prev) => ({ ...prev, targetUserId: value }));
@@ -740,7 +740,7 @@ export default function AdminDashboard() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => useUserForActions(row.user_id)}
+                        onClick={() => applyUserForActions(row.user_id)}
                       >
                         <Sparkles className="w-3.5 h-3.5 mr-1" /> Use Target
                       </Button>

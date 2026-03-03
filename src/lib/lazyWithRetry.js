@@ -1,6 +1,7 @@
 import { lazy } from 'react';
 
 const CHUNK_RELOAD_FLAG = '__nithya_chunk_retry_reloaded__';
+const CACHE_PREFIX = 'nithya-';
 
 const readReloadFlag = () => {
   try {
@@ -36,6 +37,41 @@ const isChunkLoadError = (error) => {
   );
 };
 
+const clearAppCaches = async () => {
+  if (typeof window === 'undefined' || !('caches' in window)) return;
+  try {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((key) => String(key || '').startsWith(CACHE_PREFIX))
+        .map((key) => caches.delete(key))
+    );
+  } catch (_) {
+    // Best-effort cache cleanup.
+  }
+};
+
+const unregisterServiceWorkers = async () => {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((reg) => reg.unregister()));
+  } catch (_) {
+    // Best-effort SW cleanup.
+  }
+};
+
+const hardReloadWithBypass = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('__nithya_reload', String(Date.now()));
+    window.location.replace(nextUrl.toString());
+  } catch (_) {
+    window.location.reload();
+  }
+};
+
 export function lazyWithRetry(importer) {
   return lazy(async () => {
     try {
@@ -50,7 +86,11 @@ export function lazyWithRetry(importer) {
       const alreadyRetried = readReloadFlag();
       if (!alreadyRetried) {
         markReloadFlag();
-        window.location.reload();
+        await Promise.allSettled([
+          clearAppCaches(),
+          unregisterServiceWorkers(),
+        ]);
+        hardReloadWithBypass();
         return new Promise(() => {});
       }
 

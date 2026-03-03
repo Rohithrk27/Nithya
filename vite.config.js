@@ -1,8 +1,10 @@
 import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import { defineConfig, loadEnv } from 'vite'
 
 const OFFLINE_ASSET_MANIFEST = 'asset-manifest.json'
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const buildOfflineAssetManifestPlugin = () => ({
   name: 'build-offline-asset-manifest',
@@ -78,9 +80,8 @@ export default defineConfig(({ command, mode }) => {
       host: '0.0.0.0',
       port: 5173,
       strictPort: false,
-      open: true
+      open: false
     },
-    logLevel: 'error',
     plugins: [
       react(),
       buildOfflineAssetManifestPlugin(),
