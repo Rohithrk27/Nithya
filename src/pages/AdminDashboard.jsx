@@ -85,7 +85,7 @@ const formatDateTime = (value) => {
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { isAuthenticated, profileRole, logout: logoutAuth } = useAuth();
+  const { user, isAuthenticated, profileRole, logout: logoutAuth } = useAuth();
   const [sessionReady, setSessionReady] = useState(false);
   const [adminName, setAdminName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -144,7 +144,6 @@ export default function AdminDashboard() {
   const [paymentDrafts, setPaymentDrafts] = useState({});
   const [suspendReasonDraft, setSuspendReasonDraft] = useState({});
 
-  const sessionToken = useMemo(() => getAdminSessionToken(), []);
   const filteredUsers = useMemo(() => {
     const q = toLower(userSearch);
     return users.filter((row) => {
@@ -268,6 +267,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const init = async () => {
+      setSessionReady(false);
       let token = getAdminSessionToken();
       if (!token && isAuthenticated && profileRole === 'admin') {
         try {
@@ -298,7 +298,7 @@ export default function AdminDashboard() {
       }
     };
     void init();
-  }, [isAuthenticated, navigate, profileRole, sessionToken]);
+  }, [isAuthenticated, navigate, profileRole, user?.id]);
 
   useEffect(() => {
     if (!sessionReady) return;

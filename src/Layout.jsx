@@ -67,6 +67,8 @@ export default function Layout({ children, currentPageName }) {
     removeSavedAccount,
     isSwitchingAccount,
   } = useAuth();
+  const showAdminAccountSwitcher = currentPageName === 'AdminDashboard';
+  const showAccountSwitcher = isAuthenticated && (showNav || showAdminAccountSwitcher);
   const [isScrolled, setIsScrolled] = useState(false);
   const [logoSrc, setLogoSrc] = useState(LOGO_URL);
   const [headerSrc, setHeaderSrc] = useState(HEADER_WORDMARK_URL);
@@ -208,7 +210,7 @@ export default function Layout({ children, currentPageName }) {
               </div>
             )}
             <div className="flex items-center gap-2 shrink-0">
-              {showNav && isAuthenticated && (
+              {showAccountSwitcher && (
                 <button
                   type="button"
                   onClick={() => {
@@ -256,10 +258,8 @@ export default function Layout({ children, currentPageName }) {
         {children}
       </div>
 
-      {showNav && (
-        <>
-          {/* Account switcher drawer */}
-          {accountMenuOpen && isAuthenticated && (
+      {/* Account switcher drawer */}
+      {showAccountSwitcher && accountMenuOpen && (
             <div className="fixed inset-0 z-[70]">
               <button
                 type="button"
@@ -402,8 +402,10 @@ export default function Layout({ children, currentPageName }) {
                 </div>
               </aside>
             </div>
-          )}
+      )}
 
+      {showNav && (
+        <>
           {/* Mobile quick access drawer */}
           {mobileMenuOpen && (
             <div className="md:hidden fixed inset-0 z-[60]">
