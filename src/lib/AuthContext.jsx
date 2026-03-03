@@ -7,30 +7,6 @@ import {
   upsertStoredAccountSession,
   markStoredAccountUsed,
 } from './accountSessions';
-import { clearAdminSessionToken } from './admin';
-
-// Simple in-memory cache with TTL for faster account switching
-const CACHE_TTL_MS = 30000; // 30 seconds
-const createCache = () => {
-  let cache = { data: null, timestamp: 0 };
-  return {
-    get: () => {
-      if (cache.data && Date.now() - cache.timestamp < CACHE_TTL_MS) {
-        return cache.data;
-      }
-      return null;
-    },
-    set: (value) => {
-      cache = { data: value, timestamp: Date.now() };
-    },
-    invalidate: () => {
-      cache = { data: null, timestamp: 0 };
-    },
-  };
-};
-
-const profileCache = createCache();
-const systemControlsCache = createCache();
 
 const AuthContext = createContext(null);
 
@@ -66,16 +42,7 @@ export const AuthProvider = ({ children }) => {
     return rows;
   }, []);
 
-const loadSystemControls = useCallback(async (skipCache = false) => {
-    // Check cache first unless explicitly skipped
-    if (!skipCache) {
-      const cached = systemControlsCache.get();
-      if (cached !== null) {
-        setMaintenanceMode(cached);
-        return cached;
-      }
-    }
-
+  const loadSystemControls = useCallback(async () => {
     try {
       const { data, error } = await supabase.rpc('get_system_controls_public');
       if (error) throw error;
@@ -83,29 +50,17 @@ const loadSystemControls = useCallback(async (skipCache = false) => {
       const maintenanceRow = rows.find((row) => row?.key === 'maintenance_mode');
       const enabled = !!maintenanceRow?.enabled;
       setMaintenanceMode(enabled);
-      systemControlsCache.set(enabled);
       return enabled;
     } catch (_) {
       setMaintenanceMode(false);
-      systemControlsCache.set(false);
       return false;
     }
   }, []);
 
-const loadProfileStatus = useCallback(async (authUser, skipCache = false) => {
+  const loadProfileStatus = useCallback(async (authUser) => {
     if (!authUser?.id) {
       setProfile(null);
-      profileCache.invalidate();
       return null;
-    }
-
-    // Check cache first unless explicitly skipped
-    if (!skipCache) {
-      const cached = profileCache.get();
-      if (cached) {
-        setProfile(cached);
-        return cached;
-      }
     }
 
     try {
@@ -113,7 +68,6 @@ const loadProfileStatus = useCallback(async (authUser, skipCache = false) => {
       if (!error) {
         const row = normalizeProfileStatus(firstRow(data), authUser.id);
         setProfile(row);
-        profileCache.set(row);
         return row;
       }
     } catch (_) {
@@ -129,17 +83,15 @@ const loadProfileStatus = useCallback(async (authUser, skipCache = false) => {
       if (error) throw error;
       const row = normalizeProfileStatus(data || null, authUser.id);
       setProfile(row);
-      profileCache.set(row);
       return row;
     } catch (_) {
       const fallback = normalizeProfileStatus(null, authUser.id);
       setProfile(fallback);
-      profileCache.set(fallback);
       return fallback;
     }
   }, []);
 
-const applySession = useCallback(async (session, { markAccountUsed = true } = {}) => {
+  const applySession = useCallback(async (session, { markAccountUsed = true } = {}) => {
     const authUser = session?.user || null;
     if (!authUser) {
       setUser(null);
@@ -157,19 +109,8 @@ const applySession = useCallback(async (session, { markAccountUsed = true } = {}
     setAuthError(null);
     upsertStoredAccountSession(session, { markUsed: markAccountUsed });
     refreshSavedAccounts();
-    
-    // Invalidate caches when switching users to ensure fresh data
-    // This is critical for proper admin role verification on account switch
-    profileCache.invalidate();
-    systemControlsCache.invalidate();
-    
-    // Parallelize profile and system controls loading for faster account switching
-    // Pass skipCache=true to force fresh data fetch (important for admin verification)
-    await Promise.all([
-      loadProfileStatus(authUser, true),
-      loadSystemControls(true),
-    ]);
-    
+    await loadProfileStatus(authUser);
+    await loadSystemControls();
     setIsLoadingAuth(false);
   }, [loadProfileStatus, loadSystemControls, refreshSavedAccounts]);
 
@@ -264,7 +205,6 @@ const applySession = useCallback(async (session, { markAccountUsed = true } = {}
   const logout = async () => {
     setAuthError(null);
     const currentUserId = user?.id ? String(user.id) : '';
-    clearAdminSessionToken();
     const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
       setAuthError(error.message);
@@ -301,16 +241,12 @@ const applySession = useCallback(async (session, { markAccountUsed = true } = {}
     return { data: { message: 'Password reset email sent' } };
   };
 
-const refreshProfileStatus = async () => {
+  const refreshProfileStatus = async () => {
     if (!user?.id) return null;
-    // Force refresh by skipping cache
-    return loadProfileStatus(user, true);
+    return loadProfileStatus(user);
   };
 
-  const refreshSystemControls = async () => {
-    // Force refresh by skipping cache
-    return loadSystemControls(true);
-  };
+  const refreshSystemControls = async () => loadSystemControls();
 
   const listAccounts = () => refreshSavedAccounts();
 
@@ -345,7 +281,6 @@ const refreshProfileStatus = async () => {
     setAuthError(null);
     setIsSwitchingAccount(true);
     setIsLoadingAuth(true);
-    clearAdminSessionToken();
 
     try {
       const { data, error } = await activateStoredAccountSession(safeId);
