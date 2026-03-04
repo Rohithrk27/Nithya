@@ -1,6 +1,6 @@
 # Niത്യ
 
-Niത്യ is a Solo Leveling-inspired self-discipline RPG app built with React + Vite + Supabase.
+Nിത്യ is a Solo Leveling-inspired self-discipline RPG app built with React + Vite + Supabase.
 
 ## Core Concept
 
@@ -26,7 +26,7 @@ Niത്യ is a Solo Leveling-inspired self-discipline RPG app built with React
 - Supabase (Auth + Database)
 - Framer Motion
 
-## Run Locally
+## Local Setup
 
 1. Install dependencies:
 
@@ -34,33 +34,59 @@ Niത്യ is a Solo Leveling-inspired self-discipline RPG app built with React
 npm install
 ```
 
-2. Create `.env` with:
+2. Copy `.env.example` to `.env` and set values.
+
+3. Validate env safety:
 
 ```bash
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+npm run security:env
 ```
 
-3. Start dev server:
+4. Start dev server:
 
 ```bash
 npm run dev
 ```
 
-4. Build:
+## Build
+
+- Standard web build:
 
 ```bash
 npm run build
 ```
 
-## Lint
+- Secure build (env guard + build):
 
 ```bash
-npm run lint
+npm run build:secure
 ```
+
+## Android Release Safety
+
+- Ship signed `release` artifacts only.
+- Never distribute debug APKs.
+- Keep keystore/password private and backed up.
+- Production network traffic is HTTPS-only.
+- Re-generate checksum manifest:
+
+```bash
+npm run release:checksums
+```
+
+## Official Distribution
+
+- Official binaries must be published from one source only (recommended: GitHub Releases for this repo).
+- Include versioned release notes and `release-apk-files/SHA256SUMS.txt` for every published build.
+
+## Privacy and Data Handling
+
+- Policy document: `PRIVACY_POLICY.md`
+- Web policy page: `public/privacy-policy.html`
+- Security/release policy: `SECURITY_RELEASE.md`
 
 ## Notes
 
-- Browser notification reminders require notification permission.
+- Browser and Android reminders require notification permission.
+- Exact alarm permission is optional and used only for strict reminder timing.
 - Some systems (daily quest/challenge seeding) auto-recover if records are missing.
-

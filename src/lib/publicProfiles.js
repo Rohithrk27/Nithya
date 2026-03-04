@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { normalizeSecureUrl } from '@/lib/securityConfig';
 
 const firstRow = (data) => (Array.isArray(data) ? (data[0] || null) : (data || null));
 
@@ -125,7 +126,11 @@ export function getPublicProfileShareUrl(username) {
   if (isNativePlatform()) {
     return `${APP_PROFILE_DEEP_LINK_BASE}/${safe}`;
   }
-  const configuredBase = trimTrailingSlash(import.meta?.env?.VITE_PUBLIC_WEB_URL);
+  const configuredBase = trimTrailingSlash(normalizeSecureUrl(import.meta?.env?.VITE_PUBLIC_WEB_URL, {
+    label: 'VITE_PUBLIC_WEB_URL',
+    optional: true,
+    allowHttpLocalhost: true,
+  }));
   const runtimeBase = typeof window !== 'undefined' ? trimTrailingSlash(window.location.origin) : '';
   const base = configuredBase || runtimeBase;
   if (!base) return '';

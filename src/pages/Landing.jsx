@@ -161,9 +161,9 @@ function IntroHero({ onBeginJourney, onSignIn }) {
         </div>
 
         <footer className="intro-footer" aria-label="Privacy and support">
-          <a href="#intro-privacy-policy" className="intro-footer-link">Privacy Policy</a>
+          <a href="/privacy-policy.html" className="intro-footer-link" target="_blank" rel="noreferrer">Privacy Policy</a>
           <span className="intro-footer-divider" aria-hidden="true">|</span>
-          <span id="intro-privacy-policy">We only use your account data to run habit tracking and progress insights.</span>
+          <span id="intro-privacy-policy">We only use your data to run core habit, progress, and reminder features.</span>
           <span className="intro-footer-divider" aria-hidden="true">|</span>
           <a href="mailto:itsnithyaapp@gmail.com" className="intro-footer-link">
             Contact us

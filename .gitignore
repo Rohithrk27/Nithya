@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.gradle-home/
 .env
 .env.*
 !.env.example
@@ -10,3 +11,5 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .vercel/
+android/keystore.properties
+android/app/*.jks

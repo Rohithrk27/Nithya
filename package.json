@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:secure": "npm run security:env && npm run build",
     "lint": "eslint src --quiet",
     "lint:fix": "eslint src --fix",
+    "security:env": "node tools/validate-client-env.mjs",
+    "release:checksums": "node tools/generate-release-checksums.mjs",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview"
   },

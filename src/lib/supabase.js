@@ -1,11 +1,18 @@
 import { createClient, processLock } from '@supabase/supabase-js'
+import { normalizeSecureUrl } from '@/lib/securityConfig'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseUrlRaw = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrlRaw || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
 }
+
+const supabaseUrl = normalizeSecureUrl(supabaseUrlRaw, {
+  label: 'VITE_SUPABASE_URL',
+  optional: false,
+  allowHttpLocalhost: true,
+})
 
 const SUPABASE_TIMEOUT_MS = 18000
 const SUPABASE_READ_RETRY_COUNT = 1

@@ -1,3 +1,5 @@
+import { normalizeSecureUrl } from '@/lib/securityConfig';
+
 const isNode = typeof window === 'undefined';
 const windowObj = isNode ? { localStorage: new Map() } : window;
 const storage = windowObj.localStorage;
@@ -39,12 +41,17 @@ const getAppParams = () => {
 		storage.removeItem('app_access_token');
 		storage.removeItem('token');
 	}
+	const secureAppBaseUrl = normalizeSecureUrl(import.meta.env.VITE_APP_BASE_URL, {
+		label: 'VITE_APP_BASE_URL',
+		optional: true,
+		allowHttpLocalhost: true,
+	});
 	return {
 		appId: getAppParamValue("app_id", { defaultValue: import.meta.env.VITE_APP_ID }),
 		token: getAppParamValue("access_token", { removeFromUrl: true }),
 		fromUrl: getAppParamValue("from_url", { defaultValue: window.location.href }),
 		functionsVersion: getAppParamValue("functions_version", { defaultValue: import.meta.env.VITE_FUNCTIONS_VERSION }),
-		appBaseUrl: getAppParamValue("app_base_url", { defaultValue: import.meta.env.VITE_APP_BASE_URL }),
+		appBaseUrl: getAppParamValue("app_base_url", { defaultValue: secureAppBaseUrl }),
 	}
 }
 
