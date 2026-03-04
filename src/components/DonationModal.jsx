@@ -38,11 +38,7 @@ const buildUpiLink = ({ upiId, amount }) => {
   return `upi://pay?${params.toString()}`;
 };
 
-const getEnvUpiId = () => String(
-  import.meta?.env?.VITE_UPI_ID
-  || import.meta?.env?.UPI_ID
-  || ''
-).trim();
+const getEnvUpiId = () => String(import.meta.env.VITE_UPI_ID || '').trim();
 
 const resolveUpiId = async () => {
   const fallbackUpiId = getEnvUpiId();
