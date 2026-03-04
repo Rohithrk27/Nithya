@@ -32,11 +32,52 @@ const EMPTY_FORM = {
   reminder_time: '09:00',
 };
 
+const isNativePlatform = () => (
+  typeof window !== 'undefined'
+  && typeof window?.Capacitor?.isNativePlatform === 'function'
+  && window.Capacitor.isNativePlatform()
+);
+
+const tryNativeFileShare = async ({ title, text, blob, fileName }) => {
+  if (!isNativePlatform() || !blob) return false;
+
+  try {
+    const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+      import('@capacitor/filesystem'),
+      import('@capacitor/share'),
+    ]);
+
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Failed to encode screenshot for sharing.'));
+      reader.readAsDataURL(blob);
+    });
+    const base64Data = String(dataUrl || '').split(',')[1] || '';
+    if (!base64Data) return false;
+
+    const safeName = String(fileName || 'profile-snapshot.png').replace(/[^a-zA-Z0-9._-]/g, '-') || 'profile-snapshot.png';
+    const { uri } = await Filesystem.writeFile({
+      path: `shares/${Date.now()}-${safeName}`,
+      data: base64Data,
+      directory: Directory.Cache,
+      recursive: true,
+    });
+
+    await Share.share({
+      title: String(title || '').trim() || 'Share profile',
+      text: String(text || '').trim(),
+      files: [uri],
+      dialogTitle: 'Share profile',
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+};
+
 const tryNativeShare = async ({ title, text, url }) => {
-  const isNativePlatform = typeof window !== 'undefined'
-    && typeof window?.Capacitor?.isNativePlatform === 'function'
-    && window.Capacitor.isNativePlatform();
-  if (!isNativePlatform) return false;
+  if (!isNativePlatform()) return false;
 
   try {
     const { Share } = await import('@capacitor/share');
@@ -267,18 +308,10 @@ export default function Profile() {
       const shareTitle = `${subjectName}'s Profile`;
       const shareText = `Check out ${subjectName}'s RPG progress profile.`;
 
-      const nativeShared = await tryNativeShare({
-        title: shareTitle,
-        text: shareText,
-        url: link,
-      });
-      if (nativeShared) {
-        setShareMessage('Shared successfully.');
-        return;
-      }
-
       const captureNode = shareCaptureRef.current;
       let screenshotFile = null;
+      let screenshotBlob = null;
+      const screenshotFileName = `${subjectName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'player'}-profile.png`;
       if (captureNode) {
         const { default: html2canvas } = await import('html2canvas');
         const canvas = await html2canvas(captureNode, {
@@ -289,9 +322,23 @@ export default function Profile() {
         });
         const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
         if (blob) {
-          screenshotFile = new File([blob], `${subjectName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'player'}-profile.png`, {
+          screenshotBlob = blob;
+          screenshotFile = new File([blob], screenshotFileName, {
             type: 'image/png',
           });
+        }
+      }
+
+      if (screenshotBlob) {
+        const nativeImageShared = await tryNativeFileShare({
+          title: shareTitle,
+          text: `${shareText}\n${link}`,
+          blob: screenshotBlob,
+          fileName: screenshotFileName,
+        });
+        if (nativeImageShared) {
+          setShareMessage('Shared successfully.');
+          return;
         }
       }
 
@@ -317,6 +364,16 @@ export default function Profile() {
           title: shareTitle,
           text: `${shareText}\n${link}`,
         });
+        setShareMessage('Shared successfully.');
+        return;
+      }
+
+      const nativeShared = await tryNativeShare({
+        title: shareTitle,
+        text: shareText,
+        url: link,
+      });
+      if (nativeShared) {
         setShareMessage('Shared successfully.');
         return;
       }
