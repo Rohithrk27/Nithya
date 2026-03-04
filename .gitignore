@@ -13,3 +13,5 @@ pnpm-debug.log*
 .vercel/
 android/keystore.properties
 android/app/*.jks
+tools/gh-cli/
+tools/gh-local.cmd

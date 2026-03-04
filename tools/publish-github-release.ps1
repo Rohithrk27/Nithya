@@ -1,0 +1,58 @@
+param(
+  [string]$Tag = "v1.0.0",
+  [string]$Repo = "Rohithrk27/Nithya",
+  [string]$Title = "Nithya v1.0.0",
+  [string]$NotesFile = "release-apk-files/RELEASE_NOTES-v1.0.md"
+)
+
+$ErrorActionPreference = "Stop"
+
+$projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $projectRoot
+
+$token = $env:GH_TOKEN
+if (-not $token) {
+  $token = $env:GITHUB_TOKEN
+}
+if (-not $token) {
+  throw "Set GH_TOKEN or GITHUB_TOKEN in environment before running this script."
+}
+$env:GH_TOKEN = $token
+
+$ghCmd = Join-Path $projectRoot "tools/gh-local.cmd"
+if (-not (Test-Path $ghCmd)) {
+  throw "Missing gh wrapper at tools/gh-local.cmd. Run tools/install-gh-cli.ps1 first."
+}
+
+$assets = @(
+  "release-apk-files/app-release-signed-v1.0.apk",
+  "release-apk-files/app-release-signed-v1.0.aab",
+  "release-apk-files/SHA256SUMS.txt",
+  "release-apk-files/upload_certificate.pem",
+  "release-apk-files/RELEASE_NOTES-v1.0.md"
+)
+
+foreach ($asset in $assets) {
+  if (-not (Test-Path $asset)) {
+    throw "Missing release asset: $asset"
+  }
+}
+if (-not (Test-Path $NotesFile)) {
+  throw "Missing notes file: $NotesFile"
+}
+
+& $ghCmd release view $Tag --repo $Repo *> $null
+if ($LASTEXITCODE -eq 0) {
+  Write-Host "Release $Tag already exists. Uploading assets with clobber."
+  & $ghCmd release upload $Tag @assets --repo $Repo --clobber
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed uploading assets to existing release."
+  }
+  exit 0
+}
+
+Write-Host "Creating release $Tag in $Repo"
+& $ghCmd release create $Tag @assets --repo $Repo --title $Title --notes-file $NotesFile --latest
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed creating GitHub release."
+}

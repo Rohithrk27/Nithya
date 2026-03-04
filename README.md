@@ -74,6 +74,18 @@ npm run build:secure
 npm run release:checksums
 ```
 
+- Install local GitHub CLI wrapper (project-local):
+
+```bash
+npm run gh:install
+```
+
+- Publish GitHub release (requires `GH_TOKEN` or `GITHUB_TOKEN` in env):
+
+```bash
+npm run release:github
+```
+
 ## Official Distribution
 
 - Official release channels:

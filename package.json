@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "build:secure": "npm run security:env && npm run build",
+    "gh:install": "C:\\PROGRA~1\\PowerShell\\7\\pwsh.exe -NoProfile -ExecutionPolicy Bypass -File tools/install-gh-cli.ps1",
+    "release:github": "C:\\PROGRA~1\\PowerShell\\7\\pwsh.exe -NoProfile -ExecutionPolicy Bypass -File tools/publish-github-release.ps1 -Tag v1.0.0 -Repo Rohithrk27/Nithya -Title \"Nithya v1.0.0\" -NotesFile release-apk-files/RELEASE_NOTES-v1.0.md",
     "lint": "eslint src --quiet",
     "lint:fix": "eslint src --fix",
     "security:env": "node tools/validate-client-env.mjs",
