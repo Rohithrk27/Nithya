@@ -40,7 +40,7 @@
   "redirects": [
     {
       "source": "/download-apk",
-      "destination": "/downloads/app-release-signed-v1.0.apk",
+      "destination": "/downloads/Nithya.apk",
       "permanent": false
     },
     {
