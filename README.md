@@ -76,8 +76,15 @@ npm run release:checksums
 
 ## Official Distribution
 
-- Official binaries must be published from one source only (recommended: GitHub Releases for this repo).
+- Official release channels:
+  - GitHub Releases
+  - Amazon Appstore
+  - Samsung Galaxy Store
+  - Huawei AppGallery
+  - Aptoide
+- Keep package ID `com.rohith.nithya` and same signing key across all stores/updates.
 - Include versioned release notes and `release-apk-files/SHA256SUMS.txt` for every published build.
+- Store listing pack: `store-assets/`
 
 ## Privacy and Data Handling
 

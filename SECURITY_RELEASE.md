@@ -2,16 +2,29 @@
 
 ## Official Distribution Policy
 
-- Official APK/AAB files are distributed from one channel only: GitHub Releases in this repository.
-- Do not trust builds shared from chat apps, mirrors, or unknown drives.
+Official release channels for this project:
+
+- GitHub Releases (direct distribution)
+- Amazon Appstore
+- Samsung Galaxy Store
+- Huawei AppGallery
+- Aptoide
+
+Do not trust builds shared from chat apps, mirrors, or unknown drives.
 
 ## Build Policy
 
 - Ship signed `release` artifacts only.
 - Never distribute `debug` APKs.
+- Keep package name constant across updates: `com.rohith.nithya`.
+- Keep the same signing key for all updates across all stores.
 - Keep signing key files private:
   - `android/app/*.jks`
   - `android/keystore.properties`
+
+## Content Rating Policy
+
+- Target age rating: `13+`.
 
 ## Permissions Policy
 

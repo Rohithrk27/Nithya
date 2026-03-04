@@ -11,11 +11,12 @@ Release date: March 4, 2026
 
 ## Security and Distribution
 
-- Distribution channel: official GitHub Releases only.
+- Distribution channels: GitHub Releases, Amazon Appstore, Samsung Galaxy Store, Huawei AppGallery, Aptoide.
 - Android cleartext traffic disabled (`usesCleartextTraffic=false`).
 - Runtime notification permission support for Android 13+.
 - Optional exact-alarm capability for strict reminder timing.
 - Published checksum file: `SHA256SUMS.txt`
+- Content rating target: `13+`
 
 ## Data and Privacy
 
