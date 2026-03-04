@@ -101,7 +101,8 @@ npm run release:github
 ## Privacy and Data Handling
 
 - Policy document: `PRIVACY_POLICY.md`
-- Web policy page: `public/privacy-policy.html`
+- Web policy page file: `public/privacy-policy.html`
+- Public policy URL: `https://nithya.fit/privacy-policy` (redirects to `/privacy-policy.html`)
 - Security/release policy: `SECURITY_RELEASE.md`
 
 ## Notes

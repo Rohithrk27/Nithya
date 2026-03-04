@@ -26,6 +26,23 @@ const generateUserCode = () => {
 
 /** @param {IntroHeroProps} props */
 function IntroHero({ onBeginJourney, onSignIn }) {
+  const [showApkTip, setShowApkTip] = useState(false);
+
+  useEffect(() => {
+    try {
+      setShowApkTip(window.localStorage.getItem('nithya_apk_tip_dismissed') !== '1');
+    } catch (_) {
+      setShowApkTip(true);
+    }
+  }, []);
+
+  const dismissApkTip = () => {
+    setShowApkTip(false);
+    try {
+      window.localStorage.setItem('nithya_apk_tip_dismissed', '1');
+    } catch (_) {}
+  };
+
   return (
     <div className="intro-page">
       <motion.div
@@ -34,6 +51,18 @@ function IntroHero({ onBeginJourney, onSignIn }) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.75, ease: 'easeOut' }}
       />
+      {showApkTip && (
+        <aside className="intro-side-tip" aria-label="Android app download">
+          <button type="button" className="intro-side-tip-close" onClick={dismissApkTip} aria-label="Dismiss download tip">
+            ×
+          </button>
+          <p className="intro-side-tip-title">Android App</p>
+          <p className="intro-side-tip-text">Install the latest signed APK directly from this site.</p>
+          <a href="/download-apk" className="intro-side-tip-link">
+            Download APK
+          </a>
+        </aside>
+      )}
       <div className="intro-bg-grid" aria-hidden="true" />
       <div className="intro-bg-particles" aria-hidden="true">
         <span className="intro-particle intro-particle--1" />
@@ -161,7 +190,9 @@ function IntroHero({ onBeginJourney, onSignIn }) {
         </div>
 
         <footer className="intro-footer" aria-label="Privacy and support">
-          <a href="/privacy-policy.html" className="intro-footer-link" target="_blank" rel="noreferrer">Privacy Policy</a>
+          <a href="/privacy-policy" className="intro-footer-link" target="_blank" rel="noreferrer">Privacy Policy</a>
+          <span className="intro-footer-divider" aria-hidden="true">|</span>
+          <a href="/download-apk" className="intro-footer-link" target="_blank" rel="noreferrer">Download APK</a>
           <span className="intro-footer-divider" aria-hidden="true">|</span>
           <span id="intro-privacy-policy">We only use your data to run core habit, progress, and reminder features.</span>
           <span className="intro-footer-divider" aria-hidden="true">|</span>

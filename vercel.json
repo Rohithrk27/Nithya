@@ -19,13 +19,37 @@
       ]
     },
     {
-      "source": "/((?!api/|assets/|logo/|manifest\\.json|asset-manifest\\.json|sw\\.js|favicon\\.ico).*)",
+      "source": "/privacy-policy(\\.html)?",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/downloads/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/((?!api/|assets/|logo/|downloads/|manifest\\.json|asset-manifest\\.json|sw\\.js|favicon\\.ico|privacy-policy(?:\\.html)?).*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache" }
       ]
     }
   ],
+  "redirects": [
+    {
+      "source": "/download-apk",
+      "destination": "/downloads/app-release-signed-v1.0.apk",
+      "permanent": false
+    },
+    {
+      "source": "/privacy-policy",
+      "destination": "/privacy-policy.html",
+      "permanent": true
+    }
+  ],
   "rewrites": [
-    { "source": "/((?!api/|assets/|logo/|manifest\\.json|asset-manifest\\.json|sw\\.js|favicon\\.ico).*)", "destination": "/" }
+    { "source": "/((?!api/|assets/|logo/|downloads/|manifest\\.json|asset-manifest\\.json|sw\\.js|favicon\\.ico|privacy-policy(?:\\.html)?).*)", "destination": "/" }
   ]
 }

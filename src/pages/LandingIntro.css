@@ -88,6 +88,77 @@
   overflow: hidden;
 }
 
+.intro-side-tip {
+  position: fixed;
+  right: clamp(0.75rem, 2vw, 1.25rem);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: min(245px, calc(100vw - 1.5rem));
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  border-radius: 12px;
+  padding: 0.7rem 0.72rem 0.72rem;
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.92), rgba(8, 47, 73, 0.84));
+  box-shadow: 0 14px 28px rgba(2, 8, 23, 0.34);
+  backdrop-filter: blur(6px);
+  animation: introSideTipIn 280ms ease-out;
+}
+
+.intro-side-tip-close {
+  position: absolute;
+  top: 0.28rem;
+  right: 0.34rem;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  color: rgba(226, 232, 240, 0.78);
+  background: transparent;
+  line-height: 1;
+  font-size: 16px;
+}
+
+.intro-side-tip-close:hover {
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.intro-side-tip-title {
+  margin: 0;
+  color: #67e8f9;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intro-side-tip-text {
+  margin: 0.34rem 0 0.55rem;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  line-height: 1.38;
+}
+
+.intro-side-tip-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0.28rem 0.72rem;
+  border-radius: 8px;
+  border: 1px solid rgba(34, 211, 238, 0.44);
+  background: rgba(6, 182, 212, 0.14);
+  color: #e0f2fe;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.intro-side-tip-link:hover {
+  background: rgba(34, 211, 238, 0.22);
+}
+
 .intro-streak {
   position: absolute;
   width: min(520px, 76vw);
@@ -441,6 +512,11 @@
   100% { transform: translateX(-180%) rotate(-8deg); }
 }
 
+@keyframes introSideTipIn {
+  0% { opacity: 0; transform: translate3d(16px, -50%, 0); }
+  100% { opacity: 1; transform: translate3d(0, -50%, 0); }
+}
+
 @media (max-width: 767px) {
   .intro-hero {
     padding-top: 1.6rem;
@@ -510,6 +586,14 @@
 
   .intro-footer-divider {
     display: none;
+  }
+
+  .intro-side-tip {
+    top: auto;
+    right: 0.7rem;
+    bottom: 0.82rem;
+    transform: none;
+    width: min(320px, calc(100vw - 1.3rem));
   }
 }
 
