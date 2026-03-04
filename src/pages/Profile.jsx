@@ -535,7 +535,10 @@ export default function Profile() {
           <div className="rounded-xl p-3 space-y-3"
             style={{ background: 'rgba(15,32,39,0.6)', border: '1px solid rgba(56,189,248,0.12)' }}>
             <p className="text-xs text-slate-300">
-              Support ongoing development and maintenance with a UPI donation.
+              Optional UPI donation to support development and maintenance.
+            </p>
+            <p className="text-xs text-slate-400">
+              Donations are voluntary and do not unlock digital goods, premium features, or gameplay advantages.
             </p>
             <p className="text-xs text-slate-300">
               Need help?{' '}

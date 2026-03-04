@@ -10,7 +10,6 @@ import { toastError } from '@/lib/toast';
 import { createPageUrl } from '@/utils';
 
 const MOBILE_REGEX = /Android|iPhone|iPad|iPod/i;
-const DEFAULT_UPI_ID = '9526642343@slc';
 
 const sanitizeAmountInput = (raw) => {
   const text = String(raw || '');
@@ -42,7 +41,6 @@ const buildUpiLink = ({ upiId, amount }) => {
 const getEnvUpiId = () => String(
   import.meta?.env?.VITE_UPI_ID
   || import.meta?.env?.UPI_ID
-  || DEFAULT_UPI_ID
   || ''
 ).trim();
 
@@ -179,6 +177,7 @@ export default function DonationModal({ open, onClose }) {
               <div>
                 <p className="text-cyan-300 text-xs tracking-widest font-black">SUPPORT NITHYA</p>
                 <p className="text-slate-200 text-sm">Donate securely via UPI</p>
+                <p className="text-[11px] text-slate-400 mt-1">Optional contribution. Donations do not unlock app features.</p>
               </div>
               <button
                 type="button"

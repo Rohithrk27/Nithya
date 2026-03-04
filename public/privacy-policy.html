@@ -57,6 +57,7 @@
       <li>Progress data: habits, quests, streaks, XP logs, punishments, and recovery plans.</li>
       <li>Notification settings: reminder time, push subscription, and notification consent state.</li>
       <li>Technical diagnostics required for reliability and security.</li>
+      <li>Web analytics data (web app only in production): basic page/performance metrics.</li>
       <li>Payment verification details only when you submit them.</li>
     </ul>
 
@@ -65,30 +66,46 @@
       <li>Provide login, sync, progression, and reminders.</li>
       <li>Protect service integrity and prevent abuse.</li>
       <li>Improve reliability and product quality.</li>
+      <li>Review voluntary donation verification submissions when provided by you.</li>
     </ul>
 
-    <h2>4. Data Sharing</h2>
+    <h2>4. Data Sharing and Processors</h2>
     <ul>
       <li>No sale of personal data.</li>
-      <li>Data is shared only with required infrastructure providers.</li>
+      <li>Data is shared only with required infrastructure providers:</li>
+      <li>Supabase (authentication, database, storage, and API infrastructure).</li>
+      <li>Vercel Analytics and Vercel Speed Insights (web app analytics/performance metrics only).</li>
       <li>Data may be disclosed when legally required.</li>
     </ul>
 
-    <h2>5. Permissions</h2>
+    <h2>5. Donations and Payments</h2>
+    <ul>
+      <li>UPI contributions are optional support donations.</li>
+      <li>Donations do not unlock digital goods, premium features, or gameplay advantages.</li>
+      <li>If you submit verification, we store details you submit (amount, transaction reference, optional payer/app fields, notes, timestamps, and review status).</li>
+    </ul>
+
+    <h2>6. Permissions</h2>
     <ul>
       <li><code>INTERNET</code>: required for sync/API access.</li>
       <li><code>POST_NOTIFICATIONS</code>: reminders (Android 13+ runtime permission).</li>
       <li><code>SCHEDULE_EXACT_ALARM</code>: optional strict reminder timing.</li>
     </ul>
 
-    <h2>6. Security</h2>
+    <h2>7. Data Retention and Deletion</h2>
+    <ul>
+      <li>Data is retained while your account is active and for operational/legal needs.</li>
+      <li>To request account/data deletion, contact <a href="mailto:itsnithyaapp@gmail.com">itsnithyaapp@gmail.com</a>.</li>
+    </ul>
+
+    <h2>8. Security</h2>
     <ul>
       <li>Production traffic uses HTTPS.</li>
       <li>Release artifacts are signed before distribution.</li>
       <li>SHA-256 checksums are published for install verification.</li>
     </ul>
 
-    <h2>7. Policy Updates</h2>
+    <h2>9. Policy Updates</h2>
     <p>This policy may change. The latest version and effective date are published in this repository.</p>
   </main>
 </body>
