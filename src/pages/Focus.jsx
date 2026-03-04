@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, CirclePause, PlayCircle, Timer } from 'lucide-react';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import HoloPanel from '@/components/HoloPanel';
 import SystemBackground from '@/components/SystemBackground';
 import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
@@ -18,6 +19,8 @@ import { toastError, toastInfo, toastSuccess } from '@/lib/toast';
 import { keepScreenAwake, releaseScreenAwake } from '@/lib/keepAwake';
 
 const DURATION_OPTIONS = [15, 25, 40, 50];
+const MIN_FOCUS_MINUTES = 5;
+const MAX_FOCUS_MINUTES = 180;
 const FOCUS_CACHE_PREFIX = 'nithya_focus_snapshot_v1';
 const FOCUS_CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -82,6 +85,8 @@ export default function Focus() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [selectedMinutes, setSelectedMinutes] = useState(25);
+  const [customMode, setCustomMode] = useState(false);
+  const [customMinutesInput, setCustomMinutesInput] = useState('');
   const [activeSession, setActiveSession] = useState(null);
   const [recentSessions, setRecentSessions] = useState([]);
   const [nowMs, setNowMs] = useState(Date.now());
@@ -222,6 +227,16 @@ export default function Focus() {
     }).length;
   }, [completedSessions]);
 
+  const customMinutes = useMemo(() => {
+    const parsed = Number.parseInt(String(customMinutesInput || ''), 10);
+    if (!Number.isFinite(parsed)) return null;
+    return parsed;
+  }, [customMinutesInput]);
+
+  const customMinutesValid = customMinutes !== null
+    && customMinutes >= MIN_FOCUS_MINUTES
+    && customMinutes <= MAX_FOCUS_MINUTES;
+
   const runInterrupt = useCallback(async (reason) => {
     if (!user?.id || !activeSession?.id || interruptLockRef.current) return;
     interruptLockRef.current = true;
@@ -257,16 +272,26 @@ export default function Focus() {
 
   const handleStart = async () => {
     if (!user?.id || busy || activeSession?.id) return;
+    const minutesToStart = customMode ? Number(customMinutes) : Number(selectedMinutes);
+    if (
+      !Number.isFinite(minutesToStart)
+      || minutesToStart < MIN_FOCUS_MINUTES
+      || minutesToStart > MAX_FOCUS_MINUTES
+    ) {
+      toastError(`Set focus duration between ${MIN_FOCUS_MINUTES} and ${MAX_FOCUS_MINUTES} minutes.`);
+      return;
+    }
+
     setBusy(true);
     try {
       const row = await startFocusSession({
         userId: user.id,
-        minutes: selectedMinutes,
+        minutes: minutesToStart,
         metadata: { client: 'web' },
       });
       setActiveSession(row || null);
       setNowMs(Date.now());
-      toastInfo(`Focus session started (${selectedMinutes} min). Screen will stay awake until timer ends.`);
+      toastInfo(`Focus session started (${minutesToStart} min). Screen will stay awake until timer ends.`);
       triggerHaptic('medium');
       await loadData(user.id, { soft: true });
     } catch (err) {
@@ -332,6 +357,11 @@ export default function Focus() {
     );
   }
 
+  const startButtonLabel = customMode
+    ? (customMinutesValid ? `Start ${customMinutes}m Session` : `Set ${MIN_FOCUS_MINUTES}-${MAX_FOCUS_MINUTES} min`)
+    : `Start ${selectedMinutes}m Session`;
+  const startDisabled = busy || (customMode && !customMinutesValid);
+
   return (
     <SystemBackground>
       <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
@@ -377,20 +407,58 @@ export default function Focus() {
                 <button
                   key={mins}
                   type="button"
-                  onClick={() => setSelectedMinutes(mins)}
+                  onClick={() => {
+                    setSelectedMinutes(mins);
+                    setCustomMode(false);
+                  }}
                   className="px-3 py-1.5 rounded-md text-xs font-black tracking-widest"
                   style={{
-                    border: `1px solid ${selectedMinutes === mins ? 'rgba(56,189,248,0.45)' : 'rgba(71,85,105,0.45)'}`,
-                    background: selectedMinutes === mins ? 'rgba(8,145,178,0.2)' : 'rgba(15,23,42,0.45)',
-                    color: selectedMinutes === mins ? '#67E8F9' : '#94A3B8',
+                    border: `1px solid ${!customMode && selectedMinutes === mins ? 'rgba(56,189,248,0.45)' : 'rgba(71,85,105,0.45)'}`,
+                    background: !customMode && selectedMinutes === mins ? 'rgba(8,145,178,0.2)' : 'rgba(15,23,42,0.45)',
+                    color: !customMode && selectedMinutes === mins ? '#67E8F9' : '#94A3B8',
                   }}
                 >
                   {mins} MIN
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setCustomMode(true)}
+                className="px-3 py-1.5 rounded-md text-xs font-black tracking-widest"
+                style={{
+                  border: `1px solid ${customMode ? 'rgba(56,189,248,0.45)' : 'rgba(71,85,105,0.45)'}`,
+                  background: customMode ? 'rgba(8,145,178,0.2)' : 'rgba(15,23,42,0.45)',
+                  color: customMode ? '#67E8F9' : '#94A3B8',
+                }}
+              >
+                CUSTOM
+              </button>
             </div>
-            <Button onClick={handleStart} disabled={busy} className="w-full sm:w-auto">
-              <PlayCircle className="w-4 h-4 mr-2" /> {busy ? 'Starting...' : `Start ${selectedMinutes}m Session`}
+
+            {customMode && (
+              <div className="mb-4 max-w-[220px]">
+                <Input
+                  type="number"
+                  min={MIN_FOCUS_MINUTES}
+                  max={MAX_FOCUS_MINUTES}
+                  step={1}
+                  placeholder="Custom minutes"
+                  value={customMinutesInput}
+                  onChange={(event) => {
+                    const next = String(event.target.value || '').replace(/[^\d]/g, '').slice(0, 3);
+                    setCustomMinutesInput(next);
+                  }}
+                  className="bg-slate-900/80 border-slate-700 text-white"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">Allowed range: {MIN_FOCUS_MINUTES}-{MAX_FOCUS_MINUTES} minutes.</p>
+                {customMinutesInput !== '' && !customMinutesValid && (
+                  <p className="text-[11px] text-red-300 mt-1">Enter a valid custom duration.</p>
+                )}
+              </div>
+            )}
+
+            <Button onClick={handleStart} disabled={startDisabled} className="w-full sm:w-auto">
+              <PlayCircle className="w-4 h-4 mr-2" /> {busy ? 'Starting...' : startButtonLabel}
             </Button>
           </HoloPanel>
         )}

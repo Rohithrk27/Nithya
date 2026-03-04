@@ -8,6 +8,7 @@ import {
   getNotificationPermission,
   hasReminderFired,
   markReminderFired,
+  requestExactAlarmPermission,
   requestNotificationPermission,
   syncWebPushSubscription,
   showReminderNotification,
@@ -145,7 +146,7 @@ export default function HabitReminderSetup({ reminderTime, habits, onTimeChange,
   useEffect(() => {
     if (permission !== 'granted') return undefined;
     if (userId) {
-      void syncWebPushSubscription({ userId, reminderTime });
+      void syncWebPushSubscription({ userId, reminderTime, strictExactAlarm: false });
     }
     return scheduleReminder(reminderTime, habits);
   }, [permission, reminderTime, habits, userId]);
@@ -153,8 +154,11 @@ export default function HabitReminderSetup({ reminderTime, habits, onTimeChange,
   const requestPermission = async () => {
     const result = await requestNotificationPermission();
     setPermission(result);
+    if (result === 'granted') {
+      await requestExactAlarmPermission();
+    }
     if (result === 'granted' && userId) {
-      void syncWebPushSubscription({ userId, reminderTime });
+      void syncWebPushSubscription({ userId, reminderTime, strictExactAlarm: true });
     }
   };
 

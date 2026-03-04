@@ -99,9 +99,36 @@ export async function fetchPublicProfileRank(username) {
   return Number(count || 0) + 1;
 }
 
+const APP_PROFILE_DEEP_LINK_BASE = 'com.rohith.nithya://profile';
+
+const trimTrailingSlash = (value) => String(value || '').replace(/\/+$/, '');
+const isNativePlatform = () => (
+  typeof window !== 'undefined'
+  && typeof window?.Capacitor?.isNativePlatform === 'function'
+  && window.Capacitor.isNativePlatform()
+);
+
+const normalizeUsername = (value) => String(value || '').trim();
+const encodeUsername = (value) => {
+  const normalized = normalizeUsername(value);
+  if (!normalized) return '';
+  try {
+    return encodeURIComponent(decodeURIComponent(normalized));
+  } catch (_) {
+    return encodeURIComponent(normalized);
+  }
+};
+
 export function getPublicProfileShareUrl(username) {
-  if (!username) return '';
-  const safe = encodeURIComponent(username);
-  return `${window.location.origin}/profile/${safe}`;
+  const safe = encodeUsername(username);
+  if (!safe) return '';
+  if (isNativePlatform()) {
+    return `${APP_PROFILE_DEEP_LINK_BASE}/${safe}`;
+  }
+  const configuredBase = trimTrailingSlash(import.meta?.env?.VITE_PUBLIC_WEB_URL);
+  const runtimeBase = typeof window !== 'undefined' ? trimTrailingSlash(window.location.origin) : '';
+  const base = configuredBase || runtimeBase;
+  if (!base) return '';
+  return `${base}/profile/${safe}`;
 }
 

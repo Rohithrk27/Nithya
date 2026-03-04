@@ -1,6 +1,13 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './supabase';
-import { buildOAuthRedirect, buildResetPasswordRedirect, isNativeAndroid, normalizeAppPath, rememberOAuthNextPath } from './authRedirect';
+import {
+  NATIVE_AUTH_CALLBACK,
+  buildOAuthRedirect,
+  buildResetPasswordRedirect,
+  isNativeAndroid,
+  normalizeAppPath,
+  rememberOAuthNextPath,
+} from './authRedirect';
 
 const AuthContext = createContext(null);
 
@@ -8,6 +15,36 @@ const firstRow = (data) => (Array.isArray(data) ? (data[0] || null) : (data || n
 const AUTH_SNAPSHOT_KEY = '__nithya_auth_snapshot_v1__';
 const AUTH_SNAPSHOT_TTL_MS = 2 * 60 * 60 * 1000;
 const SYSTEM_CONTROLS_CACHE_TTL_MS = 30 * 1000;
+
+const isLikelyNativeAndroidRuntime = () => {
+  if (isNativeAndroid()) return true;
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const cap = window?.Capacitor;
+    const capNative = typeof cap?.isNativePlatform === 'function' ? !!cap.isNativePlatform() : false;
+    const capPlatform = typeof cap?.getPlatform === 'function' ? String(cap.getPlatform() || '').toLowerCase() : '';
+    if (capNative && (capPlatform === 'android' || capPlatform === '')) return true;
+  } catch (_) {
+    // Ignore runtime probe failures.
+  }
+
+  const ua = String(navigator?.userAgent || '').toLowerCase();
+  const looksAndroid = ua.includes('android');
+  const looksNativeHost = window.location.hostname === 'localhost' || window.location.protocol === 'capacitor:';
+  return looksAndroid && looksNativeHost;
+};
+
+const forceNativeOAuthRedirect = (urlLike) => {
+  if (!urlLike) return '';
+  try {
+    const parsed = new URL(urlLike);
+    parsed.searchParams.set('redirect_to', NATIVE_AUTH_CALLBACK);
+    return parsed.toString();
+  } catch (_) {
+    return String(urlLike);
+  }
+};
 
 const normalizeProfileStatus = (row, userId) => {
   const role = String(row?.role || 'user').trim().toLowerCase() || 'user';
@@ -280,7 +317,8 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     const safeNextPath = normalizeAppPath(redirectPath, '/dashboard');
     rememberOAuthNextPath(safeNextPath);
-    const redirectTo = buildOAuthRedirect(safeNextPath);
+    const nativeRuntime = isLikelyNativeAndroidRuntime();
+    const redirectTo = nativeRuntime ? NATIVE_AUTH_CALLBACK : buildOAuthRedirect(safeNextPath);
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo, skipBrowserRedirect: true },
@@ -297,20 +335,22 @@ export const AuthProvider = ({ children }) => {
       return { error: missingUrlError };
     }
 
+    const authUrl = nativeRuntime ? forceNativeOAuthRedirect(data.url) : data.url;
+
     // Guardrail: if Android is expected but Supabase generated a web callback,
     // fail fast with a clear action instead of silently opening web auth flow.
-    if (isNativeAndroid()) {
-      const encodedNative = encodeURIComponent('com.rohith.nitya://auth/callback');
-      const hasNativeCallback = data.url.includes(encodedNative) || data.url.includes('com.rohith.nitya://auth/callback');
+    if (nativeRuntime) {
+      const encodedNative = encodeURIComponent(NATIVE_AUTH_CALLBACK);
+      const hasNativeCallback = data.url.includes(encodedNative) || data.url.includes(NATIVE_AUTH_CALLBACK);
       if (!hasNativeCallback) {
-        const cfgError = new Error('Supabase redirect misconfigured. Add com.rohith.nitya://auth/callback to Auth Redirect URLs.');
+        const cfgError = new Error(`Supabase redirect misconfigured. Add ${NATIVE_AUTH_CALLBACK} to Auth Redirect URLs.`);
         setAuthError(cfgError.message);
         return { error: cfgError };
       }
     }
 
-    window.location.assign(data.url);
-    return { data };
+    window.location.assign(authUrl);
+    return { data: { ...data, url: authUrl } };
   };
 
   const logout = async () => {

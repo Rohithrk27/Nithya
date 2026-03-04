@@ -10,6 +10,7 @@ import { toastError } from '@/lib/toast';
 import { createPageUrl } from '@/utils';
 
 const MOBILE_REGEX = /Android|iPhone|iPad|iPod/i;
+const DEFAULT_UPI_ID = '9526642343@slc';
 
 const sanitizeAmountInput = (raw) => {
   const text = String(raw || '');
@@ -36,6 +37,54 @@ const buildUpiLink = ({ upiId, amount }) => {
     tn: 'Support',
   });
   return `upi://pay?${params.toString()}`;
+};
+
+const getEnvUpiId = () => String(
+  import.meta?.env?.VITE_UPI_ID
+  || import.meta?.env?.UPI_ID
+  || DEFAULT_UPI_ID
+  || ''
+).trim();
+
+const resolveUpiId = async () => {
+  const fallbackUpiId = getEnvUpiId();
+  const isNativePlatform = typeof window !== 'undefined'
+    && typeof window?.Capacitor?.isNativePlatform === 'function'
+    && window.Capacitor.isNativePlatform();
+
+  if (isNativePlatform && fallbackUpiId) {
+    return fallbackUpiId;
+  }
+  if (isNativePlatform && !fallbackUpiId) {
+    throw new Error('UPI ID is unavailable in this app build.');
+  }
+
+  try {
+    const response = await fetch('/api/config', {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (fallbackUpiId) return fallbackUpiId;
+        throw new Error(payload?.message || 'Failed to load payment configuration.');
+      }
+
+      const upiId = String(payload?.upiId || '').trim();
+      if (upiId) return upiId;
+      if (fallbackUpiId) return fallbackUpiId;
+      throw new Error('UPI ID is unavailable.');
+    }
+
+    if (fallbackUpiId) return fallbackUpiId;
+    throw new Error('Payment configuration endpoint is unavailable.');
+  } catch (error) {
+    if (fallbackUpiId) return fallbackUpiId;
+    throw error;
+  }
 };
 
 export default function DonationModal({ open, onClose }) {
@@ -86,25 +135,7 @@ export default function DonationModal({ open, onClose }) {
     setShowQr(false);
     setUpiLink('');
     try {
-      const response = await fetch('/api/config', {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-      });
-
-      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
-      if (!contentType.includes('application/json')) {
-        throw new Error('Payment configuration endpoint is unavailable.');
-      }
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || 'Failed to load payment configuration.');
-      }
-
-      const upiId = String(payload?.upiId || '').trim();
-      if (!upiId) {
-        throw new Error('UPI ID is unavailable.');
-      }
+      const upiId = await resolveUpiId();
 
       const deepLink = buildUpiLink({ upiId, amount });
       const isMobile = typeof navigator !== 'undefined' && MOBILE_REGEX.test(navigator.userAgent);

@@ -5,6 +5,8 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 const DEFAULT_ICON = '/logo/logo.png';
 const NATIVE_REMINDER_CHANNEL_ID = 'nithya-reminders';
 const NATIVE_DAILY_REMINDER_ID = 9001;
+const HABITS_DEEP_LINK_PATH = '/dashboard?open=habits';
+const EXACT_ALARM_PROMPT_STORAGE_KEY = 'nithya_exact_alarm_prompted_android_v1';
 let nativePermissionCache = 'default';
 
 const getCapacitorRuntime = () => {
@@ -38,6 +40,8 @@ const ensureReminderChannel = async () => {
       description: 'Daily habit and discipline reminders',
       importance: 5,
       visibility: 1,
+      lights: true,
+      vibration: true,
       sound: 'default',
     });
   } catch (_) {
@@ -51,6 +55,24 @@ const parseReminderTime = (value) => {
   const hours = Math.max(0, Math.min(23, parts[0]));
   const minutes = Math.max(0, Math.min(59, parts[1]));
   return { hours, minutes };
+};
+
+const hasPromptedExactAlarm = () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(EXACT_ALARM_PROMPT_STORAGE_KEY) === '1';
+  } catch (_) {
+    return false;
+  }
+};
+
+const markPromptedExactAlarm = () => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(EXACT_ALARM_PROMPT_STORAGE_KEY, '1');
+  } catch (_) {
+    // Ignore storage failures.
+  }
 };
 
 const nextNativeNotificationId = () => Math.floor((Date.now() % 1000000000) + 1000);
@@ -96,6 +118,34 @@ export const requestNotificationPermission = async () => {
     return await Notification.requestPermission();
   } catch (_) {
     return Notification.permission;
+  }
+};
+
+export const checkExactAlarmPermission = async () => {
+  if (!isNativeAndroid()) return 'unsupported';
+  if (typeof LocalNotifications?.checkExactNotificationSetting !== 'function') return 'unsupported';
+  try {
+    const result = await LocalNotifications.checkExactNotificationSetting();
+    return mapNativePermission(result?.exact_alarm);
+  } catch (_) {
+    return 'default';
+  }
+};
+
+export const requestExactAlarmPermission = async ({ force = false } = {}) => {
+  if (!isNativeAndroid()) return 'unsupported';
+  if (typeof LocalNotifications?.changeExactNotificationSetting !== 'function') return 'unsupported';
+
+  const current = await checkExactAlarmPermission();
+  if (current === 'granted') return current;
+  if (!force && hasPromptedExactAlarm()) return current;
+
+  markPromptedExactAlarm();
+  try {
+    const result = await LocalNotifications.changeExactNotificationSetting();
+    return mapNativePermission(result?.exact_alarm);
+  } catch (_) {
+    return checkExactAlarmPermission();
   }
 };
 
@@ -147,7 +197,11 @@ const buildPushSubscriptionRow = ({ userId, subscription, reminderTime = '21:00'
   };
 };
 
-export const syncWebPushSubscription = async ({ userId, reminderTime = '21:00' } = {}) => {
+export const syncWebPushSubscription = async ({
+  userId,
+  reminderTime = '21:00',
+  strictExactAlarm = false,
+} = {}) => {
   if (!userId) return { ok: false, reason: 'missing_user' };
 
   const permission = await checkNotificationPermission();
@@ -157,6 +211,12 @@ export const syncWebPushSubscription = async ({ userId, reminderTime = '21:00' }
   if (isNativeAndroid()) {
     const parsedTime = parseReminderTime(reminderTime);
     if (!parsedTime) return { ok: false, reason: 'invalid_time' };
+
+    let exactAlarm = await checkExactAlarmPermission();
+    if (strictExactAlarm && exactAlarm !== 'granted') {
+      exactAlarm = await requestExactAlarmPermission();
+    }
+
     try {
       await ensureReminderChannel();
       await LocalNotifications.cancel({
@@ -179,10 +239,11 @@ export const syncWebPushSubscription = async ({ userId, reminderTime = '21:00' }
           extra: {
             source: 'native_daily',
             reminder_time: String(reminderTime || '21:00').slice(0, 5),
+            url: HABITS_DEEP_LINK_PATH,
           },
         }],
       });
-      return { ok: true, native: true };
+      return { ok: true, native: true, exact_alarm: exactAlarm };
     } catch (error) {
       return { ok: false, reason: 'native_schedule_failed', error };
     }
@@ -225,6 +286,7 @@ export const getLocalDateKey = (date = new Date()) => {
 };
 
 export const reminderStorageKey = (dateKey, tag) => `nithya_habit_reminder_${dateKey}_${tag}`;
+export const reminderCountStorageKey = (dateKey) => `nithya_habit_reminder_count_${dateKey}`;
 
 export const hasReminderFired = (dateKey, tag) => {
   if (typeof window === 'undefined') return false;
@@ -244,6 +306,29 @@ export const markReminderFired = (dateKey, tag) => {
   }
 };
 
+export const getReminderSentCount = (dateKey) => {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw = localStorage.getItem(reminderCountStorageKey(dateKey));
+    const parsed = Number(raw || 0);
+    if (!Number.isFinite(parsed) || parsed < 0) return 0;
+    return Math.floor(parsed);
+  } catch (_) {
+    return 0;
+  }
+};
+
+export const incrementReminderSentCount = (dateKey) => {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const next = getReminderSentCount(dateKey) + 1;
+    localStorage.setItem(reminderCountStorageKey(dateKey), String(next));
+    return next;
+  } catch (_) {
+    return getReminderSentCount(dateKey);
+  }
+};
+
 export const showReminderNotification = async ({
   title,
   body,
@@ -255,6 +340,10 @@ export const showReminderNotification = async ({
 }) => {
   const permission = await checkNotificationPermission();
   if (permission !== 'granted') return false;
+  const mergedData = {
+    url: HABITS_DEEP_LINK_PATH,
+    ...data,
+  };
 
   if (isNativeAndroid()) {
     try {
@@ -271,7 +360,7 @@ export const showReminderNotification = async ({
           },
           extra: {
             tag,
-            ...data,
+            ...mergedData,
           },
         }],
       });
@@ -288,8 +377,7 @@ export const showReminderNotification = async ({
     badge,
     renotify,
     data: {
-      url: '/dashboard',
-      ...data,
+      ...mergedData,
     },
   };
 

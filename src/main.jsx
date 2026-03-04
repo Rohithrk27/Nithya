@@ -5,16 +5,29 @@ import '@/index.css'
 import { App as CapacitorApp } from '@capacitor/app'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { supabase } from '@/lib/supabase'
-import { AUTH_CALLBACK_PATH, isAuthCallbackUrl, isNativeAndroid, normalizeAppPath, resolveNextPathFromCallback } from '@/lib/authRedirect'
+import {
+  AUTH_CALLBACK_PATH,
+  NATIVE_AUTH_CALLBACK,
+  isAuthCallbackUrl,
+  isNativeAndroid,
+  normalizeAppPath,
+  resolveInAppPathFromUrl,
+  resolveNextPathFromCallback,
+} from '@/lib/authRedirect'
 import { setupNativeCapabilities } from '@/lib/nativeCapabilities'
 
 const OAUTH_NATIVE_HANDOFF_KEY = '__nithya_native_oauth_handoff__';
+const NATIVE_AUTH_CALLBACK_URL = new URL(NATIVE_AUTH_CALLBACK);
 
 const asWebCallbackUrl = (urlLike) => {
   if (!urlLike) return null;
   try {
     const parsed = new URL(urlLike);
-    if (parsed.protocol === 'com.rohith.nitya:' && parsed.host === 'auth' && parsed.pathname === '/callback') {
+    if (
+      parsed.protocol === NATIVE_AUTH_CALLBACK_URL.protocol
+      && parsed.host === NATIVE_AUTH_CALLBACK_URL.host
+      && parsed.pathname === NATIVE_AUTH_CALLBACK_URL.pathname
+    ) {
       return new URL(`${AUTH_CALLBACK_PATH}${parsed.search}${parsed.hash}`, window.location.origin);
     }
     return parsed;
@@ -52,7 +65,7 @@ const tryHandoffWebCallbackToNative = (urlLike) => {
     // Best effort only.
   }
 
-  const nativeCallback = new URL('com.rohith.nitya://auth/callback');
+  const nativeCallback = new URL(NATIVE_AUTH_CALLBACK);
   nativeCallback.search = callbackUrl.search;
   nativeCallback.hash = callbackUrl.hash;
   window.location.replace(nativeCallback.toString());
@@ -108,12 +121,30 @@ const finishOAuthCallback = async (urlLike) => {
   return true;
 };
 
+const routeInApp = (pathLike) => {
+  if (typeof window === 'undefined') return false;
+  const targetPath = normalizeAppPath(pathLike, '/dashboard');
+  window.history.replaceState({}, '', targetPath);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  return true;
+};
+
+const handleIncomingAppUrl = async (urlLike) => {
+  if (!urlLike) return false;
+  const handledAuth = await finishOAuthCallback(urlLike);
+  if (handledAuth) return true;
+
+  const targetPath = resolveInAppPathFromUrl(urlLike);
+  if (!targetPath) return false;
+  return routeInApp(targetPath);
+};
+
 const setupNativeDeepLinkListener = () => {
   if (!isNativeAndroid()) return;
   if (typeof CapacitorApp?.addListener !== 'function') return;
   CapacitorApp.addListener('appUrlOpen', ({ url }) => {
     if (!url) return;
-    void finishOAuthCallback(url);
+    void handleIncomingAppUrl(url);
   });
 };
 
@@ -135,9 +166,10 @@ const setupNativeBackButtonHandler = () => {
 const setupLocalNotificationRouting = () => {
   if (!isNativeAndroid()) return;
   if (typeof LocalNotifications?.addListener !== 'function') return;
-  LocalNotifications.addListener('localNotificationActionPerformed', () => {
-    window.history.replaceState({}, '', '/dashboard');
-    window.dispatchEvent(new PopStateEvent('popstate'));
+  LocalNotifications.addListener('localNotificationActionPerformed', (event) => {
+    const payloadUrl = String(event?.notification?.extra?.url || '').trim();
+    const targetPath = payloadUrl || '/dashboard';
+    routeInApp(targetPath);
   });
 };
 
@@ -147,7 +179,7 @@ const processNativeLaunchUrl = async () => {
   try {
     const launchData = await CapacitorApp.getLaunchUrl();
     if (!launchData?.url) return false;
-    return finishOAuthCallback(launchData.url);
+    return handleIncomingAppUrl(launchData.url);
   } catch (_) {
     return false;
   }

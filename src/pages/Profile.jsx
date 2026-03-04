@@ -32,6 +32,39 @@ const EMPTY_FORM = {
   reminder_time: '09:00',
 };
 
+const tryNativeShare = async ({ title, text, url }) => {
+  const isNativePlatform = typeof window !== 'undefined'
+    && typeof window?.Capacitor?.isNativePlatform === 'function'
+    && window.Capacitor.isNativePlatform();
+  if (!isNativePlatform) return false;
+
+  try {
+    const { Share } = await import('@capacitor/share');
+    const safeText = String(text || '').trim();
+    const safeUrl = String(url || '').trim();
+    const payload = {
+      title: String(title || '').trim() || 'Share profile',
+      text: [safeText, safeUrl].filter(Boolean).join('\n').trim(),
+      dialogTitle: 'Share profile',
+    };
+
+    // Capacitor Share can reject non-http(s) URLs in some Android environments.
+    // Keep deep links in text so sharing still works consistently.
+    if (/^https?:\/\//i.test(safeUrl)) {
+      payload.url = safeUrl;
+    }
+
+    if (!payload.text && payload.url) {
+      payload.text = payload.url;
+    }
+
+    await Share.share(payload);
+    return true;
+  } catch (_) {
+    return false;
+  }
+};
+
 export default function Profile() {
   const navigate = useNavigate();
   const { user, authReady } = useAuthedPageUser();
@@ -234,6 +267,16 @@ export default function Profile() {
       const shareTitle = `${subjectName}'s Profile`;
       const shareText = `Check out ${subjectName}'s RPG progress profile.`;
 
+      const nativeShared = await tryNativeShare({
+        title: shareTitle,
+        text: shareText,
+        url: link,
+      });
+      if (nativeShared) {
+        setShareMessage('Shared successfully.');
+        return;
+      }
+
       const captureNode = shareCaptureRef.current;
       let screenshotFile = null;
       if (captureNode) {
@@ -252,36 +295,24 @@ export default function Profile() {
         }
       }
 
-      if (screenshotFile) {
-        if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-          const canShareFiles = typeof navigator.canShare === 'function'
-            ? navigator.canShare({ files: [screenshotFile] })
-            : true;
+      const canUseNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+      if (canUseNativeShare && screenshotFile) {
+        const canShareFiles = typeof navigator.canShare === 'function'
+          ? navigator.canShare({ files: [screenshotFile] })
+          : true;
 
-          if (canShareFiles) {
-            await navigator.share({
-              title: shareTitle,
-              text: `${shareText}\n${link}`,
-              files: [screenshotFile],
-            });
-            setShareMessage('Shared successfully.');
-            return;
-          }
+        if (canShareFiles) {
+          await navigator.share({
+            title: shareTitle,
+            text: `${shareText}\n${link}`,
+            files: [screenshotFile],
+          });
+          setShareMessage('Shared successfully.');
+          return;
         }
-
-        const tempUrl = URL.createObjectURL(screenshotFile);
-        const anchor = document.createElement('a');
-        anchor.href = tempUrl;
-        anchor.download = screenshotFile.name;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(tempUrl);
-        setShareMessage('Share not supported here. Screenshot downloaded.');
-        return;
       }
 
-      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      if (canUseNativeShare) {
         await navigator.share({
           title: shareTitle,
           text: `${shareText}\n${link}`,
@@ -293,6 +324,19 @@ export default function Profile() {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(link);
         setShareMessage('Share not supported here. Link copied.');
+        return;
+      }
+
+      if (screenshotFile) {
+        const tempUrl = URL.createObjectURL(screenshotFile);
+        const anchor = document.createElement('a');
+        anchor.href = tempUrl;
+        anchor.download = screenshotFile.name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(tempUrl);
+        setShareMessage('Share not supported here. Screenshot downloaded.');
         return;
       }
 

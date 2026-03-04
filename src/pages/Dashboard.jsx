@@ -1,5 +1,5 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { createPageUrl } from '../utils';
 import { supabase } from '@/lib/supabase';
@@ -40,7 +40,9 @@ import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 import { applyShadowArmyXpBonus, computeShadowArmyCount, getShadowArmyBonusPct, getStreakDays } from '@/lib/shadowArmy';
 import {
   getLocalDateKey,
+  getReminderSentCount,
   hasReminderFired,
+  incrementReminderSentCount,
   markReminderFired,
   syncWebPushSubscription,
   showReminderNotification,
@@ -70,6 +72,13 @@ const SANCTION_XP_PENALTY = 180;
 const SANCTION_CONSISTENCY_DROP = 2;
 const RANK_EVAL_LEVELS = [10, 25, 50, 100];
 const OVERDUE_EVAL_BASE_PENALTY = 90;
+const REMINDER_DAILY_CAP = 5;
+const REMINDER_DAY_END_CLOCK = '21:30';
+const REMINDER_COUNTDOWN_STEPS = [
+  { minutesLeft: 10, tag: 'countdown_10' },
+  { minutesLeft: 30, tag: 'countdown_30' },
+  { minutesLeft: 60, tag: 'countdown_60' },
+];
 
 const buildPendingPunishments = (punishments, habitsData, logsData) => {
   const habitMap = new Map((habitsData || []).map((h) => [h.id, h]));
@@ -219,6 +228,15 @@ const parseClockTime = (value) => {
   return { hours: parts[0], minutes: parts[1] };
 };
 
+const formatReminderCountdown = (minutesValue) => {
+  const safeMinutes = Math.max(0, Math.floor(Number(minutesValue || 0)));
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+  if (hours <= 0) return `${minutes}m`;
+  if (minutes <= 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+};
+
 const playPendingHabitReminderCue = (message, includeSpeech = true) => {
   if (typeof window === 'undefined') return;
   const win = /** @type {any} */ (window);
@@ -348,6 +366,7 @@ const writeDashboardSnapshot = (userId, data) => {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, authReady } = useAuthedPageUser();
   const [profile, setProfile] = useState(null);
   const [systemState, setSystemState] = useState(null);
@@ -841,6 +860,19 @@ export default function Dashboard() {
   }, [habitSectionExpanded]);
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    if (params.get('open') !== 'habits') return;
+    setHabitSectionExpanded(true);
+    params.delete('open');
+    const nextSearch = params.toString();
+    navigate({
+      pathname: location.pathname,
+      search: nextSearch ? `?${nextSearch}` : '',
+      hash: location.hash,
+    }, { replace: true });
+  }, [location.hash, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
     if (!user?.id) return undefined;
     const channel = supabase
       .channel(`dashboard-xp-${user.id}`)
@@ -927,7 +959,7 @@ export default function Dashboard() {
             interruptNoticeRef.current = row.id;
             markSystemWarningShownToday(user.id, today);
           }
-          setShowWarningPopup(!warningShownToday && dismissedInterruptId !== row.id);
+          setShowWarningPopup(dismissedInterruptId !== row.id);
         } else {
           setShowWarningPopup(false);
         }
@@ -1206,44 +1238,66 @@ export default function Dashboard() {
         const now = new Date();
         const dateKey = getLocalDateKey(now);
         const nowMinutes = now.getHours() * 60 + now.getMinutes();
-        const habitPreview = incompleteHabits.slice(0, 3).map((h) => h.title).join(', ');
-        const body = `${incompleteHabits.length} habits pending before day ends: ${habitPreview}${incompleteHabits.length > 3 ? ', ...' : ''}`;
+        const habitPreview = incompleteHabits
+          .slice(0, 3)
+          .map((h) => String(h?.title || '').trim())
+          .filter(Boolean)
+          .join(', ') || 'your pending habits';
+        const previewTail = incompleteHabits.length > 3 ? ', ...' : '';
+        const defaultBody = `${incompleteHabits.length} habits pending before day end: ${habitPreview}${previewTail}`;
 
-        const sendReminder = async (tag, reason) => {
-          if (hasReminderFired(dateKey, tag)) return;
-          await showReminderNotification({
+        const sendReminder = async (tag, reason, bodyText = defaultBody) => {
+          if (hasReminderFired(dateKey, tag)) return false;
+          if (getReminderSentCount(dateKey) >= REMINDER_DAILY_CAP) return false;
+          const sent = await showReminderNotification({
             title: 'Nithya Habit Reminder',
-            body,
+            body: bodyText,
             tag: `habit-reminder-${tag}`,
-            data: { dateKey, reason, tag },
+            data: {
+              dateKey,
+              reason,
+              tag,
+              url: '/dashboard?open=habits',
+            },
           });
+          if (!sent) return false;
           playPendingHabitReminderCue(
             `Reminder. You still have ${incompleteHabits.length} pending habits. ${habitPreview}.`,
             systemState?.voice_enabled !== false
           );
           markReminderFired(dateKey, tag);
+          incrementReminderSentCount(dateKey);
+          return true;
         };
 
+        let sentThisTick = false;
         const adaptiveTime = computeAdaptiveReminderTime(historyLogs, profile?.reminder_time || '21:00');
         const adaptive = parseClockTime(adaptiveTime);
         if (adaptive) {
           const adaptiveMinutes = adaptive.hours * 60 + adaptive.minutes;
           if (nowMinutes >= adaptiveMinutes) {
-            await sendReminder('adaptive', 'adaptive');
-          }
-
-          // Regular nudges every 2 hours while habits are still pending.
-          const regularStart = Math.max(8 * 60, adaptiveMinutes - 60);
-          const regularEnd = 22 * 60 + 30;
-          if (nowMinutes >= regularStart && nowMinutes <= regularEnd) {
-            const slot = Math.floor((nowMinutes - regularStart) / 120);
-            await sendReminder(`regular_${slot}`, 'regular');
+            sentThisTick = await sendReminder('adaptive', 'adaptive');
           }
         }
 
-        const dayEnd = parseClockTime('21:30');
-        if (dayEnd && nowMinutes >= (dayEnd.hours * 60 + dayEnd.minutes)) {
-          await sendReminder('day_end', 'day_end');
+        const dayEnd = parseClockTime(REMINDER_DAY_END_CLOCK);
+        if (!dayEnd) return;
+        const minutesToDayEnd = (dayEnd.hours * 60 + dayEnd.minutes) - nowMinutes;
+
+        if (!sentThisTick && minutesToDayEnd > 0) {
+          const countdownStage = REMINDER_COUNTDOWN_STEPS.find((step) => minutesToDayEnd <= step.minutesLeft);
+          if (countdownStage) {
+            const countdownBody = `${incompleteHabits.length} habits pending. ${formatReminderCountdown(minutesToDayEnd)} left today: ${habitPreview}${previewTail}`;
+            sentThisTick = await sendReminder(
+              countdownStage.tag,
+              `countdown_${countdownStage.minutesLeft}`,
+              countdownBody
+            );
+          }
+        }
+
+        if (!sentThisTick && minutesToDayEnd <= 0) {
+          await sendReminder('day_end', 'day_end_final', `Day end reached with ${incompleteHabits.length} pending habits: ${habitPreview}${previewTail}`);
         }
       } finally {
         running = false;

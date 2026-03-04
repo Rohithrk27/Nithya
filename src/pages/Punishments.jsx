@@ -15,7 +15,6 @@ import {
   getPunishmentRemainingMs,
   isOpenPunishment,
   resolvePunishmentEarly,
-  resolvePunishmentTimeouts,
 } from '@/lib/punishments';
 import { formatCountdown } from '@/lib/gameState';
 
@@ -39,7 +38,6 @@ export default function Punishments() {
     setLoading(true);
     setLoadError('');
     try {
-      await resolvePunishmentTimeouts({ userId, source: 'punishment_timeout' });
       const [punishmentsRes, habitsRes, logsRes, profileRes] = await Promise.all([
         supabase.from('punishments').select('*').eq('user_id', userId),
         supabase.from('habits').select('id,title,punishment_text,punishment_xp_penalty_pct').eq('user_id', userId),
@@ -65,7 +63,6 @@ export default function Punishments() {
       const habits = new Map((habitsRes.data || []).map((h) => [h.id, h]));
       const logs = new Map((logsRes.data || []).map((l) => [l.id, l]));
       const normalized = (allPunishments || [])
-        .filter(isOpenPunishment)
         .map((punishment) => {
           const habit = habits.get(punishment.habit_id) || null;
           const log = logs.get(punishment.habit_log_id) || null;
@@ -80,7 +77,7 @@ export default function Punishments() {
             },
           };
         })
-        .sort((a, b) => new Date(a.punishment.expires_at || a.punishment.created_at).getTime() - new Date(b.punishment.expires_at || b.punishment.created_at).getTime());
+        .sort((a, b) => new Date(b.punishment.created_at || b.punishment.expires_at || 0).getTime() - new Date(a.punishment.created_at || a.punishment.expires_at || 0).getTime());
 
       setEntries(normalized);
       setProfile(profileRow);
@@ -102,23 +99,22 @@ export default function Punishments() {
   }, []);
 
   useEffect(() => {
-    if (!user?.id) return undefined;
-    const intervalId = setInterval(() => {
-      void resolvePunishmentTimeouts({ userId: user.id, source: 'punishment_timeout' });
-      setEntries((prev) => prev.filter((entry) => getPunishmentRemainingMs(entry?.punishment, Date.now()) > 0));
-    }, 60000);
-    return () => clearInterval(intervalId);
-  }, [user?.id]);
-
-  useEffect(() => {
     if (!xpDelta) return undefined;
     const timeout = setTimeout(() => setXpDelta(0), 1200);
     return () => clearTimeout(timeout);
   }, [xpDelta]);
 
+  const activeEntries = useMemo(
+    () => entries.filter((item) => isOpenPunishment(item?.punishment)),
+    [entries]
+  );
+  const historyEntries = useMemo(
+    () => entries.filter((item) => !isOpenPunishment(item?.punishment)).slice(0, 20),
+    [entries]
+  );
   const projectedLoss = useMemo(() => (
-    entries.reduce((sum, item) => sum + getPunishmentProjectedLoss(item.punishment), 0)
-  ), [entries]);
+    activeEntries.reduce((sum, item) => sum + getPunishmentProjectedLoss(item.punishment), 0)
+  ), [activeEntries]);
 
   const resolveEarly = async (entry) => {
     if (!user?.id || !entry?.punishment?.id || savingId) return;
@@ -211,7 +207,7 @@ export default function Punishments() {
             <div className="flex-1">
               <p className="text-red-400 text-xs font-black tracking-widest">PUNISHMENT CONTROL</p>
               <p className="text-white text-base font-bold">
-                {entries.length} active · accumulated punishment {projectedLoss} XP
+                {activeEntries.length} active · accumulated punishment {projectedLoss} XP
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -231,17 +227,17 @@ export default function Punishments() {
           </HoloPanel>
         )}
 
-        {entries.length === 0 ? (
+        {activeEntries.length === 0 ? (
           <HoloPanel>
             <div className="text-center py-8 space-y-2">
               <ShieldAlert className="w-8 h-8 mx-auto text-emerald-400" />
               <p className="text-white font-bold">No active punishments</p>
-              <p className="text-sm text-slate-400">All penalties are resolved or already processed.</p>
+              <p className="text-sm text-slate-400">All active penalties are resolved or already processed.</p>
             </div>
           </HoloPanel>
         ) : (
           <div className="space-y-3">
-            {entries.map((entry) => {
+            {activeEntries.map((entry) => {
               const punishment = entry.punishment;
               const remainingMs = getPunishmentRemainingMs(punishment, nowMs);
               const urgency = remainingMs <= 3600000 ? 'high' : (remainingMs <= 3 * 3600000 ? 'medium' : 'low');
@@ -308,6 +304,42 @@ export default function Punishments() {
               );
             })}
           </div>
+        )}
+
+        {historyEntries.length > 0 && (
+          <HoloPanel>
+            <p className="text-xs text-cyan-300 font-bold tracking-widest mb-3">RECENT PENALTY HISTORY</p>
+            <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+              {historyEntries.map((entry) => {
+                const punishment = entry.punishment || {};
+                const status = String(punishment.status || (punishment.penalty_applied ? 'timed_out' : 'resolved')).toUpperCase();
+                const resolvedAt = punishment.resolved_at || punishment.updated_at || punishment.created_at || null;
+                const resolvedLabel = resolvedAt ? format(new Date(resolvedAt), 'MMM d, HH:mm') : 'N/A';
+                const penalty = Math.max(0, Number(punishment.total_xp_penalty || punishment.accumulated_penalty || 0));
+                return (
+                  <div
+                    key={punishment.id}
+                    className="rounded-lg p-3 border"
+                    style={{ borderColor: 'rgba(56,189,248,0.16)', background: 'rgba(15,23,42,0.45)' }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-white">{entry.habit?.title || 'Habit punishment'}</p>
+                      <span className="text-[10px] font-black tracking-widest px-2 py-0.5 rounded border border-slate-500/50 text-slate-200 bg-slate-700/30">
+                        {status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {punishment.reason || entry.habit?.punishment_text || 'Penalty history entry'}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">Resolved: {resolvedLabel}</p>
+                    <p className="text-xs mt-1" style={{ color: penalty > 0 ? '#FCA5A5' : '#94A3B8' }}>
+                      XP Penalty: -{Math.floor(penalty)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </HoloPanel>
         )}
       </div>
     </SystemBackground>
