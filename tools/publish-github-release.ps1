@@ -10,18 +10,24 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $projectRoot
 
+$ghCmd = Join-Path $projectRoot "tools/gh-local.cmd"
+if (-not (Test-Path $ghCmd)) {
+  throw "Missing gh wrapper at tools/gh-local.cmd. Run tools/install-gh-cli.ps1 first."
+}
+
 $token = $env:GH_TOKEN
 if (-not $token) {
   $token = $env:GITHUB_TOKEN
 }
-if (-not $token) {
-  throw "Set GH_TOKEN or GITHUB_TOKEN in environment before running this script."
-}
-$env:GH_TOKEN = $token
-
-$ghCmd = Join-Path $projectRoot "tools/gh-local.cmd"
-if (-not (Test-Path $ghCmd)) {
-  throw "Missing gh wrapper at tools/gh-local.cmd. Run tools/install-gh-cli.ps1 first."
+if ($token) {
+  $env:GH_TOKEN = $token
+  Write-Host "Using GH token from environment."
+} else {
+  & $ghCmd auth status *> $null
+  if ($LASTEXITCODE -ne 0) {
+    throw "GitHub auth required. Run 'tools\gh-local.cmd auth login' or set GH_TOKEN/GITHUB_TOKEN, then rerun."
+  }
+  Write-Host "Using existing gh auth session."
 }
 
 $assets = @(

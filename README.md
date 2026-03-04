@@ -80,7 +80,7 @@ npm run release:checksums
 npm run gh:install
 ```
 
-- Publish GitHub release (requires `GH_TOKEN` or `GITHUB_TOKEN` in env):
+- Publish GitHub release (works with `GH_TOKEN`/`GITHUB_TOKEN` or existing `gh auth login` session):
 
 ```bash
 npm run release:github
