@@ -54,6 +54,43 @@ android {
     }
 }
 
+tasks.register("syncReleaseApkToDistribution") {
+    doLast {
+        def sourceApk = file("${buildDir}/outputs/apk/release/Nithya.apk")
+        if (!sourceApk.exists()) {
+            throw new GradleException("Release APK not found at ${sourceApk}")
+        }
+
+        def repoRoot = rootProject.projectDir.parentFile
+        def publicDownloadsDir = new File(repoRoot, "public/downloads")
+        def releaseDir = new File(repoRoot, "release-apk-files")
+
+        publicDownloadsDir.mkdirs()
+        releaseDir.mkdirs()
+
+        copy {
+            from sourceApk
+            into publicDownloadsDir
+            rename { "Nithya.apk" }
+        }
+
+        copy {
+            from sourceApk
+            into releaseDir
+            rename { "Nithya.apk" }
+        }
+
+        logger.lifecycle("Synced release APK to ${publicDownloadsDir}/Nithya.apk")
+        logger.lifecycle("Synced release APK to ${releaseDir}/Nithya.apk")
+    }
+}
+
+afterEvaluate {
+    tasks.matching { it.name == "assembleRelease" }.configureEach {
+        finalizedBy("syncReleaseApkToDistribution")
+    }
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
