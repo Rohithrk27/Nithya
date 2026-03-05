@@ -1,6 +1,6 @@
 # Niത്യ
 
-Nിത്യ is a Solo Leveling-inspired self-discipline RPG app built with React + Vite + Supabase.
+Niത്യ is a Solo Leveling-inspired self-discipline RPG app built with React + Vite + Supabase.
 
 ## Core Concept
 
