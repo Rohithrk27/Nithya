@@ -15,3 +15,6 @@ android/keystore.properties
 android/app/*.jks
 tools/gh-cli/
 tools/gh-local.cmd
+.adb-home/
+tmp-cap.js
+/i
