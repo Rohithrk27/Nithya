@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, CheckCircle2, X, Shield, Clock } from 'lucide-react';
+import { clampPunishmentHours, getPunishmentConfiguredHours } from '@/lib/punishments';
 
 const DIFFICULTY_COLORS = {
   low:     { bg: 'rgba(251,191,36,0.12)',  border: 'rgba(251,191,36,0.4)',  text: '#FBBF24', label: 'LOW' },
@@ -15,19 +16,34 @@ const DIFFICULTY_COLORS = {
  *   hardcoreMode: bool
  *   onDone(log, habit, punishment)
  *   onSkip(log, habit, punishment)
+ *   onConfigureTimer(log, habit, punishment, hours)
+ *   onDismiss()
  *   timeLimitHours: number
  */
-export default function PunishmentModal({ pendingPunishments, hardcoreMode, onDone, onSkip, timeLimitHours = 8 }) {
+export default function PunishmentModal({
+  pendingPunishments,
+  hardcoreMode,
+  onDone,
+  onSkip,
+  onConfigureTimer,
+  onDismiss,
+  timeLimitHours = 24,
+}) {
   const [phase, setPhase] = useState('main'); // 'main' | 'confirm' | 'holding'
   const [holdProgress, setHoldProgress] = useState(0);
+  const [timerHours, setTimerHours] = useState(clampPunishmentHours(timeLimitHours, 24));
+  const [configuringTimer, setConfiguringTimer] = useState(false);
   const [now, setNow] = useState(Date.now());
   const holdInterval = useRef(null);
 
   useEffect(() => {
     setPhase('main');
     setHoldProgress(0);
+    const firstPunishment = pendingPunishments?.[0]?.punishment || null;
+    setTimerHours(getPunishmentConfiguredHours(firstPunishment, timeLimitHours));
+    setConfiguringTimer(false);
     clearInterval(holdInterval.current);
-  }, [pendingPunishments?.length]);
+  }, [pendingPunishments?.length, pendingPunishments?.[0]?.punishment?.id, timeLimitHours]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -92,6 +108,18 @@ export default function PunishmentModal({ pendingPunishments, hardcoreMode, onDo
 
   const denyDone = () => {
     setPhase('main');
+  };
+
+  const configureTimer = async () => {
+    if (!onConfigureTimer) return;
+    const safeHours = clampPunishmentHours(timerHours, timeLimitHours);
+    setConfiguringTimer(true);
+    try {
+      await onConfigureTimer(log, habit, punishment, safeHours);
+      setTimerHours(safeHours);
+    } finally {
+      setConfiguringTimer(false);
+    }
   };
 
   return (
@@ -174,6 +202,30 @@ export default function PunishmentModal({ pendingPunishments, hardcoreMode, onDo
                   )}
                 </div>
 
+                <div className="rounded-xl p-3 space-y-2 border border-cyan-500/25 bg-cyan-950/15">
+                  <p className="text-[11px] font-black tracking-widest text-cyan-300">SET RESOLVE TIMER (HOURS)</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={24}
+                      value={timerHours}
+                      onChange={(e) => setTimerHours(clampPunishmentHours(e.target.value, timeLimitHours))}
+                      className="w-20 px-2 py-2 rounded-lg bg-slate-900/70 border border-cyan-500/40 text-cyan-100 text-sm font-semibold"
+                    />
+                    <button
+                      type="button"
+                      onClick={configureTimer}
+                      disabled={configuringTimer}
+                      className="flex-1 py-2.5 rounded-xl text-xs font-black tracking-widest transition-all hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ background: 'rgba(56,189,248,0.14)', border: '1px solid rgba(56,189,248,0.4)', color: '#67E8F9' }}
+                    >
+                      {configuringTimer ? 'SAVING...' : `RUN ${clampPunishmentHours(timerHours, timeLimitHours)}H TIMER`}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Timer can be updated again from Punishment Control.</p>
+                </div>
+
                 {/* Actions */}
                 <div className="flex gap-3">
                   <button onClick={() => onSkip(log, habit, punishment)}
@@ -198,6 +250,16 @@ export default function PunishmentModal({ pendingPunishments, hardcoreMode, onDo
                     {expired ? 'TIME EXPIRED' : (hardcoreMode ? 'HOLD TO CONFIRM' : 'PUNISHMENT DONE')}
                   </button>
                 </div>
+                {typeof onDismiss === 'function' && (
+                  <button
+                    type="button"
+                    onClick={onDismiss}
+                    className="w-full py-2 rounded-xl text-[11px] font-black tracking-widest transition-all hover:opacity-80"
+                    style={{ color: '#94A3B8', border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.4)' }}
+                  >
+                    DECIDE LATER
+                  </button>
+                )}
               </>
             )}
 

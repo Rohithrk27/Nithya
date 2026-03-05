@@ -185,6 +185,20 @@ export async function adminResetUserStreak({ sessionToken = getAdminSessionToken
   return !!data;
 }
 
+export async function adminClearUserShadowDebt({
+  sessionToken = getAdminSessionToken(),
+  userId,
+  reason = '',
+}) {
+  const { data, error } = await supabase.rpc('admin_clear_user_shadow_debt', {
+    p_session_token: sessionToken,
+    p_user_id: userId,
+    p_reason: reason || null,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
 export async function adminSetUserRole({ sessionToken = getAdminSessionToken(), userId, role = 'admin' }) {
   const { data, error } = await supabase.rpc('admin_set_user_role', {
     p_session_token: sessionToken,
@@ -281,6 +295,32 @@ export async function adminRemoveRelic({ sessionToken = getAdminSessionToken(), 
   return !!data;
 }
 
+export async function adminCreateRelicCode({
+  code,
+  relicAmount = 1,
+  maxGlobalUses = null,
+  maxUsesPerUser = 1,
+  expiresAt = null,
+}) {
+  const safeCode = String(code || '').trim();
+  if (!safeCode) throw new Error('Code is required');
+
+  const parsedGlobal = Number(maxGlobalUses);
+  const safeGlobalUses = Number.isFinite(parsedGlobal) && parsedGlobal > 0 ? Math.floor(parsedGlobal) : null;
+  const parsedPerUser = Number(maxUsesPerUser ?? 1);
+  const safePerUserUses = Number.isFinite(parsedPerUser) ? Math.max(0, Math.floor(parsedPerUser)) : 1;
+
+  const { data, error } = await supabase.rpc('create_relic_code', {
+    p_code: safeCode,
+    p_relic_amount: Math.max(1, Number(relicAmount || 1)),
+    p_max_global_uses: safeGlobalUses,
+    p_max_uses_per_user: safePerUserUses,
+    p_expiry: expiresAt || null,
+  });
+  if (error) throw error;
+  return firstRow(data);
+}
+
 export async function adminCreateAnnouncement({
   sessionToken = getAdminSessionToken(),
   title,
@@ -295,6 +335,52 @@ export async function adminCreateAnnouncement({
   });
   if (error) throw error;
   return data;
+}
+
+export async function adminListAnnouncements({
+  sessionToken = getAdminSessionToken(),
+  limit = 200,
+  includeInactive = true,
+} = {}) {
+  const { data, error } = await supabase.rpc('admin_list_announcements', {
+    p_session_token: sessionToken,
+    p_limit: Math.max(1, Math.min(1000, Number(limit || 200))),
+    p_include_inactive: includeInactive !== false,
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function adminUpdateAnnouncement({
+  sessionToken = getAdminSessionToken(),
+  announcementId,
+  title = null,
+  message = null,
+  active = null,
+  expiresAt = null,
+}) {
+  const { data, error } = await supabase.rpc('admin_update_announcement', {
+    p_session_token: sessionToken,
+    p_announcement_id: announcementId,
+    p_title: title,
+    p_message: message,
+    p_active: active,
+    p_expires_at: expiresAt,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
+export async function adminDeleteAnnouncement({
+  sessionToken = getAdminSessionToken(),
+  announcementId,
+}) {
+  const { data, error } = await supabase.rpc('admin_delete_announcement', {
+    p_session_token: sessionToken,
+    p_announcement_id: announcementId,
+  });
+  if (error) throw error;
+  return !!data;
 }
 
 export async function adminListActivityLogs({ sessionToken = getAdminSessionToken(), limit = 200 } = {}) {

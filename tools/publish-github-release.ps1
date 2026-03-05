@@ -30,17 +30,27 @@ if ($token) {
   Write-Host "Using existing gh auth session."
 }
 
-$assets = @(
-  "release-apk-files/app-release-signed-v1.0.apk",
-  "release-apk-files/app-release-signed-v1.0.aab",
+$requiredAssets = @(
+  "release-apk-files/Nithya.apk",
   "release-apk-files/SHA256SUMS.txt",
-  "release-apk-files/upload_certificate.pem",
   "release-apk-files/RELEASE_NOTES-v1.0.md"
 )
+$optionalAssets = @(
+  "release-apk-files/app-release-signed-v1.0.apk",
+  "release-apk-files/app-release-signed-v1.0.aab",
+  "release-apk-files/upload_certificate.pem"
+)
 
-foreach ($asset in $assets) {
+$assets = @()
+foreach ($asset in $requiredAssets) {
   if (-not (Test-Path $asset)) {
     throw "Missing release asset: $asset"
+  }
+  $assets += $asset
+}
+foreach ($asset in $optionalAssets) {
+  if (Test-Path $asset) {
+    $assets += $asset
   }
 }
 if (-not (Test-Path $NotesFile)) {

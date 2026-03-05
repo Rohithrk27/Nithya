@@ -36,6 +36,19 @@ const asWebCallbackUrl = (urlLike) => {
   }
 };
 
+const hasOAuthPayload = (parsedUrl) => {
+  if (!parsedUrl) return false;
+  return parsedUrl.searchParams.has('code')
+    || parsedUrl.hash.includes('access_token=')
+    || parsedUrl.searchParams.has('error')
+    || parsedUrl.searchParams.has('error_description');
+};
+
+const isLoopbackHost = (hostname) => {
+  const host = String(hostname || '').trim().toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+};
+
 const tryHandoffWebCallbackToNative = (urlLike) => {
   if (typeof window === 'undefined') return false;
   if (isNativeAndroid()) return false;
@@ -47,11 +60,7 @@ const tryHandoffWebCallbackToNative = (urlLike) => {
   if (!callbackUrl) return false;
   if (callbackUrl.pathname !== AUTH_CALLBACK_PATH) return false;
 
-  const hasOAuthPayload = callbackUrl.searchParams.has('code')
-    || callbackUrl.hash.includes('access_token=')
-    || callbackUrl.searchParams.has('error')
-    || callbackUrl.searchParams.has('error_description');
-  if (!hasOAuthPayload) return false;
+  if (!hasOAuthPayload(callbackUrl)) return false;
 
   // Web login callbacks always include next=... in this app.
   // If next is missing on Android browser, this likely came from app OAuth fallback.
@@ -75,7 +84,28 @@ const tryHandoffWebCallbackToNative = (urlLike) => {
 const finishOAuthCallback = async (urlLike) => {
   const callbackUrl = asWebCallbackUrl(urlLike);
   if (!callbackUrl) return false;
-  if (!isAuthCallbackUrl(callbackUrl.toString())) return false;
+  const recognizedCallback = isAuthCallbackUrl(callbackUrl.toString());
+  const payloadPresent = hasOAuthPayload(callbackUrl);
+  if (!recognizedCallback && !payloadPresent) return false;
+
+  // Fallback bridge:
+  // If auth provider forced callback to web prod, but this callback contains a
+  // loopback bridge origin from login initiation, hop the payload back to localhost.
+  const bridgeOriginRaw = callbackUrl.searchParams.get('bridge_origin');
+  if (bridgeOriginRaw && typeof window !== 'undefined') {
+    try {
+      const bridgeOrigin = new URL(bridgeOriginRaw);
+      const sameOrigin = bridgeOrigin.origin === window.location.origin;
+      if (!sameOrigin && isLoopbackHost(bridgeOrigin.hostname)) {
+        const bridged = new URL(`${bridgeOrigin.origin}${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
+        window.location.replace(bridged.toString());
+        return true;
+      }
+    } catch (_) {
+      // Ignore malformed bridge origin and continue normal callback handling.
+    }
+  }
+
   try {
     window.sessionStorage?.removeItem(OAUTH_NATIVE_HANDOFF_KEY);
   } catch (_) {

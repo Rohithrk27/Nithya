@@ -18,6 +18,10 @@ export default function Analytics() {
   const [xpLogs, setXpLogs] = useState([]);
   const [profile, setProfile] = useState(null);
   const rowDate = (row) => (row?.date || row?.logged_at || row?.completed_at || row?.created_at || '').toString().slice(0, 10);
+  const isMissedLikeStatus = (statusValue) => {
+    const status = String(statusValue || '').trim().toLowerCase();
+    return status === 'missed' || status === 'failed';
+  };
 
   useEffect(() => {
     if (!authReady || !user?.id) return;
@@ -48,24 +52,54 @@ export default function Analytics() {
   };
 
   const last14 = eachDayOfInterval({ start: subDays(new Date(), 13), end: new Date() });
+  const last14DateKeys = last14.map((day) => format(day, 'yyyy-MM-dd'));
+  const last14DateSet = new Set(last14DateKeys);
   const dailyData = last14.map(day => {
     const dateStr = format(day, 'yyyy-MM-dd');
-    const dayLogs = logs.filter(l => rowDate(l) === dateStr);
-    const completed = dayLogs.filter(l => l.status === 'completed').length;
-    const total = habits.length;
+    const dayLogs = logs.filter((l) => rowDate(l) === dateStr);
+    const activeHabits = habits.filter((h) => {
+      const createdDate = rowDate(h);
+      return !createdDate || createdDate <= dateStr;
+    }).length;
+    const completedHabitIds = new Set(
+      dayLogs
+        .filter((l) => l.status === 'completed')
+        .map((l) => l.habit_id)
+        .filter(Boolean)
+    );
+    const completed = completedHabitIds.size;
+    const loggedMissed = dayLogs.filter((l) => isMissedLikeStatus(l.status)).length;
+    const inferredMissed = Math.max(activeHabits - completed, 0);
+    const missed = Math.max(loggedMissed, inferredMissed);
     return {
       date: format(day, 'MMd'),
       label: format(day, 'MMM d'),
       completed,
-      total,
-      rate: total > 0 ? Math.round((completed / total) * 100) : 0,
+      missed,
+      total: activeHabits,
+      rate: activeHabits > 0 ? Math.round((completed / activeHabits) * 100) : 0,
     };
   });
 
   const habitStats = habits.map(h => {
-    const habitLogs = logs.filter(l => l.habit_id === h.id);
-    const completed = habitLogs.filter(l => l.status === 'completed').length;
-    const missed = habitLogs.filter(l => l.status === 'missed').length;
+    const createdDate = rowDate(h);
+    const activeDays = last14DateKeys.filter((dayKey) => !createdDate || createdDate <= dayKey).length;
+    const habitLogs = logs.filter((l) => l.habit_id === h.id && last14DateSet.has(rowDate(l)));
+    const completedDays = new Set(
+      habitLogs
+        .filter((l) => l.status === 'completed')
+        .map((l) => rowDate(l))
+        .filter(Boolean)
+    );
+    const loggedMissedDays = new Set(
+      habitLogs
+        .filter((l) => isMissedLikeStatus(l.status))
+        .map((l) => rowDate(l))
+        .filter(Boolean)
+    );
+    const completed = completedDays.size;
+    const inferredMissed = Math.max(activeDays - completed, 0);
+    const missed = Math.max(loggedMissedDays.size, inferredMissed);
     const streak = streaks.find(s => s.habit_id === h.id);
     return {
       ...h,
@@ -78,8 +112,8 @@ export default function Analytics() {
     };
   }).sort((a, b) => b.rate - a.rate);
 
-  const totalCompleted = logs.filter(l => l.status === 'completed').length;
-  const totalMissed = logs.filter(l => l.status === 'missed').length;
+  const totalCompleted = dailyData.reduce((sum, row) => sum + Number(row.completed || 0), 0);
+  const totalMissed = dailyData.reduce((sum, row) => sum + Number(row.missed || 0), 0);
   const overallRate = (totalCompleted + totalMissed) > 0
     ? Math.round((totalCompleted / (totalCompleted + totalMissed)) * 100) : 0;
 

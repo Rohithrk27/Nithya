@@ -107,8 +107,9 @@ export default function RedeemCodes() {
               <ArrowLeft className="w-4 h-4 text-white" />
             </button>
             <div className="flex-1">
-              <p className="text-cyan-300 text-xs tracking-widest font-black">REDEEM DISCIPLINE CODE</p>
+              <p className="text-cyan-300 text-xs tracking-widest font-black">REDEEM RELIC CODE</p>
               <p className="text-white text-base font-bold">Relic Balance: {balance}/{RELIC_MAX_BALANCE}</p>
+              <p className="text-[11px] text-slate-400 mt-1">Codes accept only letters and numbers (no spaces).</p>
             </div>
           </div>
         </HoloPanel>
@@ -135,20 +136,23 @@ export default function RedeemCodes() {
 
         <HoloPanel>
           <form onSubmit={onSubmit} className="space-y-3">
-            <label className="block text-xs text-slate-300 tracking-widest font-black">ENTER CODE</label>
+            <label className="block text-xs text-slate-300 tracking-widest font-black">ENTER YOUR CODE</label>
             <div className="flex gap-2">
               <input
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                placeholder="ALPHANUMERIC CODE"
+                placeholder="Example: WEEKEND10"
                 maxLength={64}
                 className="flex-1 rounded-md px-3 py-2 bg-slate-900 border border-slate-700 text-white text-sm tracking-wider"
               />
               <Button type="submit" disabled={busy}>
                 <Ticket className="w-4 h-4 mr-2" />
-                {busy ? 'Checking...' : 'Redeem'}
+                {busy ? 'Checking...' : 'Redeem Code'}
               </Button>
             </div>
+            <p className="text-[11px] text-slate-500">
+              You can hold up to {RELIC_MAX_BALANCE} active relics at once.
+            </p>
           </form>
         </HoloPanel>
 

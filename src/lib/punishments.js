@@ -1,7 +1,74 @@
 import { supabase } from '@/lib/supabase';
 import { punishmentRefusalPenalty } from '@/components/gameEngine';
 
+const DEFAULT_PUNISHMENT_HOURS = 24;
+const MIN_PUNISHMENT_HOURS = 1;
+const MAX_PUNISHMENT_HOURS = 24;
+
 const firstRow = (data) => (Array.isArray(data) ? (data[0] || null) : (data || null));
+const isMissedLikeLog = (row) => {
+  const status = String(row?.status || '').trim().toLowerCase();
+  return status === 'missed' || status === 'failed';
+};
+const rowDateKey = (row) => (
+  row?.date
+  || row?.logged_at
+  || row?.completed_at
+  || row?.created_at
+  || ''
+).toString().slice(0, 10);
+const toLocalDateKey = (value = new Date()) => {
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+const parseDateKey = (value) => {
+  const raw = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const parsed = new Date(`${raw}T00:00:00`);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  parsed.setHours(0, 0, 0, 0);
+  return parsed;
+};
+const listDateKeysInclusive = (startKey, endKey) => {
+  const start = parseDateKey(startKey);
+  const end = parseDateKey(endKey);
+  if (!start || !end || start > end) return [];
+  const keys = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    keys.push(toLocalDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return keys;
+};
+const getYesterdayLocalDateKey = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - 1);
+  return toLocalDateKey(d);
+};
+
+export function clampPunishmentHours(value, fallback = DEFAULT_PUNISHMENT_HOURS) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return clampPunishmentHours(fallback, DEFAULT_PUNISHMENT_HOURS);
+  return Math.max(MIN_PUNISHMENT_HOURS, Math.min(MAX_PUNISHMENT_HOURS, Math.round(parsed)));
+}
+
+export function getPunishmentConfiguredHours(punishment, fallback = DEFAULT_PUNISHMENT_HOURS) {
+  const safeFallback = clampPunishmentHours(fallback, DEFAULT_PUNISHMENT_HOURS);
+  if (!punishment) return safeFallback;
+
+  const startMs = new Date(punishment.started_at || punishment.created_at || 0).getTime();
+  const endMs = new Date(punishment.expires_at || 0).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return safeFallback;
+
+  const hours = Math.ceil((endMs - startMs) / (60 * 60 * 1000));
+  return clampPunishmentHours(hours, safeFallback);
+}
 
 export function isOpenPunishment(row) {
   if (!row) return false;
@@ -31,7 +98,7 @@ export async function ensurePendingPunishmentsForMissedHabits({
   habits,
   logs,
   punishments,
-  timeLimitHours = 8,
+  timeLimitHours = DEFAULT_PUNISHMENT_HOURS,
 }) {
   if (!userId) return [];
 
@@ -46,13 +113,78 @@ export async function ensurePendingPunishmentsForMissedHabits({
   }
 
   const habitsData = Array.isArray(habits) ? habits : [];
-  const logsData = Array.isArray(logs) ? logs : [];
+  let logsData = Array.isArray(logs) ? [...logs] : [];
+
+  // Bridge inferred misses (analytics) into concrete logs so punishments can be generated.
+  const yesterdayKey = getYesterdayLocalDateKey();
+  if (yesterdayKey && habitsData.length > 0) {
+    const existingLogKeys = new Set(
+      logsData
+        .map((row) => {
+          const dayKey = rowDateKey(row);
+          return row?.habit_id && dayKey ? `${row.habit_id}:${dayKey}` : '';
+        })
+        .filter(Boolean)
+    );
+    const historicalMissingLogs = [];
+
+    habitsData
+      .filter((habit) => Boolean(habit?.id) && Boolean(habit?.punishment_text))
+      .forEach((habit) => {
+        const createdKey = rowDateKey(habit) || yesterdayKey;
+        const dayKeys = listDateKeysInclusive(createdKey, yesterdayKey);
+        dayKeys.forEach((dayKey) => {
+          const pairKey = `${habit.id}:${dayKey}`;
+          if (existingLogKeys.has(pairKey)) return;
+          existingLogKeys.add(pairKey);
+          historicalMissingLogs.push({
+            user_id: userId,
+            habit_id: habit.id,
+            status: 'failed',
+            date: dayKey,
+            failed: true,
+          });
+        });
+      });
+
+    if (historicalMissingLogs.length > 0) {
+      const batchSize = 500;
+      let supportsFailedColumn = true;
+      const insertedLogs = [];
+
+      for (let start = 0; start < historicalMissingLogs.length; start += batchSize) {
+        const slice = historicalMissingLogs.slice(start, start + batchSize);
+        let payload = slice;
+        if (!supportsFailedColumn) {
+          payload = slice.map(({ failed, ...row }) => row);
+        }
+
+        let insertRes = await supabase.from('habit_logs').insert(payload).select('*');
+        if (insertRes.error && supportsFailedColumn) {
+          const maybeMissingFailedColumn = String(insertRes.error?.message || '').toLowerCase().includes('failed');
+          if (maybeMissingFailedColumn) {
+            supportsFailedColumn = false;
+            payload = slice.map(({ failed, ...row }) => row);
+            insertRes = await supabase.from('habit_logs').insert(payload).select('*');
+          }
+        }
+
+        if (insertRes.error) throw insertRes.error;
+        insertedLogs.push(...(insertRes.data || []));
+      }
+
+      if (insertedLogs.length > 0) {
+        logsData = [...logsData, ...insertedLogs];
+      }
+    }
+  }
+
   const habitMap = new Map(habitsData.map((h) => [h.id, h]));
   const punishmentLogIds = new Set(allPunishments.map((p) => p.habit_log_id).filter(Boolean));
-  const ttlMs = Math.max(1, Number(timeLimitHours) || 8) * 60 * 60 * 1000;
+  const ttlMs = clampPunishmentHours(timeLimitHours, DEFAULT_PUNISHMENT_HOURS) * 60 * 60 * 1000;
 
   const missingPunishments = logsData
-    .filter((l) => l.status === 'missed')
+    .filter((l) => isMissedLikeLog(l))
     .filter((l) => !punishmentLogIds.has(l.id))
     .map((l) => {
       const habit = habitMap.get(l.habit_id);
@@ -120,6 +252,40 @@ export async function resolvePunishmentTimeouts({ userId, source = 'punishment_t
   });
   if (error) throw error;
   return firstRow(data);
+}
+
+export async function configurePunishmentTimer({
+  userId,
+  punishmentId,
+  hours,
+  source = 'punishment_timer_configured',
+}) {
+  if (!userId || !punishmentId) throw new Error('Missing punishment identifiers');
+  const safeHours = clampPunishmentHours(hours, DEFAULT_PUNISHMENT_HOURS);
+  const startedAt = new Date();
+  const expiresAt = new Date(startedAt.getTime() + (safeHours * 60 * 60 * 1000));
+
+  const { data, error } = await supabase
+    .from('punishments')
+    .update({
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      warning_notified: false,
+      urgency_notified: false,
+      action_taken: source || 'punishment_timer_configured',
+      status: 'pending',
+      resolved: false,
+      penalty_applied: false,
+      resolved_at: null,
+    })
+    .eq('user_id', userId)
+    .eq('id', punishmentId)
+    .eq('resolved', false)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data || null;
 }
 
 export async function markPunishmentWarningNotified({ userId, punishmentId }) {

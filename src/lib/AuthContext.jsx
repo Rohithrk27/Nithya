@@ -25,14 +25,11 @@ const isLikelyNativeAndroidRuntime = () => {
     const capNative = typeof cap?.isNativePlatform === 'function' ? !!cap.isNativePlatform() : false;
     const capPlatform = typeof cap?.getPlatform === 'function' ? String(cap.getPlatform() || '').toLowerCase() : '';
     if (capNative && (capPlatform === 'android' || capPlatform === '')) return true;
+    if (window.location.protocol === 'capacitor:') return true;
   } catch (_) {
     // Ignore runtime probe failures.
   }
-
-  const ua = String(navigator?.userAgent || '').toLowerCase();
-  const looksAndroid = ua.includes('android');
-  const looksNativeHost = window.location.hostname === 'localhost' || window.location.protocol === 'capacitor:';
-  return looksAndroid && looksNativeHost;
+  return false;
 };
 
 const forceNativeOAuthRedirect = (urlLike) => {
@@ -44,6 +41,25 @@ const forceNativeOAuthRedirect = (urlLike) => {
   } catch (_) {
     return String(urlLike);
   }
+};
+
+const forceOAuthRedirectTarget = (urlLike, redirectTo) => {
+  if (!urlLike) return '';
+  try {
+    const parsed = new URL(urlLike);
+    if (redirectTo) {
+      parsed.searchParams.set('redirect_to', redirectTo);
+    }
+    return parsed.toString();
+  } catch (_) {
+    return String(urlLike);
+  }
+};
+
+const isLocalWebHost = () => {
+  if (typeof window === 'undefined') return false;
+  const host = String(window.location.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
 };
 
 const normalizeProfileStatus = (row, userId) => {
@@ -335,7 +351,34 @@ export const AuthProvider = ({ children }) => {
       return { error: missingUrlError };
     }
 
-    const authUrl = nativeRuntime ? forceNativeOAuthRedirect(data.url) : data.url;
+    const authUrl = nativeRuntime
+      ? forceNativeOAuthRedirect(data.url)
+      : forceOAuthRedirectTarget(data.url, redirectTo);
+
+    // Hard guard: when developing on localhost web, never continue if Supabase
+    // still points OAuth callback to production.
+    if (!nativeRuntime && isLocalWebHost()) {
+      try {
+        const parsedAuth = new URL(authUrl);
+        const redirectToValue = parsedAuth.searchParams.get('redirect_to');
+        const expectedCallback = new URL(redirectTo);
+        const returnedCallback = redirectToValue ? new URL(redirectToValue) : null;
+        const callbackMismatch = !returnedCallback
+          || returnedCallback.origin !== expectedCallback.origin
+          || returnedCallback.pathname !== expectedCallback.pathname;
+        if (callbackMismatch) {
+          const cfgError = new Error(
+            `Supabase redirect misconfigured for localhost. Add ${expectedCallback.toString()} to Auth Redirect URLs.`,
+          );
+          setAuthError(cfgError.message);
+          return { error: cfgError };
+        }
+      } catch (_) {
+        const cfgError = new Error('Could not validate OAuth redirect target for localhost.');
+        setAuthError(cfgError.message);
+        return { error: cfgError };
+      }
+    }
 
     // Guardrail: if Android is expected but Supabase generated a web callback,
     // fail fast with a clear action instead of silently opening web auth flow.

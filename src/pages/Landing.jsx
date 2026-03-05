@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
+import { isNativeAndroid } from '@/lib/authRedirect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,14 +28,19 @@ const generateUserCode = () => {
 /** @param {IntroHeroProps} props */
 function IntroHero({ onBeginJourney, onSignIn }) {
   const [showApkTip, setShowApkTip] = useState(false);
+  const showDownloadLinks = useMemo(() => !isNativeAndroid(), []);
 
   useEffect(() => {
+    if (!showDownloadLinks) {
+      setShowApkTip(false);
+      return;
+    }
     try {
       setShowApkTip(window.localStorage.getItem('nithya_apk_tip_dismissed') !== '1');
     } catch (_) {
       setShowApkTip(true);
     }
-  }, []);
+  }, [showDownloadLinks]);
 
   const dismissApkTip = () => {
     setShowApkTip(false);
@@ -51,7 +57,7 @@ function IntroHero({ onBeginJourney, onSignIn }) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.75, ease: 'easeOut' }}
       />
-      {showApkTip && (
+      {showDownloadLinks && showApkTip && (
         <aside className="intro-side-tip" aria-label="Android app download">
           <button type="button" className="intro-side-tip-close" onClick={dismissApkTip} aria-label="Dismiss download tip">
             ×
@@ -191,8 +197,12 @@ function IntroHero({ onBeginJourney, onSignIn }) {
 
         <footer className="intro-footer" aria-label="Privacy and support">
           <a href="/privacy-policy" className="intro-footer-link" target="_blank" rel="noreferrer">Privacy Policy</a>
-          <span className="intro-footer-divider" aria-hidden="true">|</span>
-          <a href="/download-apk" className="intro-footer-link" target="_blank" rel="noreferrer">Download APK</a>
+          {showDownloadLinks && (
+            <>
+              <span className="intro-footer-divider" aria-hidden="true">|</span>
+              <a href="/download-apk" className="intro-footer-link" target="_blank" rel="noreferrer">Download APK</a>
+            </>
+          )}
           <span className="intro-footer-divider" aria-hidden="true">|</span>
           <span id="intro-privacy-policy">We only use your data to run core habit, progress, and reminder features.</span>
           <span className="intro-footer-divider" aria-hidden="true">|</span>

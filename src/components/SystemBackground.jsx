@@ -17,8 +17,12 @@ export default function SystemBackground({ children }) {
   const visibleParticles = isMobileViewport ? PARTICLES.slice(0, 20) : PARTICLES;
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden"
-      style={{ background: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)' }}>
+    <div className="relative min-h-[100dvh] overflow-x-hidden">
+      {/* Fixed base gradient keeps the same visual style while scrolling long pages. */}
+      <div style={{
+        position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
+        background: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)',
+      }} />
 
       {/* Grid overlay */}
       <div style={{
@@ -62,7 +66,7 @@ export default function SystemBackground({ children }) {
       </div>
 
       {/* Content */}
-      <div style={{ position: 'relative', zIndex: 1 }}>
+      <div style={{ position: 'relative', zIndex: 1, minHeight: '100dvh' }}>
         {children}
       </div>
     </div>

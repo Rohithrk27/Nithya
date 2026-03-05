@@ -28,6 +28,8 @@ import {
   resolveExpiredQuests,
 } from '@/lib/gameState';
 import {
+  clampPunishmentHours,
+  configurePunishmentTimer,
   ensurePendingPunishmentsForMissedHabits,
   getPunishmentProjectedLoss,
   getPunishmentRemainingMs,
@@ -65,7 +67,7 @@ const DAILY_PRINCIPLES = [
   'You do not rise to goals. You fall to systems.',
 ];
 
-const PUNISHMENT_TIME_LIMIT_HOURS = 8;
+const PUNISHMENT_TIME_LIMIT_HOURS = 24;
 const STRIKE_MISSED_THRESHOLD = 2;
 const MAX_STRIKES_BEFORE_SANCTION = 3;
 const SANCTION_XP_PENALTY = 180;
@@ -79,6 +81,10 @@ const REMINDER_COUNTDOWN_STEPS = [
   { minutesLeft: 30, tag: 'countdown_30' },
   { minutesLeft: 60, tag: 'countdown_60' },
 ];
+const isMissedLikeHabitLog = (row) => {
+  const status = String(row?.status || '').trim().toLowerCase();
+  return status === 'missed' || status === 'failed';
+};
 
 const buildPendingPunishments = (punishments, habitsData, logsData) => {
   const habitMap = new Map((habitsData || []).map((h) => [h.id, h]));
@@ -377,6 +383,7 @@ export default function Dashboard() {
   const [activeDungeon, setActiveDungeon] = useState(null);
   const [dailyChallenge, setDailyChallenge] = useState(null);
   const [pendingPunishments, setPendingPunishments] = useState([]);
+  const [dismissedPunishmentId, setDismissedPunishmentId] = useState('');
   const [relicBalance, setRelicBalance] = useState(0);
   const [rankEvaluation, setRankEvaluation] = useState(null);
   const [interruptStatus, setInterruptStatus] = useState(null);
@@ -573,7 +580,7 @@ export default function Dashboard() {
       const todayLogs = logsData.filter((l) => rowDate(l) === today);
       setLogs(todayLogs);
 
-      const missedTodayCount = todayLogs.filter((l) => l.status === 'missed').length;
+      const missedTodayCount = todayLogs.filter((l) => isMissedLikeHabitLog(l)).length;
       if (
         baseSystemState?.id &&
         baseSystemState?.hardcore_mode &&
@@ -1152,14 +1159,26 @@ export default function Dashboard() {
       for (const item of pendingPunishments) {
         const punishment = item?.punishment;
         if (!punishment?.id) continue;
+        const remainingMs = getPunishmentRemainingMs(punishment, nowMs);
 
         if (!punishment.warning_notified && !punishmentStartNoticeRef.current.has(punishment.id)) {
           punishmentStartNoticeRef.current.add(punishment.id);
+          const initialHours = Math.max(1, Math.ceil(remainingMs / 3600000));
           notify(
             'penalty',
             'Punishment started',
             `${item?.habit?.title || 'Habit'} · projected loss ${getPunishmentProjectedLoss(punishment)} XP`
           );
+          void showReminderNotification({
+            title: 'Nithya Punishment Timer Started',
+            body: `${item?.habit?.title || 'Habit'} has ${initialHours}h to resolve before penalty.`,
+            tag: `punishment-start-${punishment.id}`,
+            data: {
+              punishmentId: punishment.id,
+              phase: 'start',
+              url: '/punishments',
+            },
+          });
           window.dispatchEvent(new CustomEvent('nithya:punishment-notification', {
             detail: {
               phase: 'start',
@@ -1170,7 +1189,6 @@ export default function Dashboard() {
           void markPunishmentWarningNotified({ userId: user.id, punishmentId: punishment.id });
         }
 
-        const remainingMs = getPunishmentRemainingMs(punishment, nowMs);
         if (remainingMs > 0
           && remainingMs <= (60 * 60 * 1000)
           && !punishment.urgency_notified
@@ -1181,6 +1199,17 @@ export default function Dashboard() {
             'Punishment urgency',
             `${item?.habit?.title || 'Habit'} expires in ${Math.ceil(remainingMs / 60000)}m`
           );
+          void showReminderNotification({
+            title: 'Nithya Punishment Alert',
+            body: `${item?.habit?.title || 'Habit'} expires in ${Math.ceil(remainingMs / 60000)}m. Resolve now to reduce loss.`,
+            tag: `punishment-urgency-${punishment.id}`,
+            data: {
+              punishmentId: punishment.id,
+              phase: 'urgency',
+              remainingMs,
+              url: '/punishments',
+            },
+          });
           window.dispatchEvent(new CustomEvent('nithya:punishment-notification', {
             detail: {
               phase: 'urgency',
@@ -1211,7 +1240,13 @@ export default function Dashboard() {
       })();
     }, 60000);
     return () => clearInterval(intervalId);
-  }, [notify, pendingPunishments, user?.id]);
+  }, [notify, pendingPunishments, user?.id, showReminderNotification]);
+
+  useEffect(() => {
+    if (!dismissedPunishmentId) return;
+    const stillOpen = pendingPunishments.some((item) => item?.punishment?.id === dismissedPunishmentId);
+    if (!stillOpen) setDismissedPunishmentId('');
+  }, [dismissedPunishmentId, pendingPunishments]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -1427,6 +1462,31 @@ export default function Dashboard() {
       );
     } catch (err) {
       notify('penalty', 'Punishment update failed', err?.message || 'Please retry.');
+    }
+  };
+
+  const handlePunishmentConfigureTimer = async (_log, habit, punishment, hours) => {
+    if (!user || !punishment?.id) return;
+    const safeHours = clampPunishmentHours(hours, PUNISHMENT_TIME_LIMIT_HOURS);
+    try {
+      const updated = await configurePunishmentTimer({
+        userId: user.id,
+        punishmentId: punishment.id,
+        hours: safeHours,
+        source: 'punishment_timer_configured_dashboard',
+      });
+      setPendingPunishments((prev) => prev.map((entry) => (
+        entry?.punishment?.id === punishment.id
+          ? { ...entry, punishment: { ...entry.punishment, ...(updated || {}) } }
+          : entry
+      )));
+      notify(
+        'quest',
+        'Punishment timer set',
+        `${habit?.title || 'Habit'} timer set to ${safeHours}h. You will be reminded before timeout.`
+      );
+    } catch (err) {
+      notify('penalty', 'Unable to set punishment timer', err?.message || 'Please retry.');
     }
   };
 
@@ -1697,6 +1757,10 @@ export default function Dashboard() {
     if (Number.isNaN(expiry.getTime())) return true;
     return expiry.getTime() > nowMs;
   });
+  const modalPunishments = useMemo(
+    () => pendingPunishments.filter((entry) => entry?.punishment?.id !== dismissedPunishmentId),
+    [dismissedPunishmentId, pendingPunishments]
+  );
   const completedHistoryByHabitId = useMemo(() => {
     const map = new Map();
     (historyLogs || []).forEach((row) => {
@@ -1828,13 +1892,17 @@ export default function Dashboard() {
       )}
       <PunishmentBanner count={pendingPunishments.length} onResolve={() => navigate(createPageUrl('Punishments'))} />
       <Suspense fallback={null}>
-        <PunishmentModal
-          pendingPunishments={pendingPunishments}
-          hardcoreMode={!!systemState?.hardcore_mode}
-          onDone={handlePunishmentDone}
-          onSkip={handlePunishmentSkip}
-          timeLimitHours={PUNISHMENT_TIME_LIMIT_HOURS}
-        />
+        {modalPunishments.length > 0 && (
+          <PunishmentModal
+            pendingPunishments={modalPunishments}
+            hardcoreMode={!!systemState?.hardcore_mode}
+            onDone={handlePunishmentDone}
+            onSkip={handlePunishmentSkip}
+            onConfigureTimer={handlePunishmentConfigureTimer}
+            onDismiss={() => setDismissedPunishmentId(modalPunishments[0]?.punishment?.id || '')}
+            timeLimitHours={PUNISHMENT_TIME_LIMIT_HOURS}
+          />
+        )}
       </Suspense>
       {profile && (
         <Suspense fallback={null}>
@@ -2191,7 +2259,9 @@ export default function Dashboard() {
 
         <div className="flex items-center justify-between gap-2">
           <p className="text-yellow-300 text-xs tracking-widest font-bold">ACTIVE QUESTS</p>
-          <button onClick={() => navigate(createPageUrl('Quests'))} className="text-cyan-400 text-xs font-bold whitespace-nowrap">VIEW ALL</button>
+          <Button size="sm" variant="outline" onClick={() => navigate(createPageUrl('Quests'))}>
+            View All
+          </Button>
         </div>
         <div className="space-y-3">
           <Suspense fallback={<DashboardSectionFallback />}>

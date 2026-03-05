@@ -25,6 +25,11 @@ const RELIC_ACTIONS = [
   { id: 'xp_insurance', label: 'XP Insurance', description: 'Protect 50% of stake in an active group bet.' },
 ];
 
+const prettyKey = (value) => String(value || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, (ch) => ch.toUpperCase())
+  .trim();
+
 const sourceLabel = (source) => ({
   perfect_weekly_streak: 'Perfect Weekly Streak',
   group_bet_win: 'Group Bet Win',
@@ -32,7 +37,7 @@ const sourceLabel = (source) => ({
   shadow_debt_cleared: 'Shadow Debt Cleared',
   weekly_target_120: '120% Weekly Target',
   redeem_code: 'Redeem Code',
-}[source] || source || 'Unknown');
+}[source] || prettyKey(source) || 'Unknown');
 
 const RARITY_STYLE = {
   common: { color: '#94A3B8', bg: 'rgba(100,116,139,0.2)' },
@@ -223,7 +228,7 @@ export default function Relics() {
                   className="rounded-lg p-2 border"
                   style={{ borderColor: 'rgba(250,204,21,0.35)', background: 'rgba(146,64,14,0.2)' }}
                 >
-                  <p className="text-white font-semibold text-sm">{String(effect.effect_type || '').replace(/_/g, ' ').toUpperCase()}</p>
+                  <p className="text-white font-semibold text-sm">{prettyKey(effect.effect_type)}</p>
                   <p className="text-xs text-slate-300">
                     Expires: {effect.expires_at ? new Date(effect.expires_at).toLocaleString() : 'No expiry'}
                   </p>
@@ -262,7 +267,7 @@ export default function Relics() {
                             className="text-[10px] font-black tracking-widest px-1.5 py-0.5 rounded border uppercase"
                             style={{ color: rarityStyle.color, borderColor: `${rarityStyle.color}66`, background: rarityStyle.bg }}
                           >
-                            {rarity}
+                            {prettyKey(rarity)}
                           </span>
                         </p>
                         <p className="text-xs text-slate-400">Earned: {new Date(relic.earned_at).toLocaleString()}</p>
@@ -303,11 +308,11 @@ export default function Relics() {
                         background: (RARITY_STYLE[getRelicRarity(relic)] || RARITY_STYLE.rare).bg,
                       }}
                     >
-                      {getRelicRarity(relic)}
+                      {prettyKey(getRelicRarity(relic))}
                     </span>
                   </p>
                   <p className="text-xs text-slate-400">
-                    {relic.used ? `Used for ${String(relic.used_for || 'unknown').replace(/_/g, ' ')} at ${new Date(relic.used_at || relic.earned_at).toLocaleString()}` : 'Expired'}
+                    {relic.used ? `Used for ${prettyKey(relic.used_for || 'unknown')} at ${new Date(relic.used_at || relic.earned_at).toLocaleString()}` : 'Expired'}
                   </p>
                 </div>
               ))}
@@ -320,13 +325,14 @@ export default function Relics() {
             <div className="w-full max-w-lg rounded-2xl p-5 space-y-4 border border-cyan-500/40 bg-[#081321]">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-white font-black tracking-widest text-sm">REDEEM RELIC</p>
-                <button
+                <Button
                   type="button"
-                  className="text-slate-300 text-sm"
+                  size="sm"
+                  variant="outline"
                   onClick={() => setRedeemModal({ open: false, relic: null, action: 'cheat_day', referenceId: '' })}
                 >
                   Close
-                </button>
+                </Button>
               </div>
 
               <div className="space-y-2">

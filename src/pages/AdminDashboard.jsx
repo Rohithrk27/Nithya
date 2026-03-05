@@ -31,15 +31,19 @@ import ConfirmActionModal from '@/components/ConfirmActionModal';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useAuth } from '@/lib/AuthContext';
 import {
+  adminClearUserShadowDebt,
   adminCreateAnnouncement,
   adminCreateChallenge,
+  adminCreateRelicCode,
   adminCreateRelicType,
+  adminDeleteAnnouncement,
   adminDeleteUser,
   adminGetDashboardAnalytics,
   adminGetSystemControls,
   adminGrantRelic,
   adminIssueSessionFromProfile,
   adminListActivityLogs,
+  adminListAnnouncements,
   adminListCommunitySubmissions,
   adminListUsers,
   adminListPaymentVerifications,
@@ -50,6 +54,7 @@ import {
   adminReplyCommunitySubmission,
   adminSetSystemControl,
   adminSetUserRole,
+  adminUpdateAnnouncement,
   adminUpdatePaymentVerification,
   adminTriggerDailyQuestReset,
   adminSetUserSuspension,
@@ -82,6 +87,17 @@ const formatDateTime = (value) => {
   if (Number.isNaN(d.getTime())) return '-';
   return d.toLocaleString();
 };
+const toDateTimeLocalInput = (value) => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+};
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -98,10 +114,12 @@ export default function AdminDashboard() {
   const [logs, setLogs] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [paymentRequests, setPaymentRequests] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
   const [analytics, setAnalytics] = useState({});
   const [systemControls, setSystemControls] = useState([]);
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('pending');
+  const [includeInactiveAnnouncements, setIncludeInactiveAnnouncements] = useState(true);
   const [relicTypes, setRelicTypes] = useState([]);
   const [userSearch, setUserSearch] = useState('');
   const [showSuspendedOnly, setShowSuspendedOnly] = useState(false);
@@ -124,12 +142,20 @@ export default function AdminDashboard() {
     message: '',
     expiresAt: '',
   });
+  const [announcementDrafts, setAnnouncementDrafts] = useState({});
   const [relicTypeForm, setRelicTypeForm] = useState({
     code: '',
     name: '',
     description: '',
     rarity: 'common',
     effectType: '',
+  });
+  const [relicCodeForm, setRelicCodeForm] = useState({
+    code: '',
+    relicAmount: 1,
+    maxGlobalUses: '',
+    maxUsesPerUser: 1,
+    expiresAt: '',
   });
   const [grantRelicForm, setGrantRelicForm] = useState({
     userId: '',
@@ -194,7 +220,7 @@ export default function AdminDashboard() {
     setLoading(true);
     setError('');
     try {
-      const [u, l, s, r, pv, an, sc] = await Promise.allSettled([
+      const [u, l, s, r, pv, an, sc, aa] = await Promise.allSettled([
         adminListUsers({ sessionToken: token, limit: 300 }),
         adminListActivityLogs({ sessionToken: token, limit: 250 }),
         adminListCommunitySubmissions({ sessionToken: token, status: submissionStatusFilter }),
@@ -202,6 +228,11 @@ export default function AdminDashboard() {
         adminListPaymentVerifications({ sessionToken: token, status: paymentStatusFilter, limit: 250 }),
         adminGetDashboardAnalytics({ sessionToken: token, days: 21 }),
         adminGetSystemControls({ sessionToken: token }),
+        adminListAnnouncements({
+          sessionToken: token,
+          limit: 250,
+          includeInactive: includeInactiveAnnouncements,
+        }),
       ]);
 
       const messages = [];
@@ -255,6 +286,13 @@ export default function AdminDashboard() {
         messages.push(`System: ${getErrorMessage(sc.reason, 'failed to load')}`);
       }
 
+      if (aa.status === 'fulfilled') {
+        setAnnouncements(aa.value || []);
+      } else {
+        setAnnouncements([]);
+        messages.push(`Announcements: ${getErrorMessage(aa.reason, 'failed to load')}`);
+      }
+
       if (messages.length > 0) {
         setError(messages.join(' | '));
       }
@@ -303,7 +341,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!sessionReady) return;
     void loadAdminData();
-  }, [sessionReady, submissionStatusFilter, paymentStatusFilter]);
+  }, [sessionReady, submissionStatusFilter, paymentStatusFilter, includeInactiveAnnouncements]);
 
   const refresh = async () => {
     setInfo('');
@@ -400,6 +438,19 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleClearShadowDebt = async (userId) => {
+    try {
+      const ok = await adminClearUserShadowDebt({
+        userId,
+        reason: 'manual_clear_from_admin_dashboard',
+      });
+      showSuccess(ok ? 'Shadow debt cleared.' : 'User not found.');
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to clear shadow debt.');
+    }
+  };
+
   const handlePromoteAdmin = async (userId) => {
     try {
       const ok = await adminSetUserRole({ userId, role: 'admin' });
@@ -451,6 +502,30 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleCreateRelicCode = async () => {
+    setError('');
+    setInfo('');
+    try {
+      const row = await adminCreateRelicCode({
+        code: relicCodeForm.code,
+        relicAmount: Number(relicCodeForm.relicAmount || 1),
+        maxGlobalUses: relicCodeForm.maxGlobalUses === '' ? null : Number(relicCodeForm.maxGlobalUses),
+        maxUsesPerUser: Number(relicCodeForm.maxUsesPerUser || 1),
+        expiresAt: relicCodeForm.expiresAt ? new Date(relicCodeForm.expiresAt).toISOString() : null,
+      });
+      showSuccess(`Relic code created: ${row?.code || relicCodeForm.code.toUpperCase()}.`);
+      setRelicCodeForm({
+        code: '',
+        relicAmount: 1,
+        maxGlobalUses: '',
+        maxUsesPerUser: 1,
+        expiresAt: '',
+      });
+    } catch (err) {
+      showError(err?.message || 'Failed to create relic code.');
+    }
+  };
+
   const handleGrantRelic = async () => {
     setError('');
     setInfo('');
@@ -495,9 +570,63 @@ export default function AdminDashboard() {
       });
       showSuccess(`Announcement created (${id}).`);
       setAnnouncementForm({ title: '', message: '', expiresAt: '' });
+      await loadAdminData();
     } catch (err) {
       showError(err?.message || 'Failed to create announcement.');
     }
+  };
+
+  const patchAnnouncementDraft = (announcementId, patch) => {
+    if (!announcementId) return;
+    setAnnouncementDrafts((prev) => ({
+      ...prev,
+      [announcementId]: { ...(prev[announcementId] || {}), ...patch },
+    }));
+  };
+
+  const handleSaveAnnouncement = async (row) => {
+    const draft = announcementDrafts[row.id] || {};
+    setError('');
+    setInfo('');
+    try {
+      const nextExpiresAt = Object.prototype.hasOwnProperty.call(draft, 'expiresAt')
+        ? (draft.expiresAt ? new Date(draft.expiresAt).toISOString() : null)
+        : row.expires_at;
+      await adminUpdateAnnouncement({
+        announcementId: row.id,
+        title: draft.title ?? row.title,
+        message: draft.message ?? row.message,
+        active: typeof draft.active === 'boolean' ? draft.active : row.active !== false,
+        expiresAt: nextExpiresAt,
+      });
+      showSuccess('Announcement updated.');
+      setAnnouncementDrafts((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to update announcement.');
+    }
+  };
+
+  const handleDeleteAnnouncementRow = (row) => {
+    openConfirm({
+      title: 'Delete announcement?',
+      message: 'This will permanently remove this announcement and its message.',
+      danger: true,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        try {
+          const ok = await adminDeleteAnnouncement({ announcementId: row.id });
+          showSuccess(ok ? 'Announcement deleted.' : 'Announcement not found.');
+          await loadAdminData();
+        } catch (err) {
+          showError(err?.message || 'Failed to delete announcement.');
+        }
+      },
+    });
   };
 
   const handleReplySubmission = async (submission) => {
@@ -668,7 +797,7 @@ export default function AdminDashboard() {
                     style={{
                       borderColor: active ? 'rgba(56,189,248,0.5)' : 'rgba(51,65,85,0.8)',
                       background: active ? 'rgba(8,47,73,0.45)' : 'rgba(15,23,42,0.35)',
-                      color: active ? '#67E8F9' : '#94A3B8',
+                      color: active ? '#67E8F9' : '#E2E8F0',
                     }}
                   >
                     <p className="text-[11px] font-black tracking-widest flex items-center gap-1.5 whitespace-nowrap">
@@ -820,6 +949,17 @@ export default function AdminDashboard() {
                         })}
                       >
                         Reset Streak
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openConfirm({
+                          title: 'Clear shadow debt?',
+                          message: 'This will set this user\'s shadow debt XP to 0.',
+                          onConfirm: async () => handleClearShadowDebt(row.user_id),
+                        })}
+                      >
+                        Clear Shadow Debt
                       </Button>
                       <Button
                         size="sm"
@@ -991,6 +1131,54 @@ export default function AdminDashboard() {
               <Button onClick={handleCreateRelicType} className="w-full">Save Relic Type</Button>
             </div>
 
+            <div className="space-y-2 mb-4 rounded-lg border border-slate-700/70 p-3 bg-slate-900/30">
+              <p className="text-[11px] tracking-widest text-slate-400 font-bold">CREATE REDEEM CODE</p>
+              <p className="text-[11px] text-slate-500">
+                Configure how many relics this code grants and how many times each user can use it.
+              </p>
+              <Input
+                placeholder="Code (e.g. WEEKEND10)"
+                value={relicCodeForm.code}
+                onChange={(e) => setRelicCodeForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
+                className="bg-slate-900/70 border-slate-700 text-white"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="Relics granted"
+                  value={relicCodeForm.relicAmount}
+                  onChange={(e) => setRelicCodeForm((p) => ({ ...p, relicAmount: e.target.value }))}
+                  className="bg-slate-900/70 border-slate-700 text-white"
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="Max uses per user"
+                  value={relicCodeForm.maxUsesPerUser}
+                  onChange={(e) => setRelicCodeForm((p) => ({ ...p, maxUsesPerUser: e.target.value }))}
+                  className="bg-slate-900/70 border-slate-700 text-white"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder="Global use cap (optional)"
+                  value={relicCodeForm.maxGlobalUses}
+                  onChange={(e) => setRelicCodeForm((p) => ({ ...p, maxGlobalUses: e.target.value }))}
+                  className="bg-slate-900/70 border-slate-700 text-white"
+                />
+                <Input
+                  type="datetime-local"
+                  value={relicCodeForm.expiresAt}
+                  onChange={(e) => setRelicCodeForm((p) => ({ ...p, expiresAt: e.target.value }))}
+                  className="bg-slate-900/70 border-slate-700 text-white"
+                />
+              </div>
+              <Button onClick={handleCreateRelicCode} className="w-full">Create Redeem Code</Button>
+            </div>
+
             <div className="space-y-2 mb-4">
               <p className="text-[11px] tracking-widest text-slate-400 font-bold">GRANT RELIC</p>
               <Input
@@ -1079,36 +1267,39 @@ export default function AdminDashboard() {
                 ['maintenance_mode', 'Maintenance mode'],
                 ['double_xp_mode', 'Double XP mode'],
               ].map(([key, label]) => (
-                <button
+                <Button
                   key={key}
                   type="button"
+                  variant="outline"
                   onClick={() => toggleSystemControl(key, !controlMap[key])}
-                  className="w-full rounded-md border border-slate-700 px-3 py-2 text-left"
+                  className="w-full justify-between text-left"
                   style={{
                     background: controlMap[key] ? 'rgba(6,78,59,0.35)' : 'rgba(30,41,59,0.45)',
                     color: controlMap[key] ? '#6EE7B7' : '#94A3B8',
+                    borderColor: controlMap[key] ? 'rgba(110,231,183,0.35)' : 'rgba(71,85,105,0.55)',
                   }}
                 >
                   <span className="text-xs font-bold tracking-wider">{label.toUpperCase()}</span>
                   <span className="text-[10px] ml-2">{controlMap[key] ? 'ON' : 'OFF'}</span>
-                </button>
+                </Button>
               ))}
               <Button variant="outline" onClick={runDailyQuestReset} className="w-full">
                 <Clock3 className="w-4 h-4 mr-2" /> Daily Quest Reset
               </Button>
             </div>
             <div className="space-y-2">
+              <p className="text-[11px] tracking-widest text-slate-400 font-bold">CREATE ANNOUNCEMENT</p>
               <Input
                 placeholder="Announcement title"
                 value={announcementForm.title}
                 onChange={(e) => setAnnouncementForm((p) => ({ ...p, title: e.target.value }))}
                 className="bg-slate-900/70 border-slate-700 text-white"
               />
-              <Input
+              <textarea
                 placeholder="Announcement message"
                 value={announcementForm.message}
                 onChange={(e) => setAnnouncementForm((p) => ({ ...p, message: e.target.value }))}
-                className="bg-slate-900/70 border-slate-700 text-white"
+                className="w-full min-h-[92px] rounded-md px-3 py-2 bg-slate-900/70 border border-slate-700 text-white text-sm"
               />
               <Input
                 type="datetime-local"
@@ -1119,6 +1310,89 @@ export default function AdminDashboard() {
               <Button onClick={handleCreateAnnouncement} className="w-full">
                 <Send className="w-4 h-4 mr-2" /> Publish Announcement
               </Button>
+            </div>
+
+            <div className="mt-4 space-y-2 rounded-lg border border-slate-700/70 p-3 bg-slate-900/25">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] tracking-widest text-slate-400 font-bold">ANNOUNCEMENT HISTORY</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIncludeInactiveAnnouncements((v) => !v)}
+                >
+                  {includeInactiveAnnouncements ? 'Hide Inactive' : 'Show Inactive'}
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                {announcements.map((row) => {
+                  const draft = announcementDrafts[row.id] || {};
+                  const draftTitle = draft.title ?? row.title ?? '';
+                  const draftMessage = draft.message ?? row.message ?? '';
+                  const draftActive = typeof draft.active === 'boolean' ? draft.active : row.active !== false;
+                  const draftExpiresAt = draft.expiresAt ?? toDateTimeLocalInput(row.expires_at);
+                  return (
+                    <div key={row.id} className="rounded-lg p-3 border border-slate-700/60 bg-slate-900/40 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-cyan-300 tracking-widest font-black break-all">
+                          {draftTitle || 'Untitled announcement'}
+                        </p>
+                        <span className={`text-[10px] px-2 py-0.5 rounded border ${draftActive ? 'text-emerald-300 border-emerald-500/40 bg-emerald-900/20' : 'text-slate-300 border-slate-500/40 bg-slate-700/30'}`}>
+                          {draftActive ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </div>
+                      <Input
+                        value={draftTitle}
+                        onChange={(e) => patchAnnouncementDraft(row.id, { title: e.target.value })}
+                        placeholder="Title"
+                        className="bg-slate-900/70 border-slate-700 text-white"
+                      />
+                      <textarea
+                        value={draftMessage}
+                        onChange={(e) => patchAnnouncementDraft(row.id, { message: e.target.value })}
+                        placeholder="Message"
+                        className="w-full min-h-[78px] rounded-md px-3 py-2 bg-slate-900/70 border border-slate-700 text-white text-sm"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Input
+                          type="datetime-local"
+                          value={draftExpiresAt}
+                          onChange={(e) => patchAnnouncementDraft(row.id, { expiresAt: e.target.value })}
+                          className="bg-slate-900/70 border-slate-700 text-white"
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={() => patchAnnouncementDraft(row.id, { active: !draftActive })}
+                          style={{
+                            borderColor: draftActive ? 'rgba(110,231,183,0.35)' : 'rgba(148,163,184,0.35)',
+                            color: draftActive ? '#6EE7B7' : '#CBD5E1',
+                          }}
+                        >
+                          {draftActive ? 'Set Inactive' : 'Set Active'}
+                        </Button>
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        Created: {formatDateTime(row.created_at)} · Expires: {row.expires_at ? formatDateTime(row.expires_at) : 'No expiry'}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button size="sm" className="flex-1" onClick={() => handleSaveAnnouncement(row)}>
+                          Save Changes
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteAnnouncementRow(row)}
+                          style={{ borderColor: 'rgba(248,113,113,0.45)', color: '#F87171' }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {!loading && announcements.length === 0 && (
+                  <p className="text-sm text-slate-500">No announcements found.</p>
+                )}
+              </div>
             </div>
           </HoloPanel>
           )}

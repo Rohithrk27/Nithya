@@ -10,7 +10,10 @@ import XPDeltaPulse from '@/components/XPDeltaPulse';
 import { applyProgressionSnapshot, penaltyXpRpc } from '@/lib/progression';
 import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 import {
+  clampPunishmentHours,
+  configurePunishmentTimer,
   ensurePendingPunishmentsForMissedHabits,
+  getPunishmentConfiguredHours,
   getPunishmentProjectedLoss,
   getPunishmentRemainingMs,
   isOpenPunishment,
@@ -18,9 +21,23 @@ import {
 } from '@/lib/punishments';
 import { formatCountdown } from '@/lib/gameState';
 
-const PUNISHMENT_TIME_LIMIT_HOURS = 8;
+const PUNISHMENT_TIME_LIMIT_HOURS = 24;
 
 const rowDateSafe = (row) => (row?.date || row?.logged_at || row?.created_at || '').toString().slice(0, 10);
+const formatDateTimeSafe = (value) => {
+  if (!value) return 'N/A';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'N/A';
+  return parsed.toLocaleString();
+};
+const prettyPunishmentStatus = (value) => {
+  const raw = String(value || '').toLowerCase();
+  if (raw === 'resolved') return 'Resolved';
+  if (raw === 'refused') return 'Penalty Taken';
+  if (raw === 'timed_out') return 'Timed Out';
+  if (raw === 'active') return 'Active';
+  return raw ? raw.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase()) : 'Resolved';
+};
 
 export default function Punishments() {
   const navigate = useNavigate();
@@ -32,6 +49,8 @@ export default function Punishments() {
   const [loadError, setLoadError] = useState('');
   const [nowMs, setNowMs] = useState(Date.now());
   const [xpDelta, setXpDelta] = useState(0);
+  const [timerHoursById, setTimerHoursById] = useState({});
+  const [timerSavingId, setTimerSavingId] = useState('');
 
   const loadData = async (userId) => {
     if (!userId) return;
@@ -104,6 +123,19 @@ export default function Punishments() {
     return () => clearTimeout(timeout);
   }, [xpDelta]);
 
+  useEffect(() => {
+    setTimerHoursById((prev) => {
+      const next = { ...prev };
+      entries.forEach((entry) => {
+        const punishmentId = entry?.punishment?.id;
+        if (!punishmentId) return;
+        if (Number.isFinite(Number(next[punishmentId]))) return;
+        next[punishmentId] = getPunishmentConfiguredHours(entry.punishment, PUNISHMENT_TIME_LIMIT_HOURS);
+      });
+      return next;
+    });
+  }, [entries]);
+
   const activeEntries = useMemo(
     () => entries.filter((item) => isOpenPunishment(item?.punishment)),
     [entries]
@@ -135,6 +167,35 @@ export default function Punishments() {
       setLoadError(err?.message || 'Failed to resolve punishment.');
     } finally {
       setSavingId('');
+    }
+  };
+
+  const runTimer = async (entry) => {
+    if (!user?.id || !entry?.punishment?.id || savingId || timerSavingId) return;
+    const punishmentId = entry.punishment.id;
+    const safeHours = clampPunishmentHours(
+      timerHoursById[punishmentId],
+      getPunishmentConfiguredHours(entry.punishment, PUNISHMENT_TIME_LIMIT_HOURS)
+    );
+    setTimerSavingId(punishmentId);
+    setLoadError('');
+    try {
+      const updated = await configurePunishmentTimer({
+        userId: user.id,
+        punishmentId,
+        hours: safeHours,
+        source: 'punishment_timer_configured_page',
+      });
+      setEntries((prev) => prev.map((row) => (
+        row?.punishment?.id === punishmentId
+          ? { ...row, punishment: { ...row.punishment, ...(updated || {}) } }
+          : row
+      )));
+      setTimerHoursById((prev) => ({ ...prev, [punishmentId]: safeHours }));
+    } catch (err) {
+      setLoadError(err?.message || 'Failed to start punishment timer.');
+    } finally {
+      setTimerSavingId('');
     }
   };
 
@@ -207,7 +268,10 @@ export default function Punishments() {
             <div className="flex-1">
               <p className="text-red-400 text-xs font-black tracking-widest">PUNISHMENT CONTROL</p>
               <p className="text-white text-base font-bold">
-                {activeEntries.length} active · accumulated punishment {projectedLoss} XP
+                {activeEntries.length} active - projected loss {projectedLoss} XP
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                Complete your recovery action before the timer ends to avoid XP loss.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -244,6 +308,11 @@ export default function Punishments() {
               const urgencyColor = urgency === 'high' ? '#F87171' : urgency === 'medium' ? '#FBBF24' : '#34D399';
               const penalty = getPunishmentProjectedLoss(punishment);
               const isSaving = savingId === punishment.id;
+              const isTimerSaving = timerSavingId === punishment.id;
+              const timerHours = clampPunishmentHours(
+                timerHoursById[punishment.id],
+                getPunishmentConfiguredHours(punishment, PUNISHMENT_TIME_LIMIT_HOURS)
+              );
 
               return (
                 <HoloPanel key={punishment.id} glowColor={urgencyColor} active={urgency === 'high'}>
@@ -251,11 +320,11 @@ export default function Punishments() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-black tracking-widest" style={{ color: urgencyColor }}>
-                          {urgency === 'high' ? 'URGENT' : 'ACTIVE'} PUNISHMENT
+                          {urgency === 'high' ? 'URGENT' : 'ACTIVE'} ACTION
                         </p>
                         <p className="text-white font-bold text-sm">{entry.habit?.title || 'Habit punishment'}</p>
                         <p className="text-xs text-slate-400 mt-1">
-                          {punishment.reason || entry.habit?.punishment_text || 'Complete the required punishment action.'}
+                          {punishment.reason || entry.habit?.punishment_text || 'Complete your recovery action before the timer ends.'}
                         </p>
                       </div>
                       <span
@@ -273,9 +342,39 @@ export default function Punishments() {
                         <p className="text-white font-black mt-0.5">-{penalty} XP</p>
                       </div>
                       <div className="rounded-lg p-2 border border-slate-600/40 bg-slate-900/30">
-                        <p className="text-slate-300 font-bold tracking-wide">LOG DATE</p>
+                        <p className="text-slate-300 font-bold tracking-wide">MISSED DATE</p>
                         <p className="text-white font-black mt-0.5">{entry.log?.date || rowDateSafe(entry.log)}</p>
                       </div>
+                    </div>
+
+                    <div className="rounded-lg p-2 border border-cyan-500/30 bg-cyan-950/20">
+                      <p className="text-cyan-300 font-bold tracking-wide text-xs">SET YOUR RECOVERY WINDOW (HOURS)</p>
+                      <div className="flex gap-2 mt-1.5">
+                        <input
+                          type="number"
+                          min={1}
+                          max={24}
+                          value={timerHours}
+                          onChange={(e) => setTimerHoursById((prev) => ({
+                            ...prev,
+                            [punishment.id]: clampPunishmentHours(e.target.value, timerHours),
+                          }))}
+                          className="w-20 px-2 py-1.5 rounded-md bg-slate-900/70 border border-cyan-500/40 text-cyan-100 text-sm font-semibold"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => runTimer(entry)}
+                          disabled={isSaving || isTimerSaving}
+                          className="flex-1"
+                          style={{ borderColor: 'rgba(56,189,248,0.45)', color: '#67E8F9' }}
+                        >
+                          {isTimerSaving ? 'Saving...' : `Start ${timerHours}h Timer`}
+                        </Button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1.5">
+                        Choose the hours you need. Timer starts now and reminders run before expiry.
+                      </p>
                     </div>
 
                     <div className="flex gap-2">
@@ -286,7 +385,7 @@ export default function Punishments() {
                         style={{ background: 'rgba(52,211,153,0.18)', border: '1px solid rgba(52,211,153,0.45)', color: '#34D399' }}
                       >
                         <AlertTriangle className="w-4 h-4 mr-2" />
-                        {isSaving ? 'Resolving...' : 'Resolve Early'}
+                        {isSaving ? 'Saving...' : 'Mark as Completed'}
                       </Button>
                       <Button
                         variant="outline"
@@ -296,7 +395,7 @@ export default function Punishments() {
                         style={{ border: '1px solid rgba(248,113,113,0.45)', color: '#F87171' }}
                       >
                         <Skull className="w-4 h-4 mr-2" />
-                        {isSaving ? 'Applying...' : 'Take Full Penalty'}
+                        {isSaving ? 'Applying...' : 'Skip and Take Penalty'}
                       </Button>
                     </div>
                   </div>
@@ -312,9 +411,9 @@ export default function Punishments() {
             <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
               {historyEntries.map((entry) => {
                 const punishment = entry.punishment || {};
-                const status = String(punishment.status || (punishment.penalty_applied ? 'timed_out' : 'resolved')).toUpperCase();
+                const status = prettyPunishmentStatus(punishment.status || (punishment.penalty_applied ? 'timed_out' : 'resolved'));
                 const resolvedAt = punishment.resolved_at || punishment.updated_at || punishment.created_at || null;
-                const resolvedLabel = resolvedAt ? format(new Date(resolvedAt), 'MMM d, HH:mm') : 'N/A';
+                const resolvedLabel = formatDateTimeSafe(resolvedAt);
                 const penalty = Math.max(0, Number(punishment.total_xp_penalty || punishment.accumulated_penalty || 0));
                 return (
                   <div
@@ -345,3 +444,5 @@ export default function Punishments() {
     </SystemBackground>
   );
 }
+
+
