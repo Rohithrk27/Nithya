@@ -383,6 +383,144 @@ export async function adminDeleteAnnouncement({
   return !!data;
 }
 
+export async function adminListUserGuides({
+  sessionToken = getAdminSessionToken(),
+  guideKey = 'user_main',
+  language = 'en',
+  includeDrafts = true,
+} = {}) {
+  const { data, error } = await supabase.rpc('admin_list_user_guides', {
+    p_session_token: sessionToken,
+    p_guide_key: guideKey || 'user_main',
+    p_language: language || 'en',
+    p_include_drafts: includeDrafts !== false,
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function adminCreateUserGuide({
+  sessionToken = getAdminSessionToken(),
+  guideKey = 'user_main',
+  audience = 'user',
+  language = 'en',
+  title = 'Main User Guide',
+  version = null,
+} = {}) {
+  const { data, error } = await supabase.rpc('admin_create_user_guide', {
+    p_session_token: sessionToken,
+    p_guide_key: guideKey || 'user_main',
+    p_audience: audience || 'user',
+    p_language: language || 'en',
+    p_title: title || 'Main User Guide',
+    p_version: Number.isFinite(Number(version)) ? Number(version) : null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function adminUpdateUserGuide({
+  sessionToken = getAdminSessionToken(),
+  guideId,
+  title = null,
+}) {
+  const { data, error } = await supabase.rpc('admin_update_user_guide', {
+    p_session_token: sessionToken,
+    p_guide_id: guideId,
+    p_title: title,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
+export async function adminPublishUserGuide({
+  sessionToken = getAdminSessionToken(),
+  guideId,
+}) {
+  const { data, error } = await supabase.rpc('admin_publish_user_guide', {
+    p_session_token: sessionToken,
+    p_guide_id: guideId,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
+export async function adminListUserGuideSteps({
+  sessionToken = getAdminSessionToken(),
+  guideId,
+}) {
+  const { data, error } = await supabase.rpc('admin_list_user_guide_steps', {
+    p_session_token: sessionToken,
+    p_guide_id: guideId,
+  });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function adminCreateUserGuideStep({
+  sessionToken = getAdminSessionToken(),
+  guideId,
+  stepOrder,
+  route,
+  targetSelector = null,
+  title = null,
+  description = null,
+  placement = 'auto',
+  allowNextWithoutTarget = false,
+}) {
+  const { data, error } = await supabase.rpc('admin_create_user_guide_step', {
+    p_session_token: sessionToken,
+    p_guide_id: guideId,
+    p_step_order: Math.max(1, Number(stepOrder || 1)),
+    p_route: route || '/dashboard',
+    p_target_selector: targetSelector,
+    p_title: title,
+    p_description: description,
+    p_placement: placement || 'auto',
+    p_allow_next_without_target: !!allowNextWithoutTarget,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function adminUpdateUserGuideStep({
+  sessionToken = getAdminSessionToken(),
+  stepId,
+  stepOrder = null,
+  route = null,
+  targetSelector = null,
+  title = null,
+  description = null,
+  placement = null,
+  allowNextWithoutTarget = null,
+}) {
+  const { data, error } = await supabase.rpc('admin_update_user_guide_step', {
+    p_session_token: sessionToken,
+    p_step_id: stepId,
+    p_step_order: Number.isFinite(Number(stepOrder)) ? Number(stepOrder) : null,
+    p_route: route,
+    p_target_selector: targetSelector,
+    p_title: title,
+    p_description: description,
+    p_placement: placement,
+    p_allow_next_without_target: typeof allowNextWithoutTarget === 'boolean' ? allowNextWithoutTarget : null,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
+export async function adminDeleteUserGuideStep({
+  sessionToken = getAdminSessionToken(),
+  stepId,
+}) {
+  const { data, error } = await supabase.rpc('admin_delete_user_guide_step', {
+    p_session_token: sessionToken,
+    p_step_id: stepId,
+  });
+  if (error) throw error;
+  return !!data;
+}
+
 export async function adminListActivityLogs({ sessionToken = getAdminSessionToken(), limit = 200 } = {}) {
   const { data, error } = await supabase.rpc('admin_list_activity_logs', {
     p_session_token: sessionToken,

@@ -21,6 +21,7 @@ import {
   History,
   UserCog,
   Clock3,
+  BookOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,8 +53,16 @@ import {
   adminResetUserStreak,
   adminResetUserXp,
   adminReplyCommunitySubmission,
+  adminCreateUserGuide,
+  adminCreateUserGuideStep,
+  adminDeleteUserGuideStep,
+  adminListUserGuides,
+  adminListUserGuideSteps,
+  adminPublishUserGuide,
   adminSetSystemControl,
   adminSetUserRole,
+  adminUpdateUserGuide,
+  adminUpdateUserGuideStep,
   adminUpdateAnnouncement,
   adminUpdatePaymentVerification,
   adminTriggerDailyQuestReset,
@@ -66,6 +75,7 @@ import {
 const PUNISHMENT_TYPES = ['xp_deduction', 'streak_reset', 'relic_loss'];
 const RARITIES = ['common', 'rare', 'epic', 'legendary'];
 const PAYMENT_STATUSES = ['pending', 'reviewed', 'verified', 'rejected'];
+const GUIDE_PLACEMENTS = ['auto', 'top', 'bottom', 'left', 'right', 'center'];
 const ADMIN_TABS = [
   { key: 'users', label: 'Users', icon: Users },
   { key: 'donations', label: 'Donations', icon: Receipt },
@@ -143,6 +153,23 @@ export default function AdminDashboard() {
     expiresAt: '',
   });
   const [announcementDrafts, setAnnouncementDrafts] = useState({});
+  const [guides, setGuides] = useState([]);
+  const [selectedGuideId, setSelectedGuideId] = useState('');
+  const [guideSteps, setGuideSteps] = useState([]);
+  const [guideSaving, setGuideSaving] = useState(false);
+  const [guideForm, setGuideForm] = useState({
+    title: 'Main Feature Guide',
+  });
+  const [newGuideStepForm, setNewGuideStepForm] = useState({
+    stepOrder: 1,
+    route: '/dashboard',
+    targetSelector: '',
+    title: '',
+    description: '',
+    placement: 'auto',
+    allowNextWithoutTarget: true,
+  });
+  const [guideStepDrafts, setGuideStepDrafts] = useState({});
   const [relicTypeForm, setRelicTypeForm] = useState({
     code: '',
     name: '',
@@ -210,6 +237,10 @@ export default function AdminDashboard() {
       pendingPayments,
     };
   }, [users, submissions, paymentRequests]);
+  const selectedGuide = useMemo(
+    () => guides.find((row) => row.id === selectedGuideId) || null,
+    [guides, selectedGuideId]
+  );
 
   const loadAdminData = async () => {
     const token = getAdminSessionToken();
@@ -220,7 +251,7 @@ export default function AdminDashboard() {
     setLoading(true);
     setError('');
     try {
-      const [u, l, s, r, pv, an, sc, aa] = await Promise.allSettled([
+      const [u, l, s, r, pv, an, sc, aa, ug] = await Promise.allSettled([
         adminListUsers({ sessionToken: token, limit: 300 }),
         adminListActivityLogs({ sessionToken: token, limit: 250 }),
         adminListCommunitySubmissions({ sessionToken: token, status: submissionStatusFilter }),
@@ -232,6 +263,12 @@ export default function AdminDashboard() {
           sessionToken: token,
           limit: 250,
           includeInactive: includeInactiveAnnouncements,
+        }),
+        adminListUserGuides({
+          sessionToken: token,
+          guideKey: 'user_main',
+          language: 'en',
+          includeDrafts: true,
         }),
       ]);
 
@@ -293,6 +330,19 @@ export default function AdminDashboard() {
         messages.push(`Announcements: ${getErrorMessage(aa.reason, 'failed to load')}`);
       }
 
+      if (ug.status === 'fulfilled') {
+        const nextGuides = ug.value || [];
+        setGuides(nextGuides);
+        setSelectedGuideId((prev) => {
+          if (prev && nextGuides.some((row) => row.id === prev)) return prev;
+          return nextGuides[0]?.id || '';
+        });
+      } else {
+        setGuides([]);
+        setSelectedGuideId('');
+        messages.push(`Guides: ${getErrorMessage(ug.reason, 'failed to load')}`);
+      }
+
       if (messages.length > 0) {
         setError(messages.join(' | '));
       }
@@ -342,6 +392,42 @@ export default function AdminDashboard() {
     if (!sessionReady) return;
     void loadAdminData();
   }, [sessionReady, submissionStatusFilter, paymentStatusFilter, includeInactiveAnnouncements]);
+
+  useEffect(() => {
+    if (!sessionReady || !selectedGuideId) {
+      setGuideSteps([]);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const rows = await adminListUserGuideSteps({ guideId: selectedGuideId });
+        if (cancelled) return;
+        const nextRows = rows || [];
+        setGuideSteps(nextRows);
+        setGuideStepDrafts({});
+        const maxOrder = nextRows.reduce((max, row) => Math.max(max, Number(row?.step_order || 0)), 0);
+        setNewGuideStepForm((prev) => ({
+          ...prev,
+          stepOrder: Math.max(1, maxOrder + 1),
+        }));
+      } catch (err) {
+        if (cancelled) return;
+        setGuideSteps([]);
+        setError(err?.message || 'Failed to load guide steps.');
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGuideId, sessionReady]);
+
+  useEffect(() => {
+    setGuideForm({
+      title: selectedGuide?.title || 'Main Feature Guide',
+    });
+  }, [selectedGuide?.id, selectedGuide?.title]);
 
   const refresh = async () => {
     setInfo('');
@@ -624,6 +710,176 @@ export default function AdminDashboard() {
           await loadAdminData();
         } catch (err) {
           showError(err?.message || 'Failed to delete announcement.');
+        }
+      },
+    });
+  };
+
+  const patchGuideStepDraft = (stepId, patch) => {
+    if (!stepId) return;
+    setGuideStepDrafts((prev) => ({
+      ...prev,
+      [stepId]: { ...(prev[stepId] || {}), ...patch },
+    }));
+  };
+
+  const handleCreateGuideVersion = async () => {
+    if (guideSaving) return;
+    setError('');
+    setInfo('');
+    setGuideSaving(true);
+    try {
+      const id = await adminCreateUserGuide({
+        title: guideForm.title || 'Main Feature Guide',
+        guideKey: 'user_main',
+        audience: 'user',
+        language: 'en',
+      });
+      if (id) {
+        setSelectedGuideId(id);
+      }
+      showSuccess('New guide version created as draft.');
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to create guide version.');
+    } finally {
+      setGuideSaving(false);
+    }
+  };
+
+  const handleSaveGuideMeta = async () => {
+    if (!selectedGuide?.id || guideSaving) return;
+    setError('');
+    setInfo('');
+    setGuideSaving(true);
+    try {
+      const ok = await adminUpdateUserGuide({
+        guideId: selectedGuide.id,
+        title: guideForm.title || selectedGuide.title || 'Main Feature Guide',
+      });
+      showSuccess(ok ? 'Guide details updated.' : 'Guide not found.');
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to update guide details.');
+    } finally {
+      setGuideSaving(false);
+    }
+  };
+
+  const handlePublishGuideVersion = () => {
+    if (!selectedGuide?.id || guideSaving) return;
+    openConfirm({
+      title: 'Publish selected guide?',
+      message: 'This publishes the selected version and unpublishes other versions for this guide key.',
+      confirmText: 'Publish',
+      onConfirm: async () => {
+        setGuideSaving(true);
+        try {
+          const ok = await adminPublishUserGuide({ guideId: selectedGuide.id });
+          showSuccess(ok ? 'Guide version published.' : 'Guide not found.');
+          await loadAdminData();
+        } catch (err) {
+          showError(err?.message || 'Failed to publish guide version.');
+        } finally {
+          setGuideSaving(false);
+        }
+      },
+    });
+  };
+
+  const handleCreateGuideStep = async () => {
+    if (!selectedGuideId || guideSaving) return;
+    setError('');
+    setInfo('');
+    setGuideSaving(true);
+    try {
+      await adminCreateUserGuideStep({
+        guideId: selectedGuideId,
+        stepOrder: Number(newGuideStepForm.stepOrder || 1),
+        route: newGuideStepForm.route || '/dashboard',
+        targetSelector: newGuideStepForm.targetSelector || null,
+        title: newGuideStepForm.title || 'Guide Step',
+        description: newGuideStepForm.description || '',
+        placement: newGuideStepForm.placement || 'auto',
+        allowNextWithoutTarget: !!newGuideStepForm.allowNextWithoutTarget,
+      });
+      showSuccess('Guide step created.');
+      setNewGuideStepForm((prev) => ({
+        ...prev,
+        title: '',
+        description: '',
+        targetSelector: '',
+      }));
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to create guide step.');
+    } finally {
+      setGuideSaving(false);
+    }
+  };
+
+  const handleSaveGuideStep = async (row) => {
+    if (!row?.id || guideSaving) return;
+    const draft = guideStepDrafts[row.id] || {};
+    setError('');
+    setInfo('');
+    setGuideSaving(true);
+    try {
+      await adminUpdateUserGuideStep({
+        stepId: row.id,
+        stepOrder: Object.prototype.hasOwnProperty.call(draft, 'stepOrder')
+          ? Number(draft.stepOrder || row.step_order || 1)
+          : null,
+        route: Object.prototype.hasOwnProperty.call(draft, 'route')
+          ? (draft.route || '/dashboard')
+          : null,
+        targetSelector: Object.prototype.hasOwnProperty.call(draft, 'targetSelector')
+          ? draft.targetSelector
+          : null,
+        title: Object.prototype.hasOwnProperty.call(draft, 'title')
+          ? draft.title
+          : null,
+        description: Object.prototype.hasOwnProperty.call(draft, 'description')
+          ? draft.description
+          : null,
+        placement: Object.prototype.hasOwnProperty.call(draft, 'placement')
+          ? draft.placement
+          : null,
+        allowNextWithoutTarget: Object.prototype.hasOwnProperty.call(draft, 'allowNextWithoutTarget')
+          ? !!draft.allowNextWithoutTarget
+          : null,
+      });
+      showSuccess('Guide step updated.');
+      setGuideStepDrafts((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+      await loadAdminData();
+    } catch (err) {
+      showError(err?.message || 'Failed to update guide step.');
+    } finally {
+      setGuideSaving(false);
+    }
+  };
+
+  const handleDeleteGuideStep = (row) => {
+    if (!row?.id || guideSaving) return;
+    openConfirm({
+      title: 'Delete guide step?',
+      message: 'This permanently removes the selected guide step.',
+      danger: true,
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        setGuideSaving(true);
+        try {
+          const ok = await adminDeleteUserGuideStep({ stepId: row.id });
+          showSuccess(ok ? 'Guide step deleted.' : 'Guide step not found.');
+          await loadAdminData();
+        } catch (err) {
+          showError(err?.message || 'Failed to delete guide step.');
+        } finally {
+          setGuideSaving(false);
         }
       },
     });
@@ -1391,6 +1647,233 @@ export default function AdminDashboard() {
                 })}
                 {!loading && announcements.length === 0 && (
                   <p className="text-sm text-slate-500">No announcements found.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3 rounded-lg border border-slate-700/70 p-3 bg-slate-900/25">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-[11px] tracking-widest text-slate-400 font-bold flex items-center gap-2">
+                  <BookOpen className="w-3.5 h-3.5 text-cyan-300" /> USER GUIDE MANAGER
+                </p>
+                <span className="text-[10px] text-slate-500">
+                  {guideSaving ? 'Saving...' : `${guideSteps.length} step(s)`}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <select
+                  value={selectedGuideId}
+                  onChange={(e) => setSelectedGuideId(e.target.value)}
+                  className="rounded-md bg-slate-900/70 border border-slate-700 text-slate-100 text-sm px-3 py-2"
+                >
+                  <option value="">Select guide version</option>
+                  {guides.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      v{row.version} · {String(row.status || 'draft').toUpperCase()} · {row.step_count || 0} steps
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  placeholder="Guide title"
+                  value={guideForm.title}
+                  onChange={(e) => setGuideForm((prev) => ({ ...prev, title: e.target.value }))}
+                  className="bg-slate-900/70 border-slate-700 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Button
+                  variant="outline"
+                  disabled={!selectedGuideId || guideSaving}
+                  onClick={handleSaveGuideMeta}
+                >
+                  Save Guide Title
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={!selectedGuideId || guideSaving}
+                  onClick={handlePublishGuideVersion}
+                  style={{ borderColor: 'rgba(34,197,94,0.45)', color: '#86EFAC' }}
+                >
+                  Publish Selected
+                </Button>
+                <Button
+                  disabled={guideSaving}
+                  onClick={handleCreateGuideVersion}
+                >
+                  Create New Version
+                </Button>
+              </div>
+
+              <div className="rounded-lg border border-slate-700/70 p-3 bg-slate-900/30 space-y-2">
+                <p className="text-[11px] tracking-widest text-slate-400 font-bold">ADD STEP</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    placeholder="Step order"
+                    value={newGuideStepForm.stepOrder}
+                    onChange={(e) => setNewGuideStepForm((prev) => ({ ...prev, stepOrder: e.target.value }))}
+                    className="bg-slate-900/70 border-slate-700 text-white"
+                  />
+                  <Input
+                    placeholder="/dashboard"
+                    value={newGuideStepForm.route}
+                    onChange={(e) => setNewGuideStepForm((prev) => ({ ...prev, route: e.target.value }))}
+                    className="bg-slate-900/70 border-slate-700 text-white"
+                  />
+                </div>
+                <Input
+                  placeholder="Target selector (optional)"
+                  value={newGuideStepForm.targetSelector}
+                  onChange={(e) => setNewGuideStepForm((prev) => ({ ...prev, targetSelector: e.target.value }))}
+                  className="bg-slate-900/70 border-slate-700 text-white"
+                />
+                <Input
+                  placeholder="Step title"
+                  value={newGuideStepForm.title}
+                  onChange={(e) => setNewGuideStepForm((prev) => ({ ...prev, title: e.target.value }))}
+                  className="bg-slate-900/70 border-slate-700 text-white"
+                />
+                <textarea
+                  placeholder="Step description"
+                  value={newGuideStepForm.description}
+                  onChange={(e) => setNewGuideStepForm((prev) => ({ ...prev, description: e.target.value }))}
+                  className="w-full min-h-[78px] rounded-md px-3 py-2 bg-slate-900/70 border border-slate-700 text-white text-sm"
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <select
+                    value={newGuideStepForm.placement}
+                    onChange={(e) => setNewGuideStepForm((prev) => ({ ...prev, placement: e.target.value }))}
+                    className="rounded-md bg-slate-900/70 border border-slate-700 text-slate-100 text-sm px-3 py-2"
+                  >
+                    {GUIDE_PLACEMENTS.map((row) => (
+                      <option key={row} value={row}>{row}</option>
+                    ))}
+                  </select>
+                  <Button
+                    variant="outline"
+                    onClick={() => setNewGuideStepForm((prev) => ({
+                      ...prev,
+                      allowNextWithoutTarget: !prev.allowNextWithoutTarget,
+                    }))}
+                    style={{
+                      borderColor: newGuideStepForm.allowNextWithoutTarget ? 'rgba(56,189,248,0.45)' : 'rgba(148,163,184,0.35)',
+                      color: newGuideStepForm.allowNextWithoutTarget ? '#7DD3FC' : '#CBD5E1',
+                    }}
+                  >
+                    {newGuideStepForm.allowNextWithoutTarget ? 'Allow Next Without Target: ON' : 'Allow Next Without Target: OFF'}
+                  </Button>
+                </div>
+                <Button
+                  onClick={handleCreateGuideStep}
+                  disabled={!selectedGuideId || guideSaving}
+                  className="w-full"
+                >
+                  Add Guide Step
+                </Button>
+              </div>
+
+              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                {guideSteps.map((row) => {
+                  const draft = guideStepDrafts[row.id] || {};
+                  const draftStepOrder = draft.stepOrder ?? row.step_order ?? 1;
+                  const draftRoute = draft.route ?? row.route ?? '/dashboard';
+                  const draftTargetSelector = draft.targetSelector ?? row.target_selector ?? '';
+                  const draftTitle = draft.title ?? row.title ?? '';
+                  const draftDescription = draft.description ?? row.description ?? '';
+                  const draftPlacement = draft.placement ?? row.placement ?? 'auto';
+                  const draftAllowNext = Object.prototype.hasOwnProperty.call(draft, 'allowNextWithoutTarget')
+                    ? !!draft.allowNextWithoutTarget
+                    : !!row.allow_next_without_target;
+
+                  return (
+                    <div key={row.id} className="rounded-lg p-3 border border-slate-700/60 bg-slate-900/40 space-y-2">
+                      <p className="text-xs text-cyan-300 tracking-widest font-black">
+                        STEP {draftStepOrder}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={draftStepOrder}
+                          onChange={(e) => patchGuideStepDraft(row.id, { stepOrder: e.target.value })}
+                          className="bg-slate-900/70 border-slate-700 text-white"
+                        />
+                        <Input
+                          value={draftRoute}
+                          onChange={(e) => patchGuideStepDraft(row.id, { route: e.target.value })}
+                          className="bg-slate-900/70 border-slate-700 text-white"
+                        />
+                      </div>
+                      <Input
+                        value={draftTargetSelector}
+                        placeholder="Target selector (optional)"
+                        onChange={(e) => patchGuideStepDraft(row.id, { targetSelector: e.target.value })}
+                        className="bg-slate-900/70 border-slate-700 text-white"
+                      />
+                      <Input
+                        value={draftTitle}
+                        onChange={(e) => patchGuideStepDraft(row.id, { title: e.target.value })}
+                        className="bg-slate-900/70 border-slate-700 text-white"
+                      />
+                      <textarea
+                        value={draftDescription}
+                        onChange={(e) => patchGuideStepDraft(row.id, { description: e.target.value })}
+                        className="w-full min-h-[76px] rounded-md px-3 py-2 bg-slate-900/70 border border-slate-700 text-white text-sm"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <select
+                          value={draftPlacement}
+                          onChange={(e) => patchGuideStepDraft(row.id, { placement: e.target.value })}
+                          className="rounded-md bg-slate-900/70 border border-slate-700 text-slate-100 text-sm px-3 py-2"
+                        >
+                          {GUIDE_PLACEMENTS.map((placement) => (
+                            <option key={placement} value={placement}>{placement}</option>
+                          ))}
+                        </select>
+                        <Button
+                          variant="outline"
+                          onClick={() => patchGuideStepDraft(row.id, { allowNextWithoutTarget: !draftAllowNext })}
+                          style={{
+                            borderColor: draftAllowNext ? 'rgba(56,189,248,0.45)' : 'rgba(148,163,184,0.35)',
+                            color: draftAllowNext ? '#7DD3FC' : '#CBD5E1',
+                          }}
+                        >
+                          {draftAllowNext ? 'Allow Next: ON' : 'Allow Next: OFF'}
+                        </Button>
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        Last updated: {formatDateTime(row.updated_at)}
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => handleSaveGuideStep(row)}
+                          disabled={guideSaving}
+                        >
+                          Save Step
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteGuideStep(row)}
+                          disabled={guideSaving}
+                          style={{ borderColor: 'rgba(248,113,113,0.45)', color: '#F87171' }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {!loading && selectedGuideId && guideSteps.length === 0 && (
+                  <p className="text-sm text-slate-500">No guide steps in this version yet.</p>
+                )}
+                {!selectedGuideId && (
+                  <p className="text-sm text-slate-500">Select a guide version to manage steps.</p>
                 )}
               </div>
             </div>

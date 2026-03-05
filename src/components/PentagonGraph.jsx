@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 
-// 5 main stats for the pentagon
-const PENTAGON_STATS = [
+const DEFAULT_STATS = [
   { key: 'strength', label: 'STR', color: '#F87171' },
   { key: 'intelligence', label: 'INT', color: '#60A5FA' },
   { key: 'discipline', label: 'DIS', color: '#38BDF8' },
@@ -31,7 +30,7 @@ function getGridPoint(index, totalPoints, gridLevel, center, radius) {
   };
 }
 
-export default function PentagonGraph({ stats, size = SIZE }) {
+export default function PentagonGraph({ stats, statMeta = DEFAULT_STATS, size = SIZE }) {
   const safeSize = Math.max(120, Number(size || SIZE));
   const center = safeSize / 2;
   const radius = safeSize * 0.33;
@@ -40,29 +39,39 @@ export default function PentagonGraph({ stats, size = SIZE }) {
   const labelFontSize = Math.max(9, Math.round(safeSize * 0.06));
   const valueFontSize = Math.max(8, Math.round(safeSize * 0.045));
   const avgFontSize = Math.max(20, Math.round(safeSize * 0.14));
+  const visibleStats = useMemo(
+    () => (Array.isArray(statMeta) && statMeta.length > 0 ? statMeta : DEFAULT_STATS),
+    [statMeta],
+  );
 
   const points = useMemo(() => {
-    return PENTAGON_STATS.map((stat, i) => {
+    return visibleStats.map((stat, i) => {
       const value = stats[stat.key] || 0;
-      return getPoint(i, value, PENTAGON_STATS.length, center, radius);
+      return getPoint(i, value, visibleStats.length, center, radius);
     });
-  }, [stats, center, radius]);
+  }, [stats, visibleStats, center, radius]);
 
   const polygonPoints = useMemo(() => {
     return points.map((p) => `${p.x} ${p.y}`).join(' ');
   }, [points]);
+
+  const average = useMemo(() => {
+    if (!visibleStats.length) return 0;
+    const total = visibleStats.reduce((sum, stat) => sum + Number(stats[stat.key] || 0), 0);
+    return Math.round(total / visibleStats.length);
+  }, [stats, visibleStats]);
 
   const gridLevels = [0.25, 0.5, 0.75, 1];
 
   return (
     <div className="relative flex flex-col items-center">
       <svg width={safeSize} height={safeSize} className="block">
-        {/* Grid lines - pentagons */}
+        {/* Grid lines */}
         {gridLevels.map((level, li) => (
           <polygon
             key={li}
-            points={PENTAGON_STATS.map((_, i) => {
-              const p = getGridPoint(i, PENTAGON_STATS.length, level, center, radius);
+            points={visibleStats.map((_, i) => {
+              const p = getGridPoint(i, visibleStats.length, level, center, radius);
               return `${p.x} ${p.y}`;
             }).join(' ')}
             fill="none"
@@ -73,8 +82,8 @@ export default function PentagonGraph({ stats, size = SIZE }) {
         ))}
 
         {/* Axis lines from center */}
-        {PENTAGON_STATS.map((_, i) => {
-          const p = getGridPoint(i, PENTAGON_STATS.length, 1, center, radius);
+        {visibleStats.map((_, i) => {
+          const p = getGridPoint(i, visibleStats.length, 1, center, radius);
           return (
             <line
               key={i}
@@ -105,19 +114,19 @@ export default function PentagonGraph({ stats, size = SIZE }) {
             cx={p.x}
             cy={p.y}
             r={dotRadius}
-            fill={PENTAGON_STATS[i].color}
+            fill={visibleStats[i].color}
             stroke="#0a191f"
             strokeWidth={2}
             className="animate-pulse"
             style={{
-              filter: `drop-shadow(0 0 6px ${PENTAGON_STATS[i].color}88)`,
+              filter: `drop-shadow(0 0 6px ${visibleStats[i].color}88)`,
             }}
           />
         ))}
 
         {/* Labels */}
-        {PENTAGON_STATS.map((stat, i) => {
-          const p = getGridPoint(i, PENTAGON_STATS.length, 1, center, labelRadius);
+        {visibleStats.map((stat, i) => {
+          const p = getGridPoint(i, visibleStats.length, 1, center, labelRadius);
           const value = stats[stat.key] || 0;
           return (
             <g key={stat.key}>
@@ -168,7 +177,7 @@ export default function PentagonGraph({ stats, size = SIZE }) {
       >
         <div className="text-center">
           <div className="font-black text-white" style={{ textShadow: '0 0 20px rgba(56,189,248,0.6)', fontSize: avgFontSize }}>
-            {Math.round(Object.values(stats).reduce((a, b) => a + (b || 0), 0) / 5)}
+            {average}
           </div>
           <div className="text-[8px] font-bold tracking-widest" style={{ color: '#38BDF888' }}>
             AVG

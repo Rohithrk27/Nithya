@@ -398,7 +398,10 @@ export default function Habits() {
               <p className="text-xs font-mono" style={{ color: '#38BDF866' }}>{habits.length} HABITS REGISTERED</p>
             </div>
           </div>
-          <Button onClick={openNew} size="sm"
+          <Button
+            onClick={openNew}
+            size="sm"
+            data-guide-id="habits-add-edit"
             style={{ background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.4)', color: '#38BDF8' }}>
             <Plus className="w-4 h-4 mr-1" /> ADD
           </Button>
@@ -475,7 +478,9 @@ export default function Habits() {
                   </div>
 
                   {/* Punishment section */}
-                  <div className="rounded-xl p-4 space-y-3"
+                  <div
+                    className="rounded-xl p-4 space-y-3"
+                    data-guide-id="habits-punishment-rules"
                     style={{ background: 'rgba(248,113,113,0.04)', border: '1px solid rgba(248,113,113,0.15)' }}>
                     <p className="text-xs font-black tracking-widest" style={{ color: '#F87171' }}>⚠ PUNISHMENT SETTINGS</p>
 

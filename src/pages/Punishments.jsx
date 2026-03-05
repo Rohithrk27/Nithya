@@ -255,7 +255,7 @@ export default function Punishments() {
   return (
     <SystemBackground>
       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
-        <HoloPanel>
+        <HoloPanel data-guide-id="punishments-summary">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -291,119 +291,121 @@ export default function Punishments() {
           </HoloPanel>
         )}
 
-        {activeEntries.length === 0 ? (
-          <HoloPanel>
-            <div className="text-center py-8 space-y-2">
-              <ShieldAlert className="w-8 h-8 mx-auto text-emerald-400" />
-              <p className="text-white font-bold">No active punishments</p>
-              <p className="text-sm text-slate-400">All active penalties are resolved or already processed.</p>
-            </div>
-          </HoloPanel>
-        ) : (
-          <div className="space-y-3">
-            {activeEntries.map((entry) => {
-              const punishment = entry.punishment;
-              const remainingMs = getPunishmentRemainingMs(punishment, nowMs);
-              const urgency = remainingMs <= 3600000 ? 'high' : (remainingMs <= 3 * 3600000 ? 'medium' : 'low');
-              const urgencyColor = urgency === 'high' ? '#F87171' : urgency === 'medium' ? '#FBBF24' : '#34D399';
-              const penalty = getPunishmentProjectedLoss(punishment);
-              const isSaving = savingId === punishment.id;
-              const isTimerSaving = timerSavingId === punishment.id;
-              const timerHours = clampPunishmentHours(
-                timerHoursById[punishment.id],
-                getPunishmentConfiguredHours(punishment, PUNISHMENT_TIME_LIMIT_HOURS)
-              );
+        <div data-guide-id="punishments-active-section">
+          {activeEntries.length === 0 ? (
+            <HoloPanel>
+              <div className="text-center py-8 space-y-2">
+                <ShieldAlert className="w-8 h-8 mx-auto text-emerald-400" />
+                <p className="text-white font-bold">No active punishments</p>
+                <p className="text-sm text-slate-400">All active penalties are resolved or already processed.</p>
+              </div>
+            </HoloPanel>
+          ) : (
+            <div className="space-y-3">
+              {activeEntries.map((entry) => {
+                const punishment = entry.punishment;
+                const remainingMs = getPunishmentRemainingMs(punishment, nowMs);
+                const urgency = remainingMs <= 3600000 ? 'high' : (remainingMs <= 3 * 3600000 ? 'medium' : 'low');
+                const urgencyColor = urgency === 'high' ? '#F87171' : urgency === 'medium' ? '#FBBF24' : '#34D399';
+                const penalty = getPunishmentProjectedLoss(punishment);
+                const isSaving = savingId === punishment.id;
+                const isTimerSaving = timerSavingId === punishment.id;
+                const timerHours = clampPunishmentHours(
+                  timerHoursById[punishment.id],
+                  getPunishmentConfiguredHours(punishment, PUNISHMENT_TIME_LIMIT_HOURS)
+                );
 
-              return (
-                <HoloPanel key={punishment.id} glowColor={urgencyColor} active={urgency === 'high'}>
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-black tracking-widest" style={{ color: urgencyColor }}>
-                          {urgency === 'high' ? 'URGENT' : 'ACTIVE'} ACTION
-                        </p>
-                        <p className="text-white font-bold text-sm">{entry.habit?.title || 'Habit punishment'}</p>
-                        <p className="text-xs text-slate-400 mt-1">
-                          {punishment.reason || entry.habit?.punishment_text || 'Complete your recovery action before the timer ends.'}
-                        </p>
-                      </div>
-                      <span
-                        className="text-[11px] font-black tracking-widest px-2 py-1 rounded border"
-                        style={{ color: urgencyColor, borderColor: `${urgencyColor}66`, background: `${urgencyColor}1a` }}
-                      >
-                        <Clock3 className="w-3 h-3 inline mr-1" />
-                        {formatCountdown(remainingMs)}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-lg p-2 border border-red-500/30 bg-red-950/20">
-                        <p className="text-red-300 font-bold tracking-wide">PROJECTED LOSS</p>
-                        <p className="text-white font-black mt-0.5">-{penalty} XP</p>
-                      </div>
-                      <div className="rounded-lg p-2 border border-slate-600/40 bg-slate-900/30">
-                        <p className="text-slate-300 font-bold tracking-wide">MISSED DATE</p>
-                        <p className="text-white font-black mt-0.5">{entry.log?.date || rowDateSafe(entry.log)}</p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-lg p-2 border border-cyan-500/30 bg-cyan-950/20">
-                      <p className="text-cyan-300 font-bold tracking-wide text-xs">SET YOUR RECOVERY WINDOW (HOURS)</p>
-                      <div className="flex gap-2 mt-1.5">
-                        <input
-                          type="number"
-                          min={1}
-                          max={24}
-                          value={timerHours}
-                          onChange={(e) => setTimerHoursById((prev) => ({
-                            ...prev,
-                            [punishment.id]: clampPunishmentHours(e.target.value, timerHours),
-                          }))}
-                          className="w-20 px-2 py-1.5 rounded-md bg-slate-900/70 border border-cyan-500/40 text-cyan-100 text-sm font-semibold"
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => runTimer(entry)}
-                          disabled={isSaving || isTimerSaving}
-                          className="flex-1"
-                          style={{ borderColor: 'rgba(56,189,248,0.45)', color: '#67E8F9' }}
+                return (
+                  <HoloPanel key={punishment.id} glowColor={urgencyColor} active={urgency === 'high'}>
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black tracking-widest" style={{ color: urgencyColor }}>
+                            {urgency === 'high' ? 'URGENT' : 'ACTIVE'} ACTION
+                          </p>
+                          <p className="text-white font-bold text-sm">{entry.habit?.title || 'Habit punishment'}</p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {punishment.reason || entry.habit?.punishment_text || 'Complete your recovery action before the timer ends.'}
+                          </p>
+                        </div>
+                        <span
+                          className="text-[11px] font-black tracking-widest px-2 py-1 rounded border"
+                          style={{ color: urgencyColor, borderColor: `${urgencyColor}66`, background: `${urgencyColor}1a` }}
                         >
-                          {isTimerSaving ? 'Saving...' : `Start ${timerHours}h Timer`}
+                          <Clock3 className="w-3 h-3 inline mr-1" />
+                          {formatCountdown(remainingMs)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-lg p-2 border border-red-500/30 bg-red-950/20">
+                          <p className="text-red-300 font-bold tracking-wide">PROJECTED LOSS</p>
+                          <p className="text-white font-black mt-0.5">-{penalty} XP</p>
+                        </div>
+                        <div className="rounded-lg p-2 border border-slate-600/40 bg-slate-900/30">
+                          <p className="text-slate-300 font-bold tracking-wide">MISSED DATE</p>
+                          <p className="text-white font-black mt-0.5">{entry.log?.date || rowDateSafe(entry.log)}</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg p-2 border border-cyan-500/30 bg-cyan-950/20">
+                        <p className="text-cyan-300 font-bold tracking-wide text-xs">SET YOUR RECOVERY WINDOW (HOURS)</p>
+                        <div className="flex gap-2 mt-1.5">
+                          <input
+                            type="number"
+                            min={1}
+                            max={24}
+                            value={timerHours}
+                            onChange={(e) => setTimerHoursById((prev) => ({
+                              ...prev,
+                              [punishment.id]: clampPunishmentHours(e.target.value, timerHours),
+                            }))}
+                            className="w-20 px-2 py-1.5 rounded-md bg-slate-900/70 border border-cyan-500/40 text-cyan-100 text-sm font-semibold"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => runTimer(entry)}
+                            disabled={isSaving || isTimerSaving}
+                            className="flex-1"
+                            style={{ borderColor: 'rgba(56,189,248,0.45)', color: '#67E8F9' }}
+                          >
+                            {isTimerSaving ? 'Saving...' : `Start ${timerHours}h Timer`}
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1.5">
+                          Choose the hours you need. Timer starts now and reminders run before expiry.
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => resolveEarly(entry)}
+                          disabled={isSaving || remainingMs <= 0}
+                          className="flex-1"
+                          style={{ background: 'rgba(52,211,153,0.18)', border: '1px solid rgba(52,211,153,0.45)', color: '#34D399' }}
+                        >
+                          <AlertTriangle className="w-4 h-4 mr-2" />
+                          {isSaving ? 'Saving...' : 'Mark as Completed'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => refuseNow(entry)}
+                          disabled={isSaving}
+                          className="flex-1"
+                          style={{ border: '1px solid rgba(248,113,113,0.45)', color: '#F87171' }}
+                        >
+                          <Skull className="w-4 h-4 mr-2" />
+                          {isSaving ? 'Applying...' : 'Skip and Take Penalty'}
                         </Button>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-1.5">
-                        Choose the hours you need. Timer starts now and reminders run before expiry.
-                      </p>
                     </div>
-
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => resolveEarly(entry)}
-                        disabled={isSaving || remainingMs <= 0}
-                        className="flex-1"
-                        style={{ background: 'rgba(52,211,153,0.18)', border: '1px solid rgba(52,211,153,0.45)', color: '#34D399' }}
-                      >
-                        <AlertTriangle className="w-4 h-4 mr-2" />
-                        {isSaving ? 'Saving...' : 'Mark as Completed'}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => refuseNow(entry)}
-                        disabled={isSaving}
-                        className="flex-1"
-                        style={{ border: '1px solid rgba(248,113,113,0.45)', color: '#F87171' }}
-                      >
-                        <Skull className="w-4 h-4 mr-2" />
-                        {isSaving ? 'Applying...' : 'Skip and Take Penalty'}
-                      </Button>
-                    </div>
-                  </div>
-                </HoloPanel>
-              );
-            })}
-          </div>
-        )}
+                  </HoloPanel>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {historyEntries.length > 0 && (
           <HoloPanel>

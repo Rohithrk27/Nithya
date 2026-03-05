@@ -203,7 +203,7 @@ export default function Recovery() {
 
         {activePlan ? (
           <>
-            <HoloPanel glowColor="#FBBF24" active>
+            <HoloPanel glowColor="#FBBF24" active data-guide-id="recovery-plan-summary">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
                   <p className="text-xs tracking-widest text-amber-300 font-black">ACTIVE PROTOCOL</p>
@@ -269,7 +269,7 @@ export default function Recovery() {
               </div>
             </HoloPanel>
 
-            <HoloPanel>
+            <HoloPanel data-guide-id="recovery-steps-section">
               <p className="text-xs text-cyan-300 font-black tracking-widest mb-3 flex items-center gap-2">
                 <Target className="w-3.5 h-3.5" /> RECOVERY STEPS
               </p>

@@ -24,6 +24,7 @@ import { useAuthedPageUser } from '@/lib/useAuthedPageUser';
 import { useAuth } from '@/lib/AuthContext';
 
 const LOGO_URL = "";
+const STAT_ALLOC_KEYS = new Set(['strength', 'intelligence', 'discipline', 'health', 'career', 'social', 'consistency']);
 const EMPTY_FORM = {
   name: '',
   age: '',
@@ -125,6 +126,7 @@ export default function Profile() {
   const [relicBalance, setRelicBalance] = useState(0);
   const [avatarStability, setAvatarStability] = useState(100);
   const [donationOpen, setDonationOpen] = useState(false);
+  const [statAllocBusy, setStatAllocBusy] = useState(false);
   const shareCaptureRef = useRef(null);
 
   useEffect(() => {
@@ -256,6 +258,44 @@ export default function Profile() {
     setVoiceEnabled(next);
     if (systemState) {
       await supabase.from('stats').update({ voice_enabled: next }).eq('id', systemState.id).eq('user_id', profile.id);
+    }
+  };
+
+  const allocateStatPoint = async (statKey) => {
+    if (!profile?.id || statAllocBusy) return;
+    const key = String(statKey || '').trim().toLowerCase();
+    if (!STAT_ALLOC_KEYS.has(key)) return;
+
+    const currentPoints = Math.max(0, Number(profile?.stat_points || 0));
+    if (currentPoints <= 0) return;
+
+    const statField = `stat_${key}`;
+    const nextPoints = currentPoints - 1;
+    const nextStatValue = Math.max(0, Number(profile?.[statField] || 0) + 1);
+
+    setStatAllocBusy(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          stat_points: nextPoints,
+          [statField]: nextStatValue,
+        })
+        .eq('id', profile.id);
+      if (error) throw error;
+
+      setProfile((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          stat_points: nextPoints,
+          [statField]: nextStatValue,
+        };
+      });
+    } catch (err) {
+      setShareMessage(err?.message || 'Failed to allocate stat point.');
+    } finally {
+      setStatAllocBusy(false);
     }
   };
 
@@ -409,6 +449,13 @@ export default function Profile() {
     }
   };
 
+  const openUserGuide = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nithya:user-guide:open'));
+    }
+    navigate(createPageUrl('Dashboard'));
+  };
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' }}>
       <div className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
@@ -470,7 +517,7 @@ export default function Profile() {
               style={{ background: 'rgba(15,32,39,0.66)', border: '1px solid rgba(56,189,248,0.16)' }}
             >
               <p className="text-[10px] font-black tracking-widest mb-2" style={{ color: '#38BDF8' }}>STAT GRAPH</p>
-              <StatGrid profile={profile} level={level} statPoints={0} onAllocate={() => {}} compact />
+              <StatGrid profile={profile} level={level} statPoints={profile?.stat_points || 0} onAllocate={allocateStatPoint} compact />
             </div>
           </div>
         </div>
@@ -539,7 +586,7 @@ export default function Profile() {
           ))}
 
           {section('STAT SUMMARY', (
-            <StatGrid profile={profile} level={level} statPoints={0} onAllocate={() => {}} />
+            <StatGrid profile={profile} level={level} statPoints={profile?.stat_points || 0} onAllocate={allocateStatPoint} />
           ))}
         </div>
 
@@ -605,6 +652,9 @@ export default function Profile() {
             </p>
             <Button onClick={() => setDonationOpen(true)} className="w-full sm:w-auto">
               Donate with UPI
+            </Button>
+            <Button variant="outline" onClick={openUserGuide} className="w-full sm:w-auto">
+              Help / User Guide
             </Button>
           </div>
         ))}

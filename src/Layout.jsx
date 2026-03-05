@@ -4,6 +4,8 @@ import { useAuth } from '@/lib/AuthContext';
 import { createPageUrl } from './utils';
 import { LayoutDashboard, Dumbbell, Sword, User, BarChart2, Archive, Flame, Gem, LogIn, LogOut, Trophy, Menu, X, ShieldAlert, Ticket, MessageSquare, Timer, Brain, Users, ShieldCheck } from 'lucide-react';
 import ConfirmActionModal from '@/components/ConfirmActionModal';
+import UserGuideOverlay from '@/components/UserGuideOverlay';
+import { useUserGuide } from '@/lib/useUserGuide';
 
 const LOGO_URL = '/logo/logo.svg';
 const LOGO_FALLBACK_URL = '/logo/logo.png';
@@ -61,6 +63,7 @@ export default function Layout({ children, currentPageName }) {
     isAuthenticated,
     logout,
   } = useAuth();
+  const userGuide = useUserGuide({ enabled: showNav });
   const [isScrolled, setIsScrolled] = useState(false);
   const [logoSrc, setLogoSrc] = useState(LOGO_URL);
   const [headerSrc, setHeaderSrc] = useState(HEADER_WORDMARK_URL);
@@ -188,6 +191,11 @@ export default function Layout({ children, currentPageName }) {
 
         {children}
       </div>
+      {showNav && (
+        <UserGuideOverlay
+          {...userGuide}
+        />
+      )}
 
       {showNav && (
         <>

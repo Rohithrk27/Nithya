@@ -39,6 +39,11 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+    --nithya-temporal-input-bg: #f8fafc;
+    --nithya-temporal-input-fg: #0f172a;
+    --nithya-temporal-input-border: #94a3b8;
+    --nithya-temporal-picker-filter: none;
+    --nithya-control-color-scheme: light;
   }
 
   .dark {
@@ -77,6 +82,25 @@
   }
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --nithya-temporal-input-bg: #0f172a;
+    --nithya-temporal-input-fg: #f8fafc;
+    --nithya-temporal-input-border: #334155;
+    --nithya-temporal-picker-filter: invert(1) brightness(1.1);
+    --nithya-control-color-scheme: dark;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --nithya-temporal-input-bg: #f8fafc;
+    --nithya-temporal-input-fg: #0f172a;
+    --nithya-temporal-input-border: #94a3b8;
+    --nithya-temporal-picker-filter: none;
+    --nithya-control-color-scheme: light;
+  }
+}
 
 
 @layer base {
@@ -132,6 +156,36 @@
   textarea,
   button {
     min-width: 0;
+  }
+
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'],
+  input[type='month'],
+  input[type='week'] {
+    color: var(--nithya-temporal-input-fg);
+    -webkit-text-fill-color: var(--nithya-temporal-input-fg);
+    background-color: var(--nithya-temporal-input-bg);
+    border-color: var(--nithya-temporal-input-border);
+    color-scheme: var(--nithya-control-color-scheme);
+  }
+
+  input[type='date']::-webkit-datetime-edit,
+  input[type='time']::-webkit-datetime-edit,
+  input[type='datetime-local']::-webkit-datetime-edit,
+  input[type='month']::-webkit-datetime-edit,
+  input[type='week']::-webkit-datetime-edit {
+    color: var(--nithya-temporal-input-fg);
+    -webkit-text-fill-color: var(--nithya-temporal-input-fg);
+  }
+
+  input[type='date']::-webkit-calendar-picker-indicator,
+  input[type='time']::-webkit-calendar-picker-indicator,
+  input[type='datetime-local']::-webkit-calendar-picker-indicator,
+  input[type='month']::-webkit-calendar-picker-indicator,
+  input[type='week']::-webkit-calendar-picker-indicator {
+    filter: var(--nithya-temporal-picker-filter);
+    opacity: 0.95;
   }
 }
 

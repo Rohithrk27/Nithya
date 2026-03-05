@@ -5,7 +5,15 @@ import React from 'react';
  * glowColor: optional accent color for border/glow
  * active: bool — stronger glow when true
  */
-export default function HoloPanel({ children, className = '', style = {}, glowColor = '#38BDF8', active = false, noPad = false }) {
+export default function HoloPanel({
+  children,
+  className = '',
+  style = {},
+  glowColor = '#38BDF8',
+  active = false,
+  noPad = false,
+  ...rest
+}) {
   return (
     <div
       className={`relative overflow-hidden rounded-2xl transition-all duration-300 group ${className}`}
@@ -19,6 +27,7 @@ export default function HoloPanel({ children, className = '', style = {}, glowCo
         padding: noPad ? 0 : undefined,
         ...style,
       }}
+      {...rest}
     >
       {/* Top scan line */}
       <div style={{

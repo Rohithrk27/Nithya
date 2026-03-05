@@ -12,8 +12,6 @@ const STAT_META = [
   { key: 'consistency',  label: 'CON', fullLabel: 'Consistency',  color: '#38BDF8', icon: '🔥' },
 ];
 
-const PENTAGON_STAT_KEYS = ['strength', 'intelligence', 'discipline', 'health', 'career'];
-
 const MAX_STAT_DISPLAY = 200; // cap for bar width calculation
 
 function AnimatedNumber({ value }) {
@@ -107,10 +105,10 @@ export default function StatGrid({ profile, level = 0, statPoints = 0, onAllocat
   const bonus = useMemo(() => passiveBonusPerStat(level), [level]);
   const [expanded, setExpanded] = useState(!expandable);
 
-  // Get stats for pentagon graph (first 5 stats)
-  const pentagonStats = useMemo(() => {
+  // Build graph input from all stats so every allocated point affects the graph.
+  const graphStats = useMemo(() => {
     const stats = {};
-    PENTAGON_STAT_KEYS.forEach(key => {
+    STAT_META.forEach(({ key }) => {
       stats[key] = finalStats[key] || 0;
     });
     return stats;
@@ -127,7 +125,7 @@ export default function StatGrid({ profile, level = 0, statPoints = 0, onAllocat
           style={{ cursor: expandable ? 'pointer' : 'default' }}
           aria-label={expandable ? (expanded ? 'Collapse stat details' : 'Expand stat details') : 'Stat graph'}
         >
-          <PentagonGraph stats={pentagonStats} size={172} />
+          <PentagonGraph stats={graphStats} statMeta={STAT_META} size={188} />
           {expandable && (
             <p className="mt-2 text-center text-[10px] font-bold tracking-widest text-cyan-400">
               {expanded ? 'TAP TO COLLAPSE STATS' : 'TAP TO EXPAND FULL STATS'}

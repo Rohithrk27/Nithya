@@ -53,8 +53,11 @@ function QuestCard({ quest, onComplete = async (_quest) => {}, onFail = null, in
 
   const handleComplete = async () => {
     setCompleting(true);
-    await onComplete(quest);
-    setCompleting(false);
+    try {
+      await onComplete(quest);
+    } finally {
+      setCompleting(false);
+    }
   };
 
   return (

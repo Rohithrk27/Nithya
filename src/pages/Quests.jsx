@@ -674,13 +674,12 @@ export default function Quests() {
   }, [user?.id]);
 
   const handleAcceptQuest = useCallback(async (template) => {
-    if (!user?.id || !template || actionLoading || acceptingQuestKey) return;
+    if (!user?.id || !template || acceptingQuestKey) return;
     const templateKey = getTemplateKey(template);
     const questType = normalizeQuestType(template?.type || 'daily');
     const startedAt = new Date().toISOString();
 
     setAcceptingQuestKey(templateKey);
-    setActionLoading(true);
 
     try {
       let questId = template.id;
@@ -709,7 +708,6 @@ export default function Quests() {
         created_at: startedAt,
         updated_at: startedAt,
       });
-      setTab('progress');
 
       const activatedRow = await activateUserQuest({
         userId: user.id,
@@ -719,6 +717,7 @@ export default function Quests() {
       if (activatedRow?.quest_id) {
         mergeOptimisticUserQuestRow(activatedRow);
       }
+      setTab('progress');
 
       await loadData(user.id);
       notifyQuestChange(user.id);
@@ -727,9 +726,8 @@ export default function Quests() {
       toastError(err?.message || 'Failed to accept quest.');
     } finally {
       setAcceptingQuestKey('');
-      setActionLoading(false);
     }
-  }, [acceptingQuestKey, actionLoading, loadData, mergeOptimisticUserQuestRow, notifyQuestChange, user?.id]);
+  }, [acceptingQuestKey, loadData, mergeOptimisticUserQuestRow, notifyQuestChange, user?.id]);
 
   const handleCompleteQuest = useCallback(async (quest) => {
     if (!user?.id || !quest?.id || actionLoading) return;
@@ -929,6 +927,7 @@ export default function Quests() {
               key={entry.id}
               type="button"
               onClick={() => setTab(entry.id)}
+              data-guide-id={entry.id === 'available' ? 'quests-tab-available' : (entry.id === 'progress' ? 'quests-tab-progress' : undefined)}
               className="flex-1 min-w-[100px] py-2 rounded-lg text-xs font-bold tracking-widest transition-all flex items-center justify-center gap-1 whitespace-nowrap"
               style={{
                 background: tab === entry.id ? 'rgba(56,189,248,0.15)' : 'transparent',
@@ -1079,7 +1078,7 @@ export default function Quests() {
                                   event.stopPropagation();
                                   void handleAcceptQuest(template);
                                 }}
-                                disabled={actionLoading || acceptBlockedByOtherMutation}
+                                disabled={acceptBlockedByOtherMutation}
                                 className="text-xs h-8 px-3 font-bold tracking-wide w-full sm:w-auto"
                                 style={{ background: `${display.color}22`, border: `1px solid ${display.color}44`, color: display.color }}
                               >

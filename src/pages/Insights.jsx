@@ -259,7 +259,7 @@ export default function Insights() {
   return (
     <SystemBackground>
       <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
-        <HoloPanel>
+        <HoloPanel data-guide-id="insights-regenerate-section">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -282,7 +282,7 @@ export default function Insights() {
 
         {latest ? (
           <>
-            <HoloPanel glowColor="#38BDF8" active>
+            <HoloPanel glowColor="#38BDF8" active data-guide-id="insights-current-report">
               <p className="text-xs tracking-widest text-cyan-300 font-black mb-2 flex items-center gap-2">
                 <BrainCircuit className="w-3.5 h-3.5" /> CURRENT 7-DAY REPORT
               </p>

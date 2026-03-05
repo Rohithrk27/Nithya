@@ -81,6 +81,7 @@ const REMINDER_COUNTDOWN_STEPS = [
   { minutesLeft: 30, tag: 'countdown_30' },
   { minutesLeft: 60, tag: 'countdown_60' },
 ];
+const STAT_ALLOC_KEYS = new Set(['strength', 'intelligence', 'discipline', 'health', 'career', 'social', 'consistency']);
 const isMissedLikeHabitLog = (row) => {
   const status = String(row?.status || '').trim().toLowerCase();
   return status === 'missed' || status === 'failed';
@@ -398,6 +399,8 @@ export default function Dashboard() {
   const [xpDelta, setXpDelta] = useState(0);
   const [announcements, setAnnouncements] = useState([]);
   const [habitSectionExpanded, setHabitSectionExpanded] = useState(false);
+  const [statAllocBusy, setStatAllocBusy] = useState(false);
+  const [habitToggleBusyId, setHabitToggleBusyId] = useState('');
   const { notifications, notify } = useSystemNotifications();
   const prevLevelRef = useRef(0);
   const levelPulseTimeoutRef = useRef(null);
@@ -1403,18 +1406,79 @@ export default function Dashboard() {
     return { snapshot, appliedXp: isPenalty ? -amount : amount };
   };
 
+  const allocateStatPoint = async (statKey) => {
+    if (!user?.id || !profile || statAllocBusy) return;
+    const key = String(statKey || '').trim().toLowerCase();
+    if (!STAT_ALLOC_KEYS.has(key)) return;
+
+    const currentPoints = Math.max(0, Number(profile?.stat_points || 0));
+    if (currentPoints <= 0) return;
+
+    const statField = `stat_${key}`;
+    const nextPoints = currentPoints - 1;
+    const nextStatValue = Math.max(0, Number(profile?.[statField] || 0) + 1);
+
+    setStatAllocBusy(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          stat_points: nextPoints,
+          [statField]: nextStatValue,
+        })
+        .eq('id', user.id);
+      if (error) throw error;
+
+      setProfile((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          stat_points: nextPoints,
+          [statField]: nextStatValue,
+        };
+      });
+    } catch (err) {
+      notify('penalty', 'Stat allocation failed', err?.message || 'Please retry.');
+    } finally {
+      setStatAllocBusy(false);
+    }
+  };
+
   const toggleHabit = async (habit) => {
-    if (!user) return;
+    if (!user || !habit?.id || habitToggleBusyId === habit.id) return;
+    setHabitToggleBusyId(habit.id);
     try {
       const existing = logs.find((l) => l.habit_id === habit.id);
       if (existing?.status === 'completed') {
-        notify('xp', 'Already completed for today', `${habit.title} can be completed only once per day.`);
+        const { error: unmarkError } = await supabase
+          .from('habit_logs')
+          .update({ status: 'pending', failed: false })
+          .eq('id', existing.id)
+          .eq('user_id', user.id);
+        if (unmarkError) throw unmarkError;
+
+        setLogs((prev) => prev.map((l) => (l.id === existing.id ? { ...l, status: 'pending', failed: false } : l)));
+        setHistoryLogs((prev) => prev.map((l) => (l.id === existing.id ? { ...l, status: 'pending', failed: false } : l)));
+
+        await awardXp(-(habit.xp_value || 0), 'habit_unmark', {
+          shadowDebtAmount: 0,
+          metadata: { habit_id: habit.id, habit_log_id: existing.id },
+        });
+
+        notify('xp', 'Habit unmarked', `${habit.title} marked incomplete and XP removed.`);
         return;
       }
+
       if (existing) {
-        await supabase.from('habit_logs').update({ status: 'completed' }).eq('id', existing.id).eq('user_id', user.id);
-        setLogs((prev) => prev.map((l) => (l.id === existing.id ? { ...l, status: 'completed' } : l)));
-        setHistoryLogs((prev) => prev.map((l) => (l.id === existing.id ? { ...l, status: 'completed' } : l)));
+        const { error: completeError } = await supabase
+          .from('habit_logs')
+          .update({ status: 'completed', failed: false })
+          .eq('id', existing.id)
+          .eq('user_id', user.id);
+        if (completeError) throw completeError;
+
+        setLogs((prev) => prev.map((l) => (l.id === existing.id ? { ...l, status: 'completed', failed: false } : l)));
+        setHistoryLogs((prev) => prev.map((l) => (l.id === existing.id ? { ...l, status: 'completed', failed: false } : l)));
         await supabase
           .from('punishments')
           .update({ status: 'completed' })
@@ -1423,7 +1487,13 @@ export default function Dashboard() {
           .eq('status', 'pending');
         setPendingPunishments((prev) => prev.filter((p) => p.punishment?.habit_log_id !== existing.id));
       } else {
-        const { data } = await supabase.from('habit_logs').insert({ user_id: user.id, habit_id: habit.id, status: 'completed' }).select().single();
+        const { data, error: insertError } = await supabase
+          .from('habit_logs')
+          .insert({ user_id: user.id, habit_id: habit.id, status: 'completed', failed: false })
+          .select()
+          .single();
+        if (insertError) throw insertError;
+
         if (data) {
           setLogs((prev) => [...prev, data]);
           setHistoryLogs((prev) => [...prev, data]);
@@ -1435,6 +1505,8 @@ export default function Dashboard() {
       });
     } catch (err) {
       notify('penalty', 'Habit update failed', err?.message || 'Please retry.');
+    } finally {
+      setHabitToggleBusyId('');
     }
   };
 
@@ -1956,7 +2028,7 @@ export default function Dashboard() {
           </HoloPanel>
         )}
 
-        <HoloPanel>
+        <HoloPanel data-guide-id="dashboard-overview">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] items-start">
             <div className="flex flex-col sm:flex-row gap-4 items-center sm:items-start">
               <RPGHumanoidAvatar
@@ -1996,7 +2068,10 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-            <div className="rounded-xl p-3 border border-cyan-500/20 bg-slate-900/45 overflow-hidden">
+            <div
+              className="rounded-xl p-3 border border-cyan-500/20 bg-slate-900/45 overflow-hidden"
+              data-guide-id="dashboard-core-stats"
+            >
               <div className="flex items-center justify-between gap-2 mb-3">
                 <p className="text-cyan-400 text-xs uppercase tracking-widest font-bold flex items-center gap-2 min-w-0">
                   <Shield className="w-3.5 h-3.5" /> CORE STAT PANEL
@@ -2010,7 +2085,7 @@ export default function Dashboard() {
                   profile={profile}
                   level={level}
                   statPoints={profile?.stat_points || 0}
-                  onAllocate={() => {}}
+                  onAllocate={allocateStatPoint}
                   expandable
                 />
               </Suspense>
@@ -2257,18 +2332,20 @@ export default function Dashboard() {
           )}
         </HoloPanel>
 
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-yellow-300 text-xs tracking-widest font-bold">ACTIVE QUESTS</p>
-          <Button size="sm" variant="outline" onClick={() => navigate(createPageUrl('Quests'))}>
-            View All
-          </Button>
-        </div>
-        <div className="space-y-3">
-          <Suspense fallback={<DashboardSectionFallback />}>
-            {activeQuests.slice(0, 2).map((quest, i) => (
-              <QuestCard key={quest.id} quest={quest} index={i} onComplete={handleQuestComplete} onFail={handleQuestFail} />
-            ))}
-          </Suspense>
+        <div data-guide-id="dashboard-active-quests">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-yellow-300 text-xs tracking-widest font-bold">ACTIVE QUESTS</p>
+            <Button size="sm" variant="outline" onClick={() => navigate(createPageUrl('Quests'))}>
+              View All
+            </Button>
+          </div>
+          <div className="space-y-3">
+            <Suspense fallback={<DashboardSectionFallback />}>
+              {activeQuests.slice(0, 2).map((quest, i) => (
+                <QuestCard key={quest.id} quest={quest} index={i} onComplete={handleQuestComplete} onFail={handleQuestFail} />
+              ))}
+            </Suspense>
+          </div>
         </div>
       </div>
     </SystemBackground>
