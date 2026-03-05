@@ -1448,21 +1448,47 @@ export default function Dashboard() {
     if (!user || !habit?.id || habitToggleBusyId === habit.id) return;
     setHabitToggleBusyId(habit.id);
     try {
-      const existing = logs.find((l) => l.habit_id === habit.id);
-      if (existing?.status === 'completed') {
-        const { error: unmarkError } = await supabase
-          .from('habit_logs')
-          .update({ status: 'pending', failed: false })
-          .eq('id', existing.id)
-          .eq('user_id', user.id);
-        if (unmarkError) throw unmarkError;
+      const todayHabitLogs = (logs || [])
+        .filter((row) => row?.habit_id === habit.id)
+        .sort((a, b) => (
+          Math.max(toEpoch(b?.updated_at), toEpoch(b?.completed_at), toEpoch(b?.created_at))
+          - Math.max(toEpoch(a?.updated_at), toEpoch(a?.completed_at), toEpoch(a?.created_at))
+        ));
+      const existing = todayHabitLogs[0] || null;
+      const completedTodayLogs = todayHabitLogs.filter((row) => row?.status === 'completed');
 
-        setLogs((prev) => prev.map((l) => (l.id === existing.id ? { ...l, status: 'pending', failed: false } : l)));
-        setHistoryLogs((prev) => prev.map((l) => (l.id === existing.id ? { ...l, status: 'pending', failed: false } : l)));
+      if (completedTodayLogs.length > 0) {
+        const targetLogIds = completedTodayLogs
+          .map((row) => row?.id)
+          .filter(Boolean);
+
+        if (targetLogIds.length > 0) {
+          const { error: unmarkError } = await supabase
+            .from('habit_logs')
+            .update({ status: 'pending', failed: false })
+            .in('id', targetLogIds)
+            .eq('user_id', user.id);
+          if (unmarkError) throw unmarkError;
+        }
+
+        const targetIdSet = new Set(targetLogIds);
+        setLogs((prev) => prev.map((row) => (
+          targetIdSet.has(row.id)
+            ? { ...row, status: 'pending', failed: false }
+            : row
+        )));
+        setHistoryLogs((prev) => prev.map((row) => (
+          targetIdSet.has(row.id)
+            ? { ...row, status: 'pending', failed: false }
+            : row
+        )));
 
         await awardXp(-(habit.xp_value || 0), 'habit_unmark', {
           shadowDebtAmount: 0,
-          metadata: { habit_id: habit.id, habit_log_id: existing.id },
+          metadata: {
+            habit_id: habit.id,
+            habit_log_ids: targetLogIds,
+          },
         });
 
         notify('xp', 'Habit unmarked', `${habit.title} marked incomplete and XP removed.`);
