@@ -1469,6 +1469,9 @@ export default function Dashboard() {
         return;
       }
 
+      let completedLogId = existing?.id || null;
+      const completionNonce = Date.now();
+
       if (existing) {
         const { error: completeError } = await supabase
           .from('habit_logs')
@@ -1486,6 +1489,7 @@ export default function Dashboard() {
           .eq('habit_log_id', existing.id)
           .eq('status', 'pending');
         setPendingPunishments((prev) => prev.filter((p) => p.punishment?.habit_log_id !== existing.id));
+        completedLogId = existing.id;
       } else {
         const { data, error: insertError } = await supabase
           .from('habit_logs')
@@ -1497,11 +1501,12 @@ export default function Dashboard() {
         if (data) {
           setLogs((prev) => [...prev, data]);
           setHistoryLogs((prev) => [...prev, data]);
+          completedLogId = data.id || completedLogId;
         }
       }
       await awardXp(habit.xp_value || 0, 'habit_complete', {
-        eventId: `habit_complete:${habit.id}:${today}`,
-        metadata: { habit_id: habit.id },
+        eventId: `habit_complete:${habit.id}:${today}:${completedLogId || 'no_log'}:${completionNonce}`,
+        metadata: { habit_id: habit.id, habit_log_id: completedLogId },
       });
     } catch (err) {
       notify('penalty', 'Habit update failed', err?.message || 'Please retry.');
